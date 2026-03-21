@@ -21,6 +21,12 @@ export default function Home() {
             <a href="#om-oss" className="hover:text-foreground">
               Om oss
             </a>
+            <Link href="/biehelse" className="hover:text-foreground">
+              Biehelse
+            </Link>
+            <Link href="/prosjekter" className="hover:text-foreground">
+              Prosjekter
+            </Link>
             <a href="#medlemskap" className="hover:text-foreground">
               Bli medlem
             </a>
@@ -42,7 +48,7 @@ export default function Home() {
       <main className="flex-1">
         <section className="border-b bg-gradient-to-b from-[color:oklch(0.97_0.03_88)] via-background to-background">
           <div className="mx-auto max-w-6xl px-4 py-14 sm:py-20">
-            <div className="grid items-start gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-12">
+            <div className="grid items-start gap-10">
               <div className="space-y-6">
                 <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
                   Fokus på biehelse, honningbier og ville pollinatorer
@@ -90,25 +96,6 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
-              </div>
-
-              <div className="rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
-                <div className="space-y-2">
-                  <h2 className="text-lg font-semibold tracking-tight">
-                    Bli medlem i OBNO
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Registrer deg på under ett minutt. Vi tar kontakt med mer
-                    informasjon om medlemskap og aktiviteter.
-                  </p>
-                </div>
-                <div className="mt-6">
-                  <MedlemskapForm />
-                </div>
-                <p className="mt-4 text-xs text-muted-foreground">
-                  Ved å registrere deg samtykker du til at OBNO kan kontakte deg
-                  om medlemskap.
-                </p>
               </div>
             </div>
           </div>
