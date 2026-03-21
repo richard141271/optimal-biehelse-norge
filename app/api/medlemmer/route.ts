@@ -252,10 +252,31 @@ export async function POST(request: Request) {
 
   if (error) {
     const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (/orgnr/i.test(msg) && /column/i.test(msg)) {
+      const { data: retryData, error: retryError } = await supabase
+        .from("medlemmer")
+        .insert({
+          user_id: userId,
+          medlemskap_type: medlemskapType,
+          navn: navn || null,
+          adresse: adresse || null,
+          postnr: postnr || null,
+          sted: sted || null,
+          epost,
+          telefon: telefon || null,
+        })
+        .select("medlemsnummer")
+        .maybeSingle()
+
+      if (!retryError && (retryData as { medlemsnummer?: number | null } | null)?.medlemsnummer != null) {
+        return NextResponse.json({ ok: true })
+      }
+    }
     if (
       /medlemsnummer/i.test(msg) ||
       /medlemskap_type/i.test(msg) ||
       /user_id/i.test(msg) ||
+      /orgnr/i.test(msg) ||
       /column/i.test(msg)
     ) {
       await supabase.auth.admin.deleteUser(userId)

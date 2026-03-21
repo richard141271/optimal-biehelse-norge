@@ -22,25 +22,28 @@ export default function ProsjekterPage() {
   const [sted, setSted] = useState("")
   const [budsjett, setBudsjett] = useState("")
   const [beskrivelse, setBeskrivelse] = useState("")
+  const [vedlegg, setVedlegg] = useState<File[]>([])
   const [status, setStatus] = useState<Status>({ type: "idle" })
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setStatus({ type: "sending" })
     try {
+      const formData = new FormData()
+      formData.set("medlemsnummer", medlemsnummer)
+      formData.set("navn", navn)
+      formData.set("epost", epost)
+      formData.set("telefon", telefon)
+      formData.set("tittel", tittel)
+      formData.set("sted", sted)
+      formData.set("budsjett", budsjett)
+      formData.set("beskrivelse", beskrivelse)
+      for (const f of vedlegg) {
+        formData.append("vedlegg", f, f.name)
+      }
       const response = await fetch("/api/prosjekter", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          medlemsnummer,
-          navn,
-          epost,
-          telefon,
-          tittel,
-          sted,
-          budsjett,
-          beskrivelse,
-        }),
+        body: formData,
       })
 
       const data = (await response.json()) as { ok?: boolean; feil?: string }
@@ -61,6 +64,7 @@ export default function ProsjekterPage() {
       setSted("")
       setBudsjett("")
       setBeskrivelse("")
+      setVedlegg([])
     } catch {
       setStatus({ type: "error", message: "Noe gikk galt. Prøv igjen." })
     }
@@ -190,6 +194,25 @@ export default function ProsjekterPage() {
                 placeholder="Hva er målet, hva skal gjøres, og hvordan kan OBNO bidra?"
                 required
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="vedlegg">Vedlegg (valgfritt)</Label>
+              <Input
+                id="vedlegg"
+                type="file"
+                multiple
+                accept="image/*,application/pdf"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? [])
+                  setVedlegg(files)
+                }}
+              />
+              {vedlegg.length ? (
+                <div className="text-xs text-muted-foreground">
+                  {vedlegg.length} fil(er) valgt
+                </div>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

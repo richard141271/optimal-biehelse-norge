@@ -149,6 +149,9 @@ export default function MinSidePage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => router.push("/")}>
+            Til forsiden
+          </Button>
           <Button variant="outline" onClick={loggUt} disabled={!supabase}>
             Logg ut
           </Button>

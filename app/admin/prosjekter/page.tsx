@@ -17,6 +17,7 @@ type Prosjekt = {
   sted?: string
   budsjett?: number | null
   status?: string | null
+  vedlegg_paths?: string[] | null
 }
 
 type State =
@@ -48,6 +49,17 @@ export default function AdminProsjekterPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [query, setQuery] = useState("")
 
+  async function apneVedlegg(path: string) {
+    const sb = supabase
+    if (!sb) return
+    const { data, error } = await sb.storage
+      .from("prosjekt-vedlegg")
+      .createSignedUrl(path, 60)
+
+    if (error || !data?.signedUrl) return
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer")
+  }
+
   const hent = useCallback(async () => {
     const sb = supabase
     if (!sb) {
@@ -58,13 +70,29 @@ export default function AdminProsjekterPage() {
       return
     }
     setState({ type: "loading" })
-    const { data, error } = await sb
+    const baseSelect =
+      "id, created_at, medlemsnummer, navn, epost, telefon, tittel, sted, budsjett, status"
+
+    const withVedlegg = await sb
       .from("prosjekt_soknader")
-      .select(
-        "id, created_at, medlemsnummer, navn, epost, telefon, tittel, sted, budsjett, status"
-      )
+      .select(`${baseSelect}, vedlegg_paths`)
       .order("created_at", { ascending: false })
       .limit(500)
+
+    let data = withVedlegg.data as unknown as Prosjekt[] | null
+    let error = withVedlegg.error
+    if (error) {
+      const msg = String((error as { message?: string } | null)?.message ?? "")
+      if (/vedlegg_paths/i.test(msg) || (/column/i.test(msg) && /vedlegg/i.test(msg))) {
+        const withoutVedlegg = await sb
+          .from("prosjekt_soknader")
+          .select(baseSelect)
+          .order("created_at", { ascending: false })
+          .limit(500)
+        data = withoutVedlegg.data as unknown as Prosjekt[] | null
+        error = withoutVedlegg.error
+      }
+    }
 
     if (error) {
       setState({
@@ -75,7 +103,7 @@ export default function AdminProsjekterPage() {
       return
     }
 
-    setState({ type: "ready", prosjekter: (data ?? []) as Prosjekt[] })
+    setState({ type: "ready", prosjekter: data ?? [] })
   }, [supabase])
 
   useEffect(() => {
@@ -192,6 +220,9 @@ export default function AdminProsjekterPage() {
                     Ønsket støtte
                   </th>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                    Vedlegg
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
                     Status
                   </th>
                 </tr>
@@ -220,6 +251,24 @@ export default function AdminProsjekterPage() {
                         : "—"}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
+                      {Array.isArray(p.vedlegg_paths) && p.vedlegg_paths.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {p.vedlegg_paths.slice(0, 6).map((path, idx) => (
+                            <Button
+                              key={`${p.id}-${idx}`}
+                              variant="outline"
+                              onClick={() => apneVedlegg(path)}
+                              className="h-7 px-2 text-xs"
+                            >
+                              {idx + 1}
+                            </Button>
+                          ))}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
                       {p.status ?? "—"}
                     </td>
                   </tr>
@@ -227,7 +276,7 @@ export default function AdminProsjekterPage() {
                 {filtered.length === 0 ? (
                   <tr className="border-t">
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-4 py-6 text-center text-muted-foreground"
                     >
                       Ingen treff.

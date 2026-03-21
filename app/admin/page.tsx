@@ -31,7 +31,8 @@ export default function AdminHomePage() {
         if (role !== "admin" && role !== "superadmin") {
           setState({
             type: "error",
-            message: "Du er innlogget, men har ikke tilgang til admin.",
+            message:
+              "Du er innlogget, men har ikke tilgang til admin. Be en superbruker gi deg rolle i Admin → Tilgang.",
           })
           return
         }

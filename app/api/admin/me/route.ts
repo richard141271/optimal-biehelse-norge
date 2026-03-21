@@ -82,5 +82,38 @@ export async function GET() {
     }
   }
 
+  if (!role && !bootstrapEmail) {
+    const { count: superCount, error: superCountError } = await admin
+      .from("admin_roles")
+      .select("email", { count: "exact", head: true })
+      .eq("role", "superadmin")
+
+    if (!superCountError && (superCount ?? 0) === 0) {
+      const { error: upsertError } = await admin.from("admin_roles").upsert(
+        { email, role: "superadmin" },
+        { onConflict: "email" }
+      )
+      if (!upsertError) {
+        role = "superadmin"
+      }
+    }
+  }
+
+  if (!role && !bootstrapEmail) {
+    const { count, error: countError } = await admin
+      .from("admin_roles")
+      .select("email", { count: "exact", head: true })
+
+    if (!countError && (count ?? 0) === 0) {
+      const { error: upsertError } = await admin.from("admin_roles").upsert(
+        { email, role: "superadmin" },
+        { onConflict: "email" }
+      )
+      if (!upsertError) {
+        role = "superadmin"
+      }
+    }
+  }
+
   return NextResponse.json({ ok: true, email, role })
 }
