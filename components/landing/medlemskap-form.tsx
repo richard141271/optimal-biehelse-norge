@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,10 +13,22 @@ type Status =
   | { type: "success" }
   | { type: "error"; message: string }
 
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, "")
+}
+
 export function MedlemskapForm() {
   const router = useRouter()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [type, setType] = useState<"innmeldt" | "stotte" | "bedrift">("innmeldt")
+  const [stotteMerInfo, setStotteMerInfo] = useState(false)
+  const [orgnr, setOrgnr] = useState("")
+  const [orgLookupStatus, setOrgLookupStatus] = useState<
+    | { type: "idle" }
+    | { type: "loading" }
+    | { type: "error"; message: string }
+    | { type: "success" }
+  >({ type: "idle" })
   const [navn, setNavn] = useState("")
   const [adresse, setAdresse] = useState("")
   const [postnr, setPostnr] = useState("")
@@ -26,6 +38,77 @@ export function MedlemskapForm() {
   const [passord, setPassord] = useState("")
   const [passord2, setPassord2] = useState("")
   const [status, setStatus] = useState<Status>({ type: "idle" })
+
+  const skalViseAdressefelter =
+    type === "innmeldt" || type === "bedrift" || (type === "stotte" && stotteMerInfo)
+  const skalViseTelefon = type === "innmeldt" || type === "bedrift" || (type === "stotte" && stotteMerInfo)
+
+  function velgType(next: "innmeldt" | "stotte" | "bedrift") {
+    setType(next)
+    if (next !== "stotte") setStotteMerInfo(false)
+    if (next !== "bedrift") {
+      setOrgnr("")
+      setOrgLookupStatus({ type: "idle" })
+    }
+    if (next === "stotte" && !stotteMerInfo) {
+      setAdresse("")
+      setPostnr("")
+      setSted("")
+      setTelefon("")
+    }
+    setStatus({ type: "idle" })
+  }
+
+  useEffect(() => {
+    if (type !== "bedrift") return
+    const v = digitsOnly(orgnr)
+    if (v.length !== 9) return
+
+    const controller = new AbortController()
+    const id = setTimeout(() => {
+      ;(async () => {
+        setOrgLookupStatus({ type: "loading" })
+        try {
+          const res = await fetch(
+            `https://data.brreg.no/enhetsregisteret/api/enheter/${v}`,
+            { signal: controller.signal }
+          )
+          if (!res.ok) {
+            setOrgLookupStatus({
+              type: "error",
+              message: "Fant ikke bedrift på org.nr.",
+            })
+            return
+          }
+          const data = (await res.json()) as {
+            navn?: string
+            forretningsadresse?: {
+              adresse?: string[]
+              postnummer?: string
+              poststed?: string
+            }
+          }
+          const adr = data.forretningsadresse ?? {}
+          const adrLine = (adr.adresse ?? []).filter(Boolean).join(", ")
+          setNavn((data.navn ?? "").trim())
+          setAdresse(adrLine)
+          setPostnr((adr.postnummer ?? "").trim())
+          setSted((adr.poststed ?? "").trim())
+          setOrgLookupStatus({ type: "success" })
+        } catch {
+          setOrgLookupStatus({
+            type: "error",
+            message: "Kunne ikke hente bedriftsinfo akkurat nå.",
+          })
+        }
+      })()
+    }, 250)
+
+    return () => {
+      clearTimeout(id)
+      controller.abort()
+    }
+  }, [orgnr, type])
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -39,6 +122,25 @@ export function MedlemskapForm() {
       return
     }
 
+    const tlf = digitsOnly(telefon)
+    if (type !== "stotte") {
+      if (tlf.length !== 8) {
+        setStatus({ type: "error", message: "Telefon må være 8 siffer." })
+        return
+      }
+    } else if (tlf) {
+      if (tlf.length !== 8) {
+        setStatus({ type: "error", message: "Telefon må være 8 siffer." })
+        return
+      }
+    }
+
+    const org = digitsOnly(orgnr)
+    if (type === "bedrift" && org.length !== 9) {
+      setStatus({ type: "error", message: "Org.nr. må være 9 siffer." })
+      return
+    }
+
     setStatus({ type: "sending" })
     try {
       const response = await fetch("/api/medlemmer", {
@@ -46,12 +148,13 @@ export function MedlemskapForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type,
+          orgnr: type === "bedrift" ? org : undefined,
           navn,
           adresse,
           postnr,
           sted,
           epost,
-          telefon,
+          telefon: tlf,
           passord,
         }),
       })
@@ -75,6 +178,9 @@ export function MedlemskapForm() {
         router.push("/min-side")
         router.refresh()
       }
+      setStotteMerInfo(false)
+      setOrgnr("")
+      setOrgLookupStatus({ type: "idle" })
       setNavn("")
       setAdresse("")
       setPostnr("")
@@ -96,39 +202,105 @@ export function MedlemskapForm() {
           <Button
             type="button"
             variant={type === "innmeldt" ? "default" : "outline"}
-            onClick={() => setType("innmeldt")}
+            onClick={() => velgType("innmeldt")}
           >
-            Innmeldt medlem
+            Medlem
           </Button>
           <Button
             type="button"
             variant={type === "stotte" ? "default" : "outline"}
-            onClick={() => setType("stotte")}
+            onClick={() => velgType("stotte")}
           >
             Støttemedlem
           </Button>
           <Button
             type="button"
             variant={type === "bedrift" ? "default" : "outline"}
-            onClick={() => setType("bedrift")}
+            onClick={() => velgType("bedrift")}
           >
             Bedriftsmedlem
           </Button>
         </div>
       </div>
+
+      {type === "bedrift" ? (
+        <div className="rounded-xl border bg-card p-4 text-sm">
+          <div className="font-medium">Bedriftsmedlemskap – 1000 kr/år</div>
+          <p className="mt-2 text-muted-foreground">
+            Som bedriftsmedlem i OBNO viser dere støtte til bier, natur og
+            bærekraftige økosystemer.
+          </p>
+          <div className="mt-3 grid gap-1 text-muted-foreground">
+            <div>✔ Synlighet på vår nettside som støttespiller</div>
+            <div>✔ Digitalt medlemsbevis (kan brukes i markedsføring)</div>
+            <div>✔ Mulighet for samarbeid i lokale tiltak</div>
+            <div>✔ Omtale i våre kanaler</div>
+          </div>
+          <p className="mt-3 text-muted-foreground">
+            En enkel måte å bidra – med synlig verdi.
+          </p>
+        </div>
+      ) : null}
+
+      {type === "bedrift" ? (
+        <div className="space-y-2">
+          <Label htmlFor="orgnr">Org.nr.</Label>
+          <Input
+            id="orgnr"
+            name="orgnr"
+            value={orgnr}
+            onChange={(e) => {
+              setOrgLookupStatus({ type: "idle" })
+              setOrgnr(digitsOnly(e.target.value).slice(0, 9))
+            }}
+            inputMode="numeric"
+            placeholder="9 siffer"
+            required
+          />
+          {orgLookupStatus.type === "loading" ? (
+            <div className="text-xs text-muted-foreground">Henter bedriftsinfo…</div>
+          ) : null}
+          {orgLookupStatus.type === "error" ? (
+            <div className="text-xs text-destructive">{orgLookupStatus.message}</div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="space-y-2">
-        <Label htmlFor="navn">Navn</Label>
+        <Label htmlFor="navn">{type === "bedrift" ? "Bedriftsnavn" : "Navn"}</Label>
         <Input
           id="navn"
           name="navn"
           value={navn}
           onChange={(e) => setNavn(e.target.value)}
           autoComplete="name"
-          placeholder="Fullt navn"
-          required={type === "innmeldt" || type === "bedrift"}
+          placeholder={type === "bedrift" ? "Bedriftens navn" : "Fullt navn"}
+          required
         />
       </div>
-      {type === "innmeldt" || type === "bedrift" ? (
+      {type === "stotte" ? (
+        <div className="flex items-center gap-3 rounded-xl border bg-card px-4 py-3 text-sm">
+          <input
+            id="stotteMerInfo"
+            type="checkbox"
+            checked={stotteMerInfo}
+            onChange={(e) => {
+              const next = e.target.checked
+              setStotteMerInfo(next)
+              if (!next) {
+                setAdresse("")
+                setPostnr("")
+                setSted("")
+                setTelefon("")
+              }
+            }}
+            className="h-4 w-4 accent-primary"
+          />
+          <Label htmlFor="stotteMerInfo">Registrer flere opplysninger om meg</Label>
+        </div>
+      ) : null}
+
+      {skalViseAdressefelter ? (
         <>
           <div className="space-y-2">
             <Label htmlFor="adresse">Adresse</Label>
@@ -139,7 +311,7 @@ export function MedlemskapForm() {
               onChange={(e) => setAdresse(e.target.value)}
               autoComplete="street-address"
               placeholder="Gateadresse og nummer"
-              required
+              required={type !== "stotte"}
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -149,11 +321,13 @@ export function MedlemskapForm() {
                 id="postnr"
                 name="postnr"
                 value={postnr}
-                onChange={(e) => setPostnr(e.target.value)}
+                onChange={(e) =>
+                  setPostnr(digitsOnly(e.target.value).slice(0, 4))
+                }
                 inputMode="numeric"
                 autoComplete="postal-code"
                 placeholder="0000"
-                required
+                required={type !== "stotte"}
               />
             </div>
             <div className="space-y-2">
@@ -165,7 +339,7 @@ export function MedlemskapForm() {
                 onChange={(e) => setSted(e.target.value)}
                 autoComplete="address-level2"
                 placeholder="Poststed"
-                required
+                required={type !== "stotte"}
               />
             </div>
           </div>
@@ -184,20 +358,22 @@ export function MedlemskapForm() {
           required
         />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="telefon">Telefon</Label>
-        <Input
-          id="telefon"
-          name="telefon"
-          type="tel"
-          value={telefon}
-          onChange={(e) => setTelefon(e.target.value)}
-          inputMode="tel"
-          autoComplete="tel"
-          placeholder="8–12 sifre"
-          required={type === "innmeldt" || type === "bedrift"}
-        />
-      </div>
+      {skalViseTelefon ? (
+        <div className="space-y-2">
+          <Label htmlFor="telefon">Telefon</Label>
+          <Input
+            id="telefon"
+            name="telefon"
+            type="tel"
+            value={telefon}
+            onChange={(e) => setTelefon(digitsOnly(e.target.value).slice(0, 8))}
+            inputMode="numeric"
+            autoComplete="tel"
+            placeholder="8 siffer"
+            required={type !== "stotte"}
+          />
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         <Label htmlFor="passord">Passord</Label>

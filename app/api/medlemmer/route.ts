@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 
 type Payload = {
   type?: "innmeldt" | "stotte" | "bedrift"
+  orgnr?: string
   navn?: string
   adresse?: string
   postnr?: string
@@ -18,6 +19,18 @@ function isValidEmail(email: string) {
 
 function isValidPostnr(postnr: string) {
   return /^\d{4}$/.test(postnr)
+}
+
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, "")
+}
+
+function isValidNorskTelefon(telefon: string) {
+  return /^\d{8}$/.test(telefon)
+}
+
+function isValidOrgnr(orgnr: string) {
+  return /^\d{9}$/.test(orgnr)
 }
 
 export async function POST(request: Request) {
@@ -57,12 +70,13 @@ export async function POST(request: Request) {
   }
 
   const medlemskapType = payload.type ?? "innmeldt"
+  const orgnr = digitsOnly((payload.orgnr ?? "").trim())
   const navn = (payload.navn ?? "").trim()
   const adresse = (payload.adresse ?? "").trim()
   const postnr = (payload.postnr ?? "").trim()
   const sted = (payload.sted ?? "").trim()
   const epost = (payload.epost ?? "").trim().toLowerCase()
-  const telefon = (payload.telefon ?? "").trim()
+  const telefon = digitsOnly((payload.telefon ?? "").trim())
   const passord = (payload.passord ?? "").trim()
 
   if (!passord || passord.length < 8 || passord.length > 200) {
@@ -79,15 +93,24 @@ export async function POST(request: Request) {
     )
   }
 
-  if (medlemskapType === "innmeldt" || medlemskapType === "bedrift") {
-    if (navn.length < 2 || navn.length > 80) {
+  if (navn.length < 2 || navn.length > (medlemskapType === "bedrift" ? 120 : 80)) {
+    return NextResponse.json(
+      { ok: false, feil: "Skriv inn et gyldig navn." },
+      { status: 400 }
+    )
+  }
+
+  if (medlemskapType === "bedrift") {
+    if (!isValidOrgnr(orgnr)) {
       return NextResponse.json(
-        { ok: false, feil: "Skriv inn et gyldig navn." },
+        { ok: false, feil: "Skriv inn et gyldig org.nr. (9 siffer)." },
         { status: 400 }
       )
     }
+  }
 
-    if (adresse.length < 4 || adresse.length > 120) {
+  if (medlemskapType === "innmeldt" || medlemskapType === "bedrift") {
+    if (adresse.length < 4 || adresse.length > 200) {
       return NextResponse.json(
         { ok: false, feil: "Skriv inn en gyldig adresse." },
         { status: 400 }
@@ -107,6 +130,31 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
+  } else {
+    if (adresse) {
+      if (adresse.length < 4 || adresse.length > 200) {
+        return NextResponse.json(
+          { ok: false, feil: "Skriv inn en gyldig adresse." },
+          { status: 400 }
+        )
+      }
+    }
+    if (postnr) {
+      if (!isValidPostnr(postnr)) {
+        return NextResponse.json(
+          { ok: false, feil: "Skriv inn et gyldig postnummer (4 siffer)." },
+          { status: 400 }
+        )
+      }
+    }
+    if (sted) {
+      if (sted.length < 2 || sted.length > 60) {
+        return NextResponse.json(
+          { ok: false, feil: "Skriv inn et gyldig poststed." },
+          { status: 400 }
+        )
+      }
+    }
   }
 
   if (!isValidEmail(epost)) {
@@ -116,17 +164,17 @@ export async function POST(request: Request) {
     )
   }
 
-  if (medlemskapType === "innmeldt" || medlemskapType === "bedrift") {
-    if (telefon.length < 6 || telefon.length > 20) {
+  if (medlemskapType !== "stotte") {
+    if (!isValidNorskTelefon(telefon)) {
       return NextResponse.json(
-        { ok: false, feil: "Skriv inn et gyldig telefonnummer." },
+        { ok: false, feil: "Telefon må være 8 siffer." },
         { status: 400 }
       )
     }
   } else if (telefon) {
-    if (telefon.length < 6 || telefon.length > 20) {
+    if (!isValidNorskTelefon(telefon)) {
       return NextResponse.json(
-        { ok: false, feil: "Skriv inn et gyldig telefonnummer." },
+        { ok: false, feil: "Telefon må være 8 siffer." },
         { status: 400 }
       )
     }
@@ -141,6 +189,7 @@ export async function POST(request: Request) {
     "alter table public.medlemmer add column if not exists user_id uuid;\n" +
     "alter table public.medlemmer add column if not exists medlemskap_type text;\n" +
     "alter table public.medlemmer add column if not exists medlemsnummer integer;\n" +
+    "alter table public.medlemmer add column if not exists orgnr text;\n" +
     "alter table public.medlemmer add column if not exists adresse text;\n" +
     "alter table public.medlemmer add column if not exists postnr text;\n" +
     "alter table public.medlemmer add column if not exists sted text;\n" +
@@ -186,6 +235,7 @@ export async function POST(request: Request) {
   const insertRow: Record<string, unknown> = {
     user_id: userId,
     medlemskap_type: medlemskapType,
+    orgnr: orgnr || null,
     navn: navn || null,
     adresse: adresse || null,
     postnr: postnr || null,
