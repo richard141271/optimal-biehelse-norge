@@ -14,24 +14,27 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-type Status =
-  | { type: "idle" }
-  | { type: "sending" }
-  | { type: "error"; message: string }
-
 export default function MinSideLoginPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [epost, setEpost] = useState("")
   const [passord, setPassord] = useState("")
-  const [status, setStatus] = useState<Status>({ type: "idle" })
+  const [loading, setLoading] = useState(false)
+  const [feil, setFeil] = useState<string | null>(null)
 
-  function getNextPath() {
+  async function sjekkAdminOgRedirect() {
     try {
-      const sp = new URLSearchParams(window.location.search)
-      const raw = (sp.get("next") || "/min-side").trim()
-      return raw.startsWith("/") ? raw : "/min-side"
-    } catch {
-      return "/min-side"
+      const res = await fetch("/api/admin/me", { cache: "no-store" })
+      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      console.log("[admin/me]", res.status, data)
+      if (res.ok && data.ok) {
+        console.log("[redirect]", "/admin")
+        window.location.href = "/admin"
+        return
+      }
+      setFeil(data.feil ?? "Du har ikke tilgang til admin.")
+    } catch (e) {
+      console.log("[admin/me] error", e)
+      setFeil("Kunne ikke sjekke admin-tilgang.")
     }
   }
 
@@ -42,10 +45,8 @@ export default function MinSideLoginPage() {
         if (!sb) return
         try {
           const { data } = await sb.auth.getSession()
-          if (data.session) {
-            const next = getNextPath()
-            window.location.assign(next)
-          }
+          console.log("[session]", Boolean(data.session))
+          if (data.session) await sjekkAdminOgRedirect()
         } catch {}
       })()
     }, 0)
@@ -55,51 +56,50 @@ export default function MinSideLoginPage() {
   async function loggInn() {
     const sb = supabase
     if (!sb) {
-      setStatus({
-        type: "error",
-        message: "Supabase er ikke konfigurert (mangler miljøvariabler).",
-      })
+      setFeil("Supabase er ikke konfigurert (mangler miljøvariabler).")
       return
     }
 
     const email = epost.trim()
     const password = passord.trim()
     if (!email) {
-      setStatus({ type: "error", message: "Skriv inn e-post." })
+      setFeil("Skriv inn e-post.")
       return
     }
     if (!password) {
-      setStatus({ type: "error", message: "Skriv inn passord." })
+      setFeil("Skriv inn passord.")
       return
     }
 
-    if (status.type === "sending") return
+    if (loading) return
 
-    setStatus({ type: "sending" })
+    setFeil(null)
+    setLoading(true)
     try {
-      const timeout = new Promise<never>((_, reject) =>
+      const timeout = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error("timeout")), 15000)
-      )
-      const { error } = await Promise.race([
+      })
+
+      const { data, error } = (await Promise.race([
         sb.auth.signInWithPassword({ email, password }),
         timeout,
-      ])
+      ])) as Awaited<ReturnType<typeof sb.auth.signInWithPassword>>
 
-      if (error) {
-        setStatus({
-          type: "error",
-          message: "Kunne ikke logge inn. Sjekk e-post og passord.",
-        })
+      console.log("[login]", { hasSession: Boolean(data?.session), hasError: Boolean(error) })
+
+      if (error || !data?.session) {
+        setFeil("Kunne ikke logge inn. Sjekk e-post og passord.")
         return
       }
 
-      const next = getNextPath()
-      window.location.assign(next)
+      const sessionRes = await sb.auth.getSession()
+      console.log("[session after login]", Boolean(sessionRes.data.session))
+
+      await sjekkAdminOgRedirect()
     } catch {
-      setStatus({
-        type: "error",
-        message: "Innlogging tok for lang tid. Prøv igjen.",
-      })
+      setFeil("Innlogging tok for lang tid. Prøv igjen.")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -146,18 +146,18 @@ export default function MinSideLoginPage() {
               />
             </div>
 
-            {status.type === "error" ? (
+            {feil ? (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {status.message}
+                {feil}
               </div>
             ) : null}
 
             <Button
               type="submit"
-              disabled={status.type === "sending" || !supabase}
+              disabled={loading || !supabase}
               className="w-full"
             >
-              {status.type === "sending" ? "Logger inn…" : "Logg inn"}
+              {loading ? "Logger inn…" : "Logg inn"}
             </Button>
           </form>
 

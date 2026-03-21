@@ -58,9 +58,6 @@ export default function MinSidePage() {
   const router = useRouter()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [state, setState] = useState<State>({ type: "loading" })
-  const [adminRole, setAdminRole] = useState<"admin" | "superadmin" | null>(null)
-  const [info, setInfo] = useState<string | null>(null)
-  const [bootstrapped, setBootstrapped] = useState(false)
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -71,20 +68,6 @@ export default function MinSidePage() {
             message: "Supabase er ikke konfigurert (mangler miljøvariabler).",
           })
           return
-        }
-
-        try {
-          const sp = new URLSearchParams(window.location.search)
-          const feil = (sp.get("feil") ?? "").trim()
-          if (feil === "ingen-admin") {
-            setInfo(
-              "Du er innlogget, men har ikke tilgang til admin. Tilgang gis av en administrator inne i Adminpanelet."
-            )
-          } else {
-            setInfo(null)
-          }
-        } catch {
-          setInfo(null)
         }
 
         const res = await fetch("/api/min-side/me", { cache: "no-store" })
@@ -106,39 +89,10 @@ export default function MinSidePage() {
           return
         }
         setState({ type: "ready", medlem: data.medlem })
-
-        try {
-          const adminRes = await fetch("/api/admin/me", { cache: "no-store" })
-          if (!adminRes.ok) {
-            setAdminRole(null)
-            return
-          }
-          const adminData = (await adminRes.json()) as { ok?: boolean; role?: string | null }
-          const role = adminData.role ?? null
-          if (adminData.ok && (role === "admin" || role === "superadmin")) {
-            setAdminRole(role)
-          } else {
-            setAdminRole(null)
-            if (!bootstrapped) {
-              setBootstrapped(true)
-              const bootstrapRes = await fetch("/api/admin/bootstrap", { method: "POST" })
-              const bootstrapData = (await bootstrapRes.json()) as {
-                ok?: boolean
-                role?: string | null
-              }
-              const br = bootstrapData.role ?? null
-              if (bootstrapRes.ok && bootstrapData.ok && (br === "admin" || br === "superadmin")) {
-                setAdminRole(br)
-              }
-            }
-          }
-        } catch {
-          setAdminRole(null)
-        }
       })()
     }, 0)
     return () => clearTimeout(id)
-  }, [router, supabase, bootstrapped])
+  }, [router, supabase])
 
   async function loggUt() {
     if (!supabase) return
@@ -198,22 +152,14 @@ export default function MinSidePage() {
           <Button variant="outline" onClick={() => router.push("/")}>
             Til forsiden
           </Button>
-          {adminRole ? (
-            <Button variant="outline" onClick={() => router.push("/admin")}>
-              Adminpanel
-            </Button>
-          ) : null}
+          <Button variant="outline" onClick={() => router.push("/admin")}>
+            Adminpanel
+          </Button>
           <Button variant="outline" onClick={loggUt} disabled={!supabase}>
             Logg ut
           </Button>
         </div>
       </div>
-
-      {info ? (
-        <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
-          {info}
-        </div>
-      ) : null}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border bg-card p-6">
@@ -248,9 +194,7 @@ export default function MinSidePage() {
               <dt className="text-muted-foreground">Medlemskap</dt>
               <dd className="text-right">
                 <div>{typeLabel}</div>
-                {adminRole ? (
-                  <div className="text-xs text-muted-foreground">Administrator</div>
-                ) : null}
+                <div className="text-xs text-muted-foreground">Administrator</div>
               </dd>
             </div>
           </dl>

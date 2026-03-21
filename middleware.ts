@@ -1,5 +1,4 @@
 import { createServerClient } from "@supabase/ssr"
-import { createClient } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
 
 function isAdminPath(pathname: string) {
@@ -52,40 +51,6 @@ export async function middleware(request: NextRequest) {
     url.pathname = "/min-side/login"
     url.searchParams.set("next", request.nextUrl.pathname)
     return NextResponse.redirect(url)
-  }
-
-  if (isAdminPath(request.nextUrl.pathname) && user) {
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    const email = (user.email ?? "").trim().toLowerCase()
-    if (serviceRoleKey && email) {
-      try {
-        const admin = createClient(supabaseUrl, serviceRoleKey, {
-          auth: { persistSession: false },
-        })
-        const { data, error } = await admin
-          .from("admin_roles")
-          .select("role")
-          .eq("email", email)
-          .maybeSingle()
-        const role = (data?.role ?? null) as string | null
-        if (error || (role !== "admin" && role !== "superadmin")) {
-          const url = request.nextUrl.clone()
-          url.pathname = "/min-side"
-          url.searchParams.set("feil", "ingen-admin")
-          return NextResponse.redirect(url)
-        }
-      } catch {
-        const url = request.nextUrl.clone()
-        url.pathname = "/min-side"
-        url.searchParams.set("feil", "ingen-admin")
-        return NextResponse.redirect(url)
-      }
-    } else {
-      const url = request.nextUrl.clone()
-      url.pathname = "/min-side"
-      url.searchParams.set("feil", "ingen-admin")
-      return NextResponse.redirect(url)
-    }
   }
 
   if (isMemberPath(request.nextUrl.pathname) && !user) {
