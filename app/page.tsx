@@ -27,9 +27,6 @@ export default function Home() {
             <Link href="/prosjekter" className="hover:text-foreground">
               Prosjekter
             </Link>
-            <Link href="/min-side" className="hover:text-foreground">
-              Min side
-            </Link>
             <a href="#medlemskap" className="hover:text-foreground">
               Bli medlem
             </a>
@@ -38,6 +35,12 @@ export default function Home() {
             </a>
           </nav>
           <div className="flex items-center gap-2">
+            <Link
+              href="/min-side"
+              className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+            >
+              Min side
+            </Link>
             <a
               href="#medlemskap"
               className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"

@@ -11,6 +11,7 @@ export async function GET() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const bootstrapEmail = (process.env.ADMIN_BOOTSTRAP_EMAIL ?? "").trim().toLowerCase()
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
@@ -25,7 +26,11 @@ export async function GET() {
       getAll() {
         return cookieStore.getAll()
       },
-      setAll() {},
+      setAll(cookiesToSet) {
+        for (const { name, value, options } of cookiesToSet) {
+          cookieStore.set(name, value, options)
+        }
+      },
     },
   })
 
@@ -55,7 +60,7 @@ export async function GET() {
   const { data, error } = await admin
     .from("admin_roles")
     .select("role")
-    .eq("email", email)
+    .ilike("email", email)
     .maybeSingle()
 
   if (error) {
@@ -65,6 +70,17 @@ export async function GET() {
     )
   }
 
-  const role = (data?.role ?? null) as string | null
+  let role = (data?.role ?? null) as string | null
+
+  if (!role && bootstrapEmail && email === bootstrapEmail) {
+    const { error: upsertError } = await admin.from("admin_roles").upsert(
+      { email, role: "superadmin" },
+      { onConflict: "email" }
+    )
+    if (!upsertError) {
+      role = "superadmin"
+    }
+  }
+
   return NextResponse.json({ ok: true, email, role })
 }

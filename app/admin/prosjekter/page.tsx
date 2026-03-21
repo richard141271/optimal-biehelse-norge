@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 import { Button } from "@/components/ui/button"
@@ -20,7 +21,7 @@ type Prosjekt = {
 
 type State =
   | { type: "loading" }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; status?: number }
   | { type: "ready"; prosjekter: Prosjekt[] }
 
 function formatDato(value?: string) {
@@ -88,6 +89,7 @@ export default function AdminProsjekterPage() {
               res.status === 401
                 ? "Du er ikke innlogget."
                 : "Kunne ikke sjekke tilgang.",
+            status: res.status,
           })
           return
         }
@@ -153,8 +155,15 @@ export default function AdminProsjekterPage() {
       ) : null}
 
       {state.type === "error" ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
-          {state.message}
+        <div className="space-y-3">
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
+            {state.message}
+          </div>
+          {state.status === 401 ? (
+            <Link href="/admin/login" className="text-sm underline underline-offset-4">
+              Gå til innlogging
+            </Link>
+          ) : null}
         </div>
       ) : null}
 

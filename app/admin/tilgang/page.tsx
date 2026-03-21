@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,7 +14,7 @@ type Rolle = {
 
 type State =
   | { type: "loading" }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; status?: number }
   | { type: "ready"; roller: Rolle[] }
 
 export default function AdminTilgangPage() {
@@ -28,13 +29,14 @@ export default function AdminTilgangPage() {
     setState({ type: "loading" })
     const res = await fetch("/api/admin/roles", { cache: "no-store" })
     if (res.status === 401) {
-      setState({ type: "error", message: "Du er ikke innlogget." })
+      setState({ type: "error", message: "Du er ikke innlogget.", status: 401 })
       return
     }
     if (res.status === 403) {
       setState({
         type: "error",
         message: "Du må være superbruker for å administrere tilgang.",
+        status: 403,
       })
       return
     }
@@ -119,8 +121,15 @@ export default function AdminTilgangPage() {
       ) : null}
 
       {state.type === "error" ? (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
-          {state.message}
+        <div className="space-y-3">
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
+            {state.message}
+          </div>
+          {state.status === 401 ? (
+            <Link href="/admin/login" className="text-sm underline underline-offset-4">
+              Gå til innlogging
+            </Link>
+          ) : null}
         </div>
       ) : null}
 
@@ -208,4 +217,3 @@ export default function AdminTilgangPage() {
     </div>
   )
 }
-

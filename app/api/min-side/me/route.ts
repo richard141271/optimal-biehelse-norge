@@ -21,7 +21,11 @@ export async function GET() {
       getAll() {
         return cookieStore.getAll()
       },
-      setAll() {},
+      setAll(cookiesToSet) {
+        for (const { name, value, options } of cookiesToSet) {
+          cookieStore.set(name, value, options)
+        }
+      },
     },
   })
 

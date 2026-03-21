@@ -5,7 +5,7 @@ import { useEffect, useState } from "react"
 
 type State =
   | { type: "loading" }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; status?: number }
   | { type: "ready"; role: "admin" | "superadmin" }
 
 export default function AdminHomePage() {
@@ -22,15 +22,16 @@ export default function AdminHomePage() {
               res.status === 401
                 ? "Du er ikke innlogget."
                 : "Kunne ikke sjekke tilgang.",
+            status: res.status,
           })
           return
         }
-        const data = (await res.json()) as { role?: string | null }
+        const data = (await res.json()) as { email?: string; role?: string | null }
         const role = data.role ?? null
         if (role !== "admin" && role !== "superadmin") {
           setState({
             type: "error",
-            message: "Du har ikke tilgang til admin.",
+            message: "Du er innlogget, men har ikke tilgang til admin.",
           })
           return
         }
@@ -50,8 +51,15 @@ export default function AdminHomePage() {
 
   if (state.type === "error") {
     return (
-      <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
-        {state.message}
+      <div className="space-y-3">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
+          {state.message}
+        </div>
+        {state.status === 401 ? (
+          <Link href="/admin/login" className="text-sm underline underline-offset-4">
+            Gå til innlogging
+          </Link>
+        ) : null}
       </div>
     )
   }

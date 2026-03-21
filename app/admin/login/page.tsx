@@ -18,18 +18,14 @@ import {
 type Status =
   | { type: "idle" }
   | { type: "sending" }
-  | { type: "success"; message: string }
   | { type: "error"; message: string }
 
 function supabaseErrorMessage(message: string | undefined) {
   const m = (message ?? "").toLowerCase()
   if (!m) return "Noe gikk galt."
   if (m.includes("invalid login credentials")) return "Feil e-post eller passord."
-  if (m.includes("email rate limit exceeded")) return "For mange forsøk. Vent litt og prøv igjen."
   if (m.includes("signup requires a valid password"))
     return "Passordet er ikke gyldig (minst 8 tegn)."
-  if (m.includes("email link is invalid") || m.includes("otp expired"))
-    return "Innloggingslenken er utløpt. Send en ny lenke."
   return message ?? "Noe gikk galt."
 }
 
@@ -83,7 +79,7 @@ export default function AdminLoginPage() {
 
     const password = passord.trim()
     if (!password) {
-      await sendInnloggingslenke()
+      setStatus({ type: "error", message: "Skriv inn passord." })
       return
     }
 
@@ -102,53 +98,13 @@ export default function AdminLoginPage() {
     router.refresh()
   }
 
-  async function sendInnloggingslenke() {
-    if (!supabase) {
-      setStatus({
-        type: "error",
-        message: "Supabase er ikke konfigurert (mangler miljøvariabler).",
-      })
-      return
-    }
-    const email = epost.trim()
-    if (!email) {
-      setStatus({ type: "error", message: "Skriv inn e-post." })
-      return
-    }
-
-    setStatus({ type: "sending" })
-    const origin =
-      typeof window === "undefined" ? "" : window.location.origin
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${origin}${getNextPath()}`,
-      },
-    })
-
-    if (error) {
-      setStatus({
-        type: "error",
-        message: `Kunne ikke sende innloggingslenke. ${supabaseErrorMessage(
-          error.message
-        )}`,
-      })
-      return
-    }
-
-    setStatus({
-      type: "success",
-      message: "Sjekk e-posten din for innloggingslenke.",
-    })
-  }
-
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-16">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle>Admin</CardTitle>
           <CardDescription>
-            Logg inn for å administrere medlemsregister og regnskap.
+            Logg inn med samme e-post og passord som på Min side.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -164,14 +120,14 @@ export default function AdminLoginPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="passord">Passord (valgfritt)</Label>
+            <Label htmlFor="passord">Passord</Label>
             <Input
               id="passord"
               type="password"
               autoComplete="current-password"
               value={passord}
               onChange={(e) => setPassord(e.target.value)}
-              placeholder="La stå tomt for innloggingslenke"
+              placeholder="••••••••"
             />
           </div>
 
@@ -181,27 +137,13 @@ export default function AdminLoginPage() {
             </div>
           ) : null}
 
-          {status.type === "success" ? (
-            <div className="rounded-lg border bg-muted px-3 py-2 text-sm">
-              {status.message}
-            </div>
-          ) : null}
-
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2">
             <Button
               onClick={loggInn}
               disabled={status.type === "sending" || !supabase}
               className="w-full"
             >
               Logg inn
-            </Button>
-            <Button
-              variant="outline"
-              onClick={sendInnloggingslenke}
-              disabled={status.type === "sending" || !supabase}
-              className="w-full"
-            >
-              Send lenke
             </Button>
           </div>
 

@@ -24,7 +24,11 @@ async function getCurrentUserEmail() {
       getAll() {
         return cookieStore.getAll()
       },
-      setAll() {},
+      setAll(cookiesToSet) {
+        for (const { name, value, options } of cookiesToSet) {
+          cookieStore.set(name, value, options)
+        }
+      },
     },
   })
 
@@ -56,10 +60,20 @@ async function requireSuperAdmin() {
   const { data, error } = await admin
     .from("admin_roles")
     .select("role")
-    .eq("email", email)
+    .ilike("email", email)
     .maybeSingle()
 
   if (error) return { ok: false as const, status: 400 as const }
+  const bootstrapEmail = (process.env.ADMIN_BOOTSTRAP_EMAIL ?? "").trim().toLowerCase()
+  if (data?.role !== "superadmin" && bootstrapEmail && email === bootstrapEmail) {
+    const { error: upsertError } = await admin.from("admin_roles").upsert(
+      { email, role: "superadmin" },
+      { onConflict: "email" }
+    )
+    if (!upsertError) {
+      return { ok: true as const, admin }
+    }
+  }
   if (data?.role !== "superadmin") return { ok: false as const, status: 403 as const }
 
   return { ok: true as const, admin }
