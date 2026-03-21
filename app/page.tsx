@@ -1,65 +1,236 @@
-import Image from "next/image";
+import { MedlemskapForm } from "@/components/landing/medlemskap-form"
+import Link from "next/link"
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
+    <div className="flex flex-1 flex-col">
+      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+          <Link href="/" className="flex items-center gap-2 font-semibold">
+            <span className="inline-flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              OB
+            </span>
+            <span className="leading-none">
+              Optimal Biehelse Norge
+              <span className="block text-xs font-normal text-muted-foreground">
+                OBNO
+              </span>
+            </span>
+          </Link>
+          <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
+            <a href="#om-oss" className="hover:text-foreground">
+              Om oss
+            </a>
+            <a href="#medlemskap" className="hover:text-foreground">
+              Bli medlem
+            </a>
+            <a href="#stott-oss" className="hover:text-foreground">
+              Støtt oss
+            </a>
+          </nav>
+          <div className="flex items-center gap-2">
             <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              href="#medlemskap"
+              className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              Bli medlem
+            </a>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+      </header>
+
+      <main className="flex-1">
+        <section className="border-b bg-gradient-to-b from-[color:oklch(0.97_0.03_88)] via-background to-background">
+          <div className="mx-auto max-w-6xl px-4 py-14 sm:py-20">
+            <div className="grid items-start gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-12">
+              <div className="space-y-6">
+                <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
+                  Fokus på biehelse, honningbier og ville pollinatorer
+                </div>
+                <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">
+                  Bedre biehelse.
+                  <span className="text-primary"> Sterkere natur.</span>
+                </h1>
+                <p className="max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+                  Optimal Biehelse Norge er en frivillig organisasjon som jobber
+                  for robuste bifolk, trygge økosystemer og mer kunnskap i hele
+                  landet.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <a
+                    href="#medlemskap"
+                    className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+                  >
+                    Registrer medlemskap
+                  </a>
+                  <a
+                    href="#stott-oss"
+                    className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
+                  >
+                    Støtt arbeidet vårt
+                  </a>
+                </div>
+                <div className="grid grid-cols-2 gap-4 pt-4 sm:grid-cols-3">
+                  <div className="rounded-xl border bg-background p-4">
+                    <div className="text-sm font-medium">Kunnskap</div>
+                    <div className="text-xs text-muted-foreground">
+                      Kurs og veiledning
+                    </div>
+                  </div>
+                  <div className="rounded-xl border bg-background p-4">
+                    <div className="text-sm font-medium">Tiltak</div>
+                    <div className="text-xs text-muted-foreground">
+                      Praktisk oppfølging
+                    </div>
+                  </div>
+                  <div className="rounded-xl border bg-background p-4">
+                    <div className="text-sm font-medium">Fellesskap</div>
+                    <div className="text-xs text-muted-foreground">
+                      Frivillige og medlemmer
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
+                <div className="space-y-2">
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    Bli medlem i OBNO
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Registrer deg på under ett minutt. Vi tar kontakt med mer
+                    informasjon om medlemskap og aktiviteter.
+                  </p>
+                </div>
+                <div className="mt-6">
+                  <MedlemskapForm />
+                </div>
+                <p className="mt-4 text-xs text-muted-foreground">
+                  Ved å registrere deg samtykker du til at OBNO kan kontakte deg
+                  om medlemskap.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="om-oss" className="border-b">
+          <div className="mx-auto max-w-6xl px-4 py-14 sm:py-20">
+            <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
+              <div className="space-y-3">
+                <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  Hva vi jobber for
+                </h2>
+                <p className="text-muted-foreground">
+                  Vi ønsker å gjøre det enklere å ta gode valg for bier og
+                  pollinatorer, både for birøktere og for alle som vil bidra i
+                  nærmiljøet.
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border bg-card p-5">
+                  <div className="text-sm font-medium">Forebygging</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Fokus på helse, miljø og rutiner som gir robuste bifolk.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-card p-5">
+                  <div className="text-sm font-medium">Samarbeid</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Vi bygger nettverk mellom frivillige, fagmiljø og lokallag.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-card p-5">
+                  <div className="text-sm font-medium">Kunnskapsdeling</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Tilgjengelige ressurser, tips og oppdateringer gjennom året.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-card p-5">
+                  <div className="text-sm font-medium">Pollinatorvennlig</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Tiltak for ville pollinatorer i hager, parker og kulturlandskap.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="medlemskap" className="border-b">
+          <div className="mx-auto max-w-6xl px-4 py-14 sm:py-20">
+            <div className="grid items-start gap-10 lg:grid-cols-[1fr_1fr] lg:gap-12">
+              <div className="space-y-3">
+                <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  Medlemsregistrering
+                </h2>
+                <p className="text-muted-foreground">
+                  Medlemskap gir oss forutsigbarhet og gjør det mulig å planlegge
+                  tiltak. Du kan når som helst be oss slette informasjonen din.
+                </p>
+                <div className="rounded-xl border bg-card p-5">
+                  <div className="text-sm font-medium">Hva skjer etterpå?</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Vi sender praktisk info om kontingent og hvordan du kan bidra.
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
+                <MedlemskapForm />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="stott-oss">
+          <div className="mx-auto max-w-6xl px-4 py-14 sm:py-20">
+            <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:gap-12">
+              <div className="space-y-3">
+                <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  Støtt oss
+                </h2>
+                <p className="text-muted-foreground">
+                  Bidrag går til kunnskapsarbeid, utstyr og aktiviteter som styrker
+                  biehelse og pollinatorer. Betalingsinformasjon legges inn her.
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border bg-card p-5">
+                  <div className="text-sm font-medium">Vipps</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Plassholder for Vipps-nummer.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-card p-5">
+                  <div className="text-sm font-medium">Bankoverføring</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Plassholder for kontonummer/IBAN.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-card p-5">
+                  <div className="text-sm font-medium">Bedriftsstøtte</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Plassholder for samarbeid og spons.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-card p-5">
+                  <div className="text-sm font-medium">Gave</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Plassholder for gavebrev og støttealternativer.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
+
+      <footer className="border-t">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-10 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <p>© {new Date().getFullYear()} Optimal Biehelse Norge (OBNO)</p>
+          <p>Frivillig organisasjon for bier og pollinatorer</p>
+        </div>
+      </footer>
     </div>
   );
 }
