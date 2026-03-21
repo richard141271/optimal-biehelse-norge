@@ -62,6 +62,26 @@ const schemaFeil =
 
 const bucket = "bilag"
 
+function describeError(error: unknown) {
+  if (!error) return null
+  if (typeof error === "string") return error
+  if (error instanceof Error) return error.message || "Ukjent feil"
+  const e = error as Record<string, unknown>
+  const message = typeof e.message === "string" ? e.message : ""
+  const errorCode = typeof e.error === "string" ? e.error : ""
+  const statusCode =
+    typeof e.statusCode === "number"
+      ? String(e.statusCode)
+      : typeof e.status === "number"
+        ? String(e.status)
+        : ""
+  const parts = [message, errorCode && `code=${errorCode}`, statusCode && `status=${statusCode}`]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+  return parts || "Ukjent feil"
+}
+
 export async function GET() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -150,7 +170,13 @@ export async function POST(request: Request) {
   try {
     form = await request.formData()
   } catch {
-    return NextResponse.json({ ok: false, feil: "Ugyldig forespørsel." }, { status: 400 })
+    return NextResponse.json(
+      {
+        ok: false,
+        feil: "Ugyldig forespørsel (kunne ikke lese fil). Hvis du laster opp bilag: prøv et mindre bilde.",
+      },
+      { status: 400 }
+    )
   }
 
   const type = String(form.get("type") ?? "").trim()
@@ -172,9 +198,9 @@ export async function POST(request: Request) {
 
   let bilagPath: string | null = null
   if (bilag instanceof File && bilag.size > 0) {
-    if (bilag.size > 10 * 1024 * 1024) {
+    if (bilag.size > 4 * 1024 * 1024) {
       return NextResponse.json(
-        { ok: false, feil: "Bilag er for stort (maks 10 MB)." },
+        { ok: false, feil: "Bilag er for stort (maks 4 MB)." },
         { status: 400 }
       )
     }
@@ -201,11 +227,12 @@ export async function POST(request: Request) {
         ? "webp"
         : "jpg"
     bilagPath = `${todayIso()}/${crypto.randomUUID()}.${ext}`
+    const body = await bilag.arrayBuffer()
     const { error: uploadError } = await admin.storage
       .from(bucket)
-      .upload(bilagPath, bilag, { upsert: false, contentType: bilag.type || undefined })
+      .upload(bilagPath, body, { upsert: false, contentType: bilag.type || undefined })
     if (uploadError) {
-      const msg = String((uploadError as { message?: string } | null)?.message ?? "")
+      const msg = describeError(uploadError)
       return NextResponse.json(
         {
           ok: false,

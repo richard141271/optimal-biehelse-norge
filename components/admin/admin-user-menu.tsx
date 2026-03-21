@@ -1,9 +1,10 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 
 type State =
   | { type: "loading" }
@@ -65,6 +66,9 @@ export function AdminUserMenu() {
           {state.epost}
         </div>
       ) : null}
+      <Link href="/min-side" className={buttonVariants({ variant: "outline" })}>
+        Min side
+      </Link>
       {state.type === "ready" && !state.innlogget ? (
         <Button
           variant="outline"

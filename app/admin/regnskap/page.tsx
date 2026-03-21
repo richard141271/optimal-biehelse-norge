@@ -255,6 +255,10 @@ export default function AdminRegnskapPage() {
       alert("Skriv inn et gyldig beløp.")
       return
     }
+    if (form.bilag && form.bilag.size > 4 * 1024 * 1024) {
+      alert("Bilag er for stort. Maks 4 MB.")
+      return
+    }
 
     setSaving(true)
     try {
@@ -269,9 +273,15 @@ export default function AdminRegnskapPage() {
       if (form.bilag) fd.set("bilag", form.bilag)
 
       const res = await fetch("/api/regnskap", { method: "POST", body: fd })
-      const payload = (await res.json()) as { ok?: boolean; feil?: string }
-      if (!res.ok || !payload.ok) {
-        alert(payload.feil ?? "Kunne ikke lagre regnskapspost.")
+      let payload: { ok?: boolean; feil?: string } | null = null
+      try {
+        payload = (await res.json()) as { ok?: boolean; feil?: string }
+      } catch {
+        payload = null
+      }
+      if (!res.ok || !payload?.ok) {
+        const msg = payload?.feil?.trim()
+        alert(msg || `Kunne ikke lagre regnskapspost. (HTTP ${res.status})`)
         return
       }
 
