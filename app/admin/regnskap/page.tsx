@@ -203,7 +203,29 @@ export default function AdminRegnskapPage() {
 
   useEffect(() => {
     const id = setTimeout(() => {
-      hent()
+      ;(async () => {
+        const res = await fetch("/api/admin/me", { cache: "no-store" })
+        if (!res.ok) {
+          setState({
+            type: "error",
+            message:
+              res.status === 401
+                ? "Du er ikke innlogget."
+                : "Kunne ikke sjekke tilgang.",
+          })
+          return
+        }
+        const data = (await res.json()) as { role?: string | null }
+        const role = data.role ?? null
+        if (role !== "admin" && role !== "superadmin") {
+          setState({
+            type: "error",
+            message: "Du har ikke tilgang til admin.",
+          })
+          return
+        }
+        await hent()
+      })()
     }, 0)
     return () => clearTimeout(id)
   }, [hent])

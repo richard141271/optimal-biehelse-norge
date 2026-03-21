@@ -23,6 +23,9 @@ export default function AdminLayout({
             <Link href="/admin/regnskap" className="hover:text-foreground">
               Regnskap
             </Link>
+            <Link href="/admin/tilgang" className="hover:text-foreground">
+              Tilgang
+            </Link>
           </nav>
           <AdminUserMenu />
         </div>
