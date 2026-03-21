@@ -1,8 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useMemo, useState } from "react"
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,7 +20,6 @@ type Status =
   | { type: "error"; message: string }
 
 export default function MinSideLoginPage() {
-  const router = useRouter()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [epost, setEpost] = useState("")
   const [passord, setPassord] = useState("")
@@ -36,6 +34,23 @@ export default function MinSideLoginPage() {
       return "/min-side"
     }
   }
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      ;(async () => {
+        const sb = supabase
+        if (!sb) return
+        try {
+          const { data } = await sb.auth.getSession()
+          if (data.session) {
+            const next = getNextPath()
+            window.location.assign(next)
+          }
+        } catch {}
+      })()
+    }, 0)
+    return () => clearTimeout(id)
+  }, [supabase])
 
   async function loggInn() {
     const sb = supabase
@@ -78,13 +93,8 @@ export default function MinSideLoginPage() {
         return
       }
 
-      await sb.auth.getSession()
       const next = getNextPath()
-      router.replace(next)
-      router.refresh()
-      setTimeout(() => {
-        setStatus((s) => (s.type === "sending" ? { type: "idle" } : s))
-      }, 2000)
+      window.location.assign(next)
     } catch {
       setStatus({
         type: "error",
@@ -101,42 +111,55 @@ export default function MinSideLoginPage() {
           <CardDescription>Logg inn for å se medlemskortet ditt.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="epost">E-post</Label>
-            <Input
-              id="epost"
-              type="email"
-              autoComplete="email"
-              value={epost}
-              onChange={(e) => setEpost(e.target.value)}
-              placeholder="navn@eksempel.no"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="passord">Passord</Label>
-            <Input
-              id="passord"
-              type="password"
-              autoComplete="current-password"
-              value={passord}
-              onChange={(e) => setPassord(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
-
-          {status.type === "error" ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {status.message}
-            </div>
-          ) : null}
-
-          <Button
-            onClick={loggInn}
-            disabled={status.type === "sending" || !supabase}
-            className="w-full"
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void loggInn()
+            }}
           >
-            {status.type === "sending" ? "Logger inn…" : "Logg inn"}
-          </Button>
+            <div className="space-y-2">
+              <Label htmlFor="epost">E-post</Label>
+              <Input
+                id="epost"
+                name="email"
+                type="email"
+                autoComplete="username"
+                inputMode="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={epost}
+                onChange={(e) => setEpost(e.target.value)}
+                placeholder="navn@eksempel.no"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="passord">Passord</Label>
+              <Input
+                id="passord"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                value={passord}
+                onChange={(e) => setPassord(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+
+            {status.type === "error" ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {status.message}
+              </div>
+            ) : null}
+
+            <Button
+              type="submit"
+              disabled={status.type === "sending" || !supabase}
+              className="w-full"
+            >
+              {status.type === "sending" ? "Logger inn…" : "Logg inn"}
+            </Button>
+          </form>
 
           <div className="text-center text-sm text-muted-foreground">
             <Link href="/" className="hover:text-foreground">
