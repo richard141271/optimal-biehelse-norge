@@ -12,13 +12,12 @@ type State =
 export function AdminUserMenu() {
   const router = useRouter()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
-  const [state, setState] = useState<State>({ type: "loading" })
+  const [state, setState] = useState<State>(() =>
+    supabase ? { type: "loading" } : { type: "ready", epost: null }
+  )
 
   useEffect(() => {
-    if (!supabase) {
-      setState({ type: "ready", epost: null })
-      return
-    }
+    if (!supabase) return
     let active = true
     supabase.auth
       .getUser()

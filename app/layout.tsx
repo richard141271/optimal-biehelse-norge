@@ -21,6 +21,14 @@ export const metadata: Metadata = {
   description:
     "Optimal Biehelse Norge jobber for bedre biehelse og flere pollinatorer gjennom kunnskap, tiltak og samarbeid.",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+  },
 }
 
 export const viewport: Viewport = {

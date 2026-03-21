@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
@@ -23,17 +23,15 @@ type Status =
 
 export default function AdminLoginPage() {
   const router = useRouter()
-  const [nextPath, setNextPath] = useState("/admin")
-
-  useEffect(() => {
+  function getNextPath() {
     try {
       const sp = new URLSearchParams(window.location.search)
       const raw = (sp.get("next") || "/admin").trim()
-      setNextPath(raw.startsWith("/") ? raw : "/admin")
+      return raw.startsWith("/") ? raw : "/admin"
     } catch {
-      setNextPath("/admin")
+      return "/admin"
     }
-  }, [])
+  }
 
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
 
@@ -73,7 +71,7 @@ export default function AdminLoginPage() {
       return
     }
 
-    router.push(nextPath)
+    router.push(getNextPath())
     router.refresh()
   }
 
@@ -97,7 +95,7 @@ export default function AdminLoginPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${origin}${nextPath}`,
+        emailRedirectTo: `${origin}${getNextPath()}`,
       },
     })
 

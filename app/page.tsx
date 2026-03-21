@@ -1,5 +1,6 @@
 import { MedlemskapForm } from "@/components/landing/medlemskap-form"
 import Link from "next/link"
+import Image from "next/image"
 
 export default function Home() {
   return (
@@ -7,20 +8,19 @@ export default function Home() {
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2 font-semibold">
-            <span className="inline-flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              OB
-            </span>
-            <span className="leading-none">
-              Optimal Biehelse Norge
-              <span className="block text-xs font-normal text-muted-foreground">
-                OBNO
-              </span>
-            </span>
+            <Image
+              src="/logo.png"
+              alt="Optimal Biehelse Norge (OBNO)"
+              width={220}
+              height={64}
+              className="h-8 w-auto"
+              priority
+            />
           </Link>
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-            <a href="#om-oss" className="hover:text-foreground">
+            <Link href="/om-oss" className="hover:text-foreground">
               Om oss
-            </a>
+            </Link>
             <Link href="/biehelse" className="hover:text-foreground">
               Biehelse
             </Link>
@@ -113,6 +113,14 @@ export default function Home() {
                   pollinatorer, både for birøktere og for alle som vil bidra i
                   nærmiljøet.
                 </p>
+                <div>
+                  <Link
+                    href="/om-oss"
+                    className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
+                  >
+                    Les mer om oss
+                  </Link>
+                </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-xl border bg-card p-5">
