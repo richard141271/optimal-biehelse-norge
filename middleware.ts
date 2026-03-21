@@ -49,7 +49,7 @@ export async function middleware(request: NextRequest) {
 
   if (isAdminPath(request.nextUrl.pathname) && !user) {
     const url = request.nextUrl.clone()
-    url.pathname = "/admin/login"
+    url.pathname = "/min-side/login"
     url.searchParams.set("next", request.nextUrl.pathname)
     return NextResponse.redirect(url)
   }
@@ -70,23 +70,20 @@ export async function middleware(request: NextRequest) {
         const role = (data?.role ?? null) as string | null
         if (error || (role !== "admin" && role !== "superadmin")) {
           const url = request.nextUrl.clone()
-          url.pathname = "/admin/login"
-          url.searchParams.set("feil", "ingen-tilgang")
-          url.searchParams.set("next", request.nextUrl.pathname)
+          url.pathname = "/min-side"
+          url.searchParams.set("feil", "ingen-admin")
           return NextResponse.redirect(url)
         }
       } catch {
         const url = request.nextUrl.clone()
-        url.pathname = "/admin/login"
-        url.searchParams.set("feil", "ingen-tilgang")
-        url.searchParams.set("next", request.nextUrl.pathname)
+        url.pathname = "/min-side"
+        url.searchParams.set("feil", "ingen-admin")
         return NextResponse.redirect(url)
       }
     } else {
       const url = request.nextUrl.clone()
-      url.pathname = "/admin/login"
-      url.searchParams.set("feil", "ingen-tilgang")
-      url.searchParams.set("next", request.nextUrl.pathname)
+      url.pathname = "/min-side"
+      url.searchParams.set("feil", "ingen-admin")
       return NextResponse.redirect(url)
     }
   }

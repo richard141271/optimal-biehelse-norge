@@ -188,7 +188,10 @@ export default function AdminProsjekterPage() {
             {state.message}
           </div>
           {state.status === 401 ? (
-            <Link href="/admin/login" className="text-sm underline underline-offset-4">
+            <Link
+              href={`/min-side/login?next=${encodeURIComponent("/admin/prosjekter")}`}
+              className="text-sm underline underline-offset-4"
+            >
               Gå til innlogging
             </Link>
           ) : null}

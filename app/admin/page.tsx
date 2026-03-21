@@ -103,7 +103,10 @@ export default function AdminHomePage() {
           </div>
         ) : null}
         {state.status === 401 ? (
-          <Link href="/admin/login" className="text-sm underline underline-offset-4">
+          <Link
+            href={`/min-side/login?next=${encodeURIComponent("/admin")}`}
+            className="text-sm underline underline-offset-4"
+          >
             Gå til innlogging
           </Link>
         ) : null}

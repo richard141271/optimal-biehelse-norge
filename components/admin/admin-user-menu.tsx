@@ -47,12 +47,12 @@ export function AdminUserMenu() {
 
   async function loggUt() {
     if (!supabase) {
-      router.push("/admin/login")
+      router.push("/min-side/login")
       router.refresh()
       return
     }
     await supabase.auth.signOut()
-    router.push("/admin/login")
+    router.push("/min-side/login")
     router.refresh()
   }
 
@@ -66,7 +66,13 @@ export function AdminUserMenu() {
         </div>
       ) : null}
       {state.type === "ready" && !state.innlogget ? (
-        <Button variant="outline" onClick={() => router.push("/admin/login")} disabled={!supabase}>
+        <Button
+          variant="outline"
+          onClick={() =>
+            router.push(`/min-side/login?next=${encodeURIComponent(pathname || "/admin")}`)
+          }
+          disabled={!supabase}
+        >
           Logg inn
         </Button>
       ) : (

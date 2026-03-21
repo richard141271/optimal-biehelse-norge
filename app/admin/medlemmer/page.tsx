@@ -194,7 +194,10 @@ export default function AdminMedlemmerPage() {
             {state.message}
           </div>
           {state.status === 401 ? (
-            <Link href="/admin/login" className="text-sm underline underline-offset-4">
+            <Link
+              href={`/min-side/login?next=${encodeURIComponent("/admin/medlemmer")}`}
+              className="text-sm underline underline-offset-4"
+            >
               Gå til innlogging
             </Link>
           ) : null}

@@ -131,36 +131,5 @@ export async function GET() {
     }
   }
 
-  if (!role && !bootstrapEmail) {
-    const { count: superCount, error: superCountError } = await admin
-      .from("admin_roles")
-      .select("email", { count: "exact", head: true })
-      .eq("role", "superadmin")
-
-    if (!superCountError && (superCount ?? 0) === 0) {
-      const res = await ensureRole(admin, email, "superadmin")
-      if (res.ok) {
-        role = "superadmin"
-      } else {
-        return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
-      }
-    }
-  }
-
-  if (!role && !bootstrapEmail) {
-    const { count, error: countError } = await admin
-      .from("admin_roles")
-      .select("email", { count: "exact", head: true })
-
-    if (!countError && (count ?? 0) === 0) {
-      const res = await ensureRole(admin, email, "superadmin")
-      if (res.ok) {
-        role = "superadmin"
-      } else {
-        return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
-      }
-    }
-  }
-
   return NextResponse.json({ ok: true, email, role })
 }
