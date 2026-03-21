@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
@@ -21,6 +21,18 @@ type Status =
   | { type: "success"; message: string }
   | { type: "error"; message: string }
 
+function supabaseErrorMessage(message: string | undefined) {
+  const m = (message ?? "").toLowerCase()
+  if (!m) return "Noe gikk galt."
+  if (m.includes("invalid login credentials")) return "Feil e-post eller passord."
+  if (m.includes("email rate limit exceeded")) return "For mange forsøk. Vent litt og prøv igjen."
+  if (m.includes("signup requires a valid password"))
+    return "Passordet er ikke gyldig (minst 8 tegn)."
+  if (m.includes("email link is invalid") || m.includes("otp expired"))
+    return "Innloggingslenken er utløpt. Send en ny lenke."
+  return message ?? "Noe gikk galt."
+}
+
 export default function AdminLoginPage() {
   const router = useRouter()
   function getNextPath() {
@@ -38,6 +50,22 @@ export default function AdminLoginPage() {
   const [epost, setEpost] = useState("")
   const [passord, setPassord] = useState("")
   const [status, setStatus] = useState<Status>({ type: "idle" })
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      ;(async () => {
+        try {
+          const res = await fetch("/api/admin/me", { cache: "no-store" })
+          const data = (await res.json()) as { ok?: boolean; role?: string }
+          if (res.ok && data.ok && (data.role === "admin" || data.role === "superadmin")) {
+            router.replace(getNextPath())
+            router.refresh()
+          }
+        } catch {}
+      })()
+    }, 0)
+    return () => clearTimeout(id)
+  }, [router])
 
   async function loggInn() {
     if (!supabase) {
@@ -65,8 +93,7 @@ export default function AdminLoginPage() {
     if (error) {
       setStatus({
         type: "error",
-        message:
-          "Kunne ikke logge inn med passord. Tøm passordfeltet og bruk innloggingslenke.",
+        message: supabaseErrorMessage(error.message),
       })
       return
     }
@@ -102,7 +129,9 @@ export default function AdminLoginPage() {
     if (error) {
       setStatus({
         type: "error",
-        message: "Kunne ikke sende innloggingslenke akkurat nå.",
+        message: `Kunne ikke sende innloggingslenke. ${supabaseErrorMessage(
+          error.message
+        )}`,
       })
       return
     }

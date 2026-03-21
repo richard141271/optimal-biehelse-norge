@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 import { Button } from "@/components/ui/button"
 
@@ -11,6 +11,7 @@ type State =
 
 export function AdminUserMenu() {
   const router = useRouter()
+  const pathname = usePathname()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [state, setState] = useState<State>(() =>
     supabase ? { type: "loading" } : { type: "ready", epost: null }
@@ -46,6 +47,8 @@ export function AdminUserMenu() {
     router.refresh()
   }
 
+  if (pathname === "/admin/login") return null
+
   return (
     <div className="flex items-center gap-3">
       {state.type === "ready" && state.epost ? (
@@ -53,9 +56,15 @@ export function AdminUserMenu() {
           {state.epost}
         </div>
       ) : null}
-      <Button variant="outline" onClick={loggUt} disabled={!supabase}>
-        Logg ut
-      </Button>
+      {state.type === "ready" && !state.epost ? (
+        <Button variant="outline" onClick={() => router.push("/admin/login")} disabled={!supabase}>
+          Logg inn
+        </Button>
+      ) : (
+        <Button variant="outline" onClick={loggUt} disabled={!supabase}>
+          Logg ut
+        </Button>
+      )}
     </div>
   )
 }

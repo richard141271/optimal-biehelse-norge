@@ -138,12 +138,16 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: false }, { status: 400 })
   }
 
-  const email = (payload.email ?? "").trim().toLowerCase()
-  if (!isValidEmail(email)) {
+  const raw = (payload.email ?? "").trim()
+  if (!raw) {
     return NextResponse.json({ ok: false }, { status: 400 })
   }
 
-  const { error } = await gate.admin.from("admin_roles").delete().eq("email", email)
+  const candidates = Array.from(new Set([raw, raw.toLowerCase()])).filter(Boolean)
+  const { error } = await gate.admin
+    .from("admin_roles")
+    .delete()
+    .in("email", candidates)
   if (error) {
     return NextResponse.json(
       { ok: false, feil: "Kunne ikke fjerne rolle." },
@@ -153,4 +157,3 @@ export async function DELETE(request: Request) {
 
   return NextResponse.json({ ok: true })
 }
-
