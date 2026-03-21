@@ -22,6 +22,7 @@ function isValidPostnr(postnr: string) {
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
@@ -104,49 +105,59 @@ export async function POST(request: Request) {
     }
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey)
+  const supabase = createClient(supabaseUrl, serviceRoleKey ?? supabaseAnonKey, {
+    auth: { persistSession: false },
+  })
 
-  let medlemsnummer: number | null = null
-  if (medlemskapType === "innmeldt") {
-    const { data: siste, error: maxError } = await supabase
-      .from("medlemmer")
-      .select("medlemsnummer")
-      .order("medlemsnummer", { ascending: false })
-      .limit(1)
-      .maybeSingle()
+  const schemaFeil =
+    "Medlemsregister-tabellen i Supabase mangler felter for medlemsnummer. Kjør denne SQL-en i Supabase (SQL Editor), og prøv igjen:\n\n" +
+    "alter table public.medlemmer add column if not exists medlemskap_type text;\n" +
+    "alter table public.medlemmer add column if not exists medlemsnummer integer;\n" +
+    "alter table public.medlemmer add column if not exists adresse text;\n" +
+    "alter table public.medlemmer add column if not exists postnr text;\n" +
+    "alter table public.medlemmer add column if not exists sted text;\n" +
+    "create sequence if not exists public.medlemmer_medlemsnummer_seq start 1000;\n" +
+    "alter table public.medlemmer alter column medlemsnummer set default nextval('public.medlemmer_medlemsnummer_seq');\n" +
+    "select setval('public.medlemmer_medlemsnummer_seq', greatest((select coalesce(max(medlemsnummer), 999) from public.medlemmer), 999) + 1, false);\n" +
+    "create unique index if not exists medlemmer_medlemsnummer_uq on public.medlemmer(medlemsnummer) where medlemsnummer is not null;"
 
-    if (maxError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          feil:
-            "Medlemsnummer kan ikke genereres før tabellen er oppdatert i Supabase.",
-        },
-        { status: 500 }
-      )
-    }
-
-    const max =
-      (siste as { medlemsnummer?: number | null } | null)?.medlemsnummer ?? null
-    medlemsnummer = max ? max + 1 : 1000
-  }
-
-  const { error } = await supabase.from("medlemmer").insert({
+  const insertRow: Record<string, unknown> = {
     medlemskap_type: medlemskapType,
-    medlemsnummer,
     navn: navn || null,
     adresse: adresse || null,
     postnr: postnr || null,
     sted: sted || null,
     epost,
     telefon: telefon || null,
-  })
+    medlemsnummer: medlemskapType === "stotte" ? null : undefined,
+  }
+
+  const { data, error } = await supabase
+    .from("medlemmer")
+    .insert(insertRow)
+    .select("medlemsnummer")
+    .maybeSingle()
 
   if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (
+      /medlemsnummer/i.test(msg) ||
+      /medlemskap_type/i.test(msg) ||
+      /column/i.test(msg)
+    ) {
+      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+    }
     return NextResponse.json(
       { ok: false, feil: "Kunne ikke registrere medlemskap akkurat nå." },
       { status: 400 }
     )
+  }
+
+  if (
+    medlemskapType === "innmeldt" &&
+    (data as { medlemsnummer?: number | null } | null)?.medlemsnummer == null
+  ) {
+    return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true })
