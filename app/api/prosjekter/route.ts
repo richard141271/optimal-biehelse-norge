@@ -143,7 +143,20 @@ export async function POST(request: Request) {
 
   const schemaFeil =
     "Prosjekt-tabellen i Supabase mangler felter. Kjør denne SQL-en i Supabase (SQL Editor), og prøv igjen:\n\n" +
-    "alter table public.prosjekt_soknader add column if not exists vedlegg_paths text[];\n"
+    "create table if not exists public.prosjekt_soknader (\n" +
+    "  id uuid primary key default gen_random_uuid(),\n" +
+    "  created_at timestamptz not null default now(),\n" +
+    "  medlemsnummer integer,\n" +
+    "  navn text not null,\n" +
+    "  epost text not null,\n" +
+    "  telefon text,\n" +
+    "  tittel text not null,\n" +
+    "  sted text not null,\n" +
+    "  budsjett numeric,\n" +
+    "  beskrivelse text not null,\n" +
+    "  status text,\n" +
+    "  vedlegg_paths text[]\n" +
+    ");\n"
 
   const bucket = "prosjekt-vedlegg"
   const admin = createClient(supabaseUrl, serviceRoleKey ?? supabaseAnonKey, {
@@ -228,7 +241,12 @@ export async function POST(request: Request) {
 
     if (error) {
       const msg = String((error as { message?: string } | null)?.message ?? "")
-      if (/vedlegg_paths/i.test(msg) || (/column/i.test(msg) && /vedlegg/i.test(msg))) {
+      if (
+        (/relation/i.test(msg) && /prosjekt_soknader/i.test(msg)) ||
+        /42p01/i.test(msg) ||
+        /vedlegg_paths/i.test(msg) ||
+        (/column/i.test(msg) && /vedlegg/i.test(msg))
+      ) {
         if (uploadedPaths.length) {
           await admin.storage.from(bucket).remove(uploadedPaths)
         }

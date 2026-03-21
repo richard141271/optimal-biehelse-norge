@@ -17,11 +17,7 @@ type AdminDb = {
   }
 }
 
-async function ensureRole(
-  admin: unknown,
-  email: string,
-  role: "admin" | "superadmin"
-) {
+async function ensureRole(admin: unknown, email: string, role: "admin" | "superadmin") {
   const db = admin as AdminDb
   const insertRes = await db.from("admin_roles").insert({ email, role })
   if (!insertRes.error) return { ok: true as const }
@@ -35,14 +31,13 @@ async function ensureRole(
     if (!updateRes.error) return { ok: true as const }
   }
 
-  return { ok: false as const, errorMessage: msg }
+  return { ok: false as const, message: msg }
 }
 
-export async function GET() {
+export async function POST() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const bootstrapEmail = (process.env.ADMIN_BOOTSTRAP_EMAIL ?? "").trim().toLowerCase()
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
@@ -71,10 +66,7 @@ export async function GET() {
 
   const email = (user?.email ?? "").trim().toLowerCase()
   if (!email || !isValidEmail(email)) {
-    return NextResponse.json(
-      { ok: false, feil: "Ikke innlogget." },
-      { status: 401 }
-    )
+    return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
   }
 
   if (!serviceRoleKey) {
@@ -96,71 +88,44 @@ export async function GET() {
     auth: { persistSession: false },
   })
 
-  const { data, error } = await admin
+  const { count: superCount, error: superCountError } = await admin
     .from("admin_roles")
-    .select("role")
-    .ilike("email", email)
-    .maybeSingle()
+    .select("email", { count: "exact", head: true })
+    .eq("role", "superadmin")
 
-  if (error) {
-    const msg = String((error as { message?: string } | null)?.message ?? "")
+  if (superCountError) {
+    const msg = String((superCountError as { message?: string } | null)?.message ?? "")
     if ((/relation/i.test(msg) && /admin_roles/i.test(msg)) || /42p01/i.test(msg)) {
       return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
     }
     return NextResponse.json(
-      { ok: false, feil: "Kunne ikke sjekke rettigheter." },
+      { ok: false, feil: "Kunne ikke sjekke admin-roller." },
       { status: 400 }
     )
   }
 
-  let role = (data?.role ?? null) as string | null
-
-  if (!role && bootstrapEmail && email === bootstrapEmail) {
-    const res = await ensureRole(admin, email, "superadmin")
-    if (res.ok) {
-      role = "superadmin"
-    } else {
-      return NextResponse.json(
-        {
-          ok: false,
-          feil:
-            "Kunne ikke sette superbruker. Sjekk at tabellen admin_roles har kolonnene email (unique) og role.",
-        },
-        { status: 500 }
-      )
-    }
+  if ((superCount ?? 0) > 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        feil:
+          "Det finnes allerede en superbruker. Be superbruker gi deg rolle i Admin → Tilgang.",
+      },
+      { status: 403 }
+    )
   }
 
-  if (!role && !bootstrapEmail) {
-    const { count: superCount, error: superCountError } = await admin
-      .from("admin_roles")
-      .select("email", { count: "exact", head: true })
-      .eq("role", "superadmin")
-
-    if (!superCountError && (superCount ?? 0) === 0) {
-      const res = await ensureRole(admin, email, "superadmin")
-      if (res.ok) {
-        role = "superadmin"
-      } else {
-        return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
-      }
+  const res = await ensureRole(admin, email, "superadmin")
+  if (!res.ok) {
+    const msg = res.message ?? ""
+    if ((/relation/i.test(msg) && /admin_roles/i.test(msg)) || /42p01/i.test(msg)) {
+      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
     }
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke sette superbruker." },
+      { status: 500 }
+    )
   }
 
-  if (!role && !bootstrapEmail) {
-    const { count, error: countError } = await admin
-      .from("admin_roles")
-      .select("email", { count: "exact", head: true })
-
-    if (!countError && (count ?? 0) === 0) {
-      const res = await ensureRole(admin, email, "superadmin")
-      if (res.ok) {
-        role = "superadmin"
-      } else {
-        return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
-      }
-    }
-  }
-
-  return NextResponse.json({ ok: true, email, role })
+  return NextResponse.json({ ok: true, role: "superadmin" })
 }

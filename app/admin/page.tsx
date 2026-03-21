@@ -2,14 +2,20 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
+import { Button } from "@/components/ui/button"
 
 type State =
   | { type: "loading" }
-  | { type: "error"; message: string; status?: number }
+  | { type: "error"; message: string; status?: number; canBootstrap?: boolean }
   | { type: "ready"; role: "admin" | "superadmin" }
 
 export default function AdminHomePage() {
   const [state, setState] = useState<State>({ type: "loading" })
+  const [bootstrapStatus, setBootstrapStatus] = useState<
+    | { type: "idle" }
+    | { type: "sending" }
+    | { type: "error"; message: string }
+  >({ type: "idle" })
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -33,6 +39,7 @@ export default function AdminHomePage() {
             type: "error",
             message:
               "Du er innlogget, men har ikke tilgang til admin. Be en superbruker gi deg rolle i Admin → Tilgang.",
+            canBootstrap: true,
           })
           return
         }
@@ -56,6 +63,45 @@ export default function AdminHomePage() {
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
           {state.message}
         </div>
+        {bootstrapStatus.type === "error" ? (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            {bootstrapStatus.message}
+          </div>
+        ) : null}
+        {state.canBootstrap ? (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={bootstrapStatus.type === "sending"}
+              onClick={async () => {
+                setBootstrapStatus({ type: "sending" })
+                try {
+                  const res = await fetch("/api/admin/bootstrap", { method: "POST" })
+                  const data = (await res.json()) as { ok?: boolean; feil?: string }
+                  if (!res.ok || !data.ok) {
+                    setBootstrapStatus({
+                      type: "error",
+                      message:
+                        data.feil ??
+                        "Kunne ikke gi superbruker. Sjekk at Supabase-tabellene er satt opp.",
+                    })
+                    return
+                  }
+                  window.location.reload()
+                } catch {
+                  setBootstrapStatus({
+                    type: "error",
+                    message: "Kunne ikke gi superbruker akkurat nå.",
+                  })
+                }
+              }}
+            >
+              {bootstrapStatus.type === "sending"
+                ? "Setter superbruker…"
+                : "Gjør meg til superbruker"}
+            </Button>
+          </div>
+        ) : null}
         {state.status === 401 ? (
           <Link href="/admin/login" className="text-sm underline underline-offset-4">
             Gå til innlogging
