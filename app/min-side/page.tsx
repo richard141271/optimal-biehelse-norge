@@ -15,6 +15,8 @@ type Medlem = {
   sted?: string | null
   epost?: string | null
   telefon?: string | null
+  kontingent_betalt_at?: string | null
+  kontingent_gyldig_til?: string | null
 }
 
 type State =
@@ -33,14 +35,6 @@ function formatDate(iso?: string | null) {
   })
 }
 
-function addOneYear(iso?: string | null) {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
-  d.setFullYear(d.getFullYear() + 1)
-  return d
-}
-
 function prisForType(type: string | null | undefined) {
   if (type === "stotte") return 300
   if (type === "bedrift") return 1000
@@ -51,6 +45,13 @@ function labelForType(type: string | null | undefined) {
   if (type === "stotte") return "Støttemedlem"
   if (type === "bedrift") return "Bedriftsmedlem"
   return "Medlem"
+}
+
+function isAktiv(gyldigTil?: string | null) {
+  if (!gyldigTil) return false
+  const d = new Date(gyldigTil)
+  if (Number.isNaN(d.getTime())) return false
+  return d.getTime() > Date.now()
 }
 
 export default function MinSidePage() {
@@ -132,7 +133,9 @@ export default function MinSidePage() {
   }
 
   const medlem = state.medlem
-  const gyldigTil = addOneYear(medlem.created_at)
+  const betaltAt = medlem.kontingent_betalt_at ?? null
+  const gyldigTil = medlem.kontingent_gyldig_til ?? null
+  const aktiv = isAktiv(gyldigTil)
   const pris = prisForType(medlem.medlemskap_type ?? null)
   const typeLabel = labelForType(medlem.medlemskap_type ?? null)
 
@@ -195,6 +198,9 @@ export default function MinSidePage() {
               <div>
                 <div className="text-sm text-muted-foreground">Optimal Biehelse Norge</div>
                 <div className="mt-1 text-xl font-semibold">{typeLabel}</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Status: {aktiv ? "Aktiv" : "Ikke aktiv"}
+                </div>
               </div>
               <div className="text-right">
                 <div className="text-xs text-muted-foreground">Medlemsnr.</div>
@@ -215,23 +221,26 @@ export default function MinSidePage() {
               </div>
               <div className="rounded-lg border bg-card p-3">
                 <div className="text-xs text-muted-foreground">Gyldig fra</div>
-                <div className="font-medium">{formatDate(medlem.created_at) || "—"}</div>
+                <div className="font-medium">
+                  {aktiv ? formatDate(betaltAt) || "—" : "—"}
+                </div>
               </div>
               <div className="rounded-lg border bg-card p-3">
                 <div className="text-xs text-muted-foreground">Gyldig til</div>
                 <div className="font-medium">
-                  {gyldigTil ? formatDate(gyldigTil.toISOString()) : "—"}
+                  {aktiv ? formatDate(gyldigTil) || "—" : "—"}
                 </div>
               </div>
             </div>
           </div>
 
           <p className="mt-4 text-sm text-muted-foreground">
-            Medlemskortet er gyldig i 1 år fra registreringsdato.
+            {aktiv
+              ? "Medlemskortet er aktivt frem til gyldighetsdato."
+              : "Medlemskortet blir aktivt når kontingent er registrert som betalt."}
           </p>
         </div>
       </div>
     </main>
   )
 }
-

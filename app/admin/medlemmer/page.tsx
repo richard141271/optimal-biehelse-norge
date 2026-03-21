@@ -16,6 +16,8 @@ type Medlem = {
   sted?: string | null
   epost?: string
   telefon?: string | null
+  kontingent_betalt_at?: string | null
+  kontingent_gyldig_til?: string | null
 }
 
 type State =
@@ -34,10 +36,23 @@ function formatDato(value?: string) {
   }).format(d)
 }
 
+function prisForType(type: string | null | undefined) {
+  if (type === "stotte") return 300
+  if (type === "bedrift") return 1000
+  return 100
+}
+
+function labelForType(type: string | null | undefined) {
+  if (type === "stotte") return "Støttemedlem"
+  if (type === "bedrift") return "Bedriftsmedlem"
+  return "Medlem"
+}
+
 export default function AdminMedlemmerPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [state, setState] = useState<State>({ type: "loading" })
   const [query, setQuery] = useState("")
+  const [savingId, setSavingId] = useState<string | null>(null)
 
   const hent = useCallback(async () => {
     if (!supabase) {
@@ -51,7 +66,7 @@ export default function AdminMedlemmerPage() {
     const { data, error } = await supabase
       .from("medlemmer")
       .select(
-        "id, created_at, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon"
+        "id, created_at, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til"
       )
       .order("created_at", { ascending: false })
       .limit(1000)
@@ -67,6 +82,29 @@ export default function AdminMedlemmerPage() {
 
     setState({ type: "ready", medlemmer: (data ?? []) as Medlem[] })
   }, [supabase])
+
+  const markerKontingent = useCallback(
+    async (medlemId: string, betalt: boolean) => {
+      if (savingId) return
+      setSavingId(medlemId)
+      try {
+        const res = await fetch("/api/admin/medlemmer/betaling", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ medlemId, betalt }),
+        })
+        const data = (await res.json()) as { feil?: string }
+        if (!res.ok) {
+          alert(data.feil ?? "Kunne ikke oppdatere kontingent.")
+          return
+        }
+        await hent()
+      } finally {
+        setSavingId(null)
+      }
+    },
+    [hent, savingId]
+  )
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -181,6 +219,15 @@ export default function AdminMedlemmerPage() {
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
                     Telefon
                   </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                    Kontingent
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                    Gyldig til
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right font-medium">
+                    Handling
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -196,7 +243,7 @@ export default function AdminMedlemmerPage() {
                       {m.medlemsnummer ?? "—"}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      {m.medlemskap_type ?? "—"}
+                      {labelForType(m.medlemskap_type ?? null)}
                     </td>
                     <td className="px-4 py-3">{m.navn ?? ""}</td>
                     <td className="px-4 py-3">
@@ -210,12 +257,42 @@ export default function AdminMedlemmerPage() {
                     <td className="whitespace-nowrap px-4 py-3">
                       {m.telefon ?? ""}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {prisForType(m.medlemskap_type ?? null)} kr / år
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {m.kontingent_gyldig_til
+                        ? formatDato(m.kontingent_gyldig_til)
+                        : "—"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      {m.id ? (
+                        m.kontingent_gyldig_til ? (
+                          <Button
+                            variant="outline"
+                            onClick={() => markerKontingent(m.id as string, false)}
+                            disabled={savingId === m.id}
+                          >
+                            Marker ikke betalt
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => markerKontingent(m.id as string, true)}
+                            disabled={savingId === m.id}
+                          >
+                            Marker betalt
+                          </Button>
+                        )
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {filtered.length === 0 ? (
                   <tr className="border-t">
                     <td
-                      colSpan={7}
+                      colSpan={10}
                       className="px-4 py-6 text-center text-muted-foreground"
                     >
                       Ingen treff.

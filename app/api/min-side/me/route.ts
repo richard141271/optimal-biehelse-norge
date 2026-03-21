@@ -49,7 +49,7 @@ export async function GET() {
   const { data: byUserId } = await admin
     .from("medlemmer")
     .select(
-      "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon"
+      "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til"
     )
     .eq("user_id", userId)
     .maybeSingle()
@@ -61,7 +61,7 @@ export async function GET() {
   const { data: byEmail } = await admin
     .from("medlemmer")
     .select(
-      "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon"
+      "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til"
     )
     .eq("epost", email)
     .order("created_at", { ascending: false })
@@ -77,4 +77,3 @@ export async function GET() {
 
   return NextResponse.json({ ok: true, medlem: byEmail })
 }
-
