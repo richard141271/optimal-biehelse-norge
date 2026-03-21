@@ -1,8 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
+import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -18,6 +17,7 @@ type Prosjekt = {
   budsjett?: number | null
   status?: string | null
   vedlegg_paths?: string[] | null
+  vedlegg_signed_urls?: string[] | null
 }
 
 type State =
@@ -45,93 +45,37 @@ function formatBelop(value?: number | null) {
 }
 
 export default function AdminProsjekterPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [state, setState] = useState<State>({ type: "loading" })
   const [query, setQuery] = useState("")
 
-  async function apneVedlegg(path: string) {
-    const sb = supabase
-    if (!sb) return
-    const { data, error } = await sb.storage
-      .from("prosjekt-vedlegg")
-      .createSignedUrl(path, 60)
-
-    if (error || !data?.signedUrl) return
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer")
+  async function apneVedlegg(url: string) {
+    window.open(url, "_blank", "noopener,noreferrer")
   }
 
   const hent = useCallback(async () => {
-    const sb = supabase
-    if (!sb) {
-      setState({
-        type: "error",
-        message: "Supabase er ikke konfigurert (mangler miljøvariabler).",
-      })
-      return
-    }
     setState({ type: "loading" })
-    const baseSelect =
-      "id, created_at, medlemsnummer, navn, epost, telefon, tittel, sted, budsjett, status"
-
-    const withVedlegg = await sb
-      .from("prosjekt_soknader")
-      .select(`${baseSelect}, vedlegg_paths`)
-      .order("created_at", { ascending: false })
-      .limit(500)
-
-    let data = withVedlegg.data as unknown as Prosjekt[] | null
-    let error = withVedlegg.error
-    if (error) {
-      const msg = String((error as { message?: string } | null)?.message ?? "")
-      if (/vedlegg_paths/i.test(msg) || (/column/i.test(msg) && /vedlegg/i.test(msg))) {
-        const withoutVedlegg = await sb
-          .from("prosjekt_soknader")
-          .select(baseSelect)
-          .order("created_at", { ascending: false })
-          .limit(500)
-        data = withoutVedlegg.data as unknown as Prosjekt[] | null
-        error = withoutVedlegg.error
-      }
+    const res = await fetch("/api/prosjekter", { cache: "no-store" })
+    const payload = (await res.json()) as {
+      ok?: boolean
+      feil?: string
+      prosjekter?: Prosjekt[]
     }
 
-    if (error) {
+    if (!res.ok || !payload.ok) {
       setState({
         type: "error",
-        message:
-          "Kunne ikke hente prosjekter. Sjekk at tabellen finnes og at tilgang er satt opp i Supabase.",
+        message: payload.feil ?? "Kunne ikke hente prosjekter.",
+        status: res.status,
       })
       return
     }
 
-    setState({ type: "ready", prosjekter: data ?? [] })
-  }, [supabase])
+    setState({ type: "ready", prosjekter: payload.prosjekter ?? [] })
+  }, [])
 
   useEffect(() => {
     const id = setTimeout(() => {
-      ;(async () => {
-        const res = await fetch("/api/admin/me", { cache: "no-store" })
-        if (!res.ok) {
-          setState({
-            type: "error",
-            message:
-              res.status === 401
-                ? "Du er ikke innlogget."
-                : "Kunne ikke sjekke tilgang.",
-            status: res.status,
-          })
-          return
-        }
-        const data = (await res.json()) as { role?: string | null }
-        const role = data.role ?? null
-        if (role !== "admin" && role !== "superadmin") {
-          setState({
-            type: "error",
-            message: "Du har ikke tilgang til admin.",
-          })
-          return
-        }
-        await hent()
-      })()
+      void hent()
     }, 0)
     return () => clearTimeout(id)
   }, [hent])
@@ -158,7 +102,7 @@ export default function AdminProsjekterPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={hent} disabled={!supabase}>
+          <Button variant="outline" onClick={hent}>
             Oppdater
           </Button>
         </div>
@@ -254,13 +198,14 @@ export default function AdminProsjekterPage() {
                         : "—"}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      {Array.isArray(p.vedlegg_paths) && p.vedlegg_paths.length ? (
+                      {Array.isArray(p.vedlegg_signed_urls) &&
+                      p.vedlegg_signed_urls.length ? (
                         <div className="flex flex-wrap gap-1">
-                          {p.vedlegg_paths.slice(0, 6).map((path, idx) => (
+                          {p.vedlegg_signed_urls.slice(0, 6).map((url, idx) => (
                             <Button
                               key={`${p.id}-${idx}`}
                               variant="outline"
-                              onClick={() => apneVedlegg(path)}
+                              onClick={() => apneVedlegg(url)}
                               className="h-7 px-2 text-xs"
                             >
                               {idx + 1}

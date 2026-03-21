@@ -4,10 +4,19 @@ import { useEffect } from "react"
 
 export function RegisterServiceWorker() {
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return
-    if (process.env.NODE_ENV !== "production") return
+    ;(async () => {
+      try {
+        if (!("serviceWorker" in navigator)) return
+        const regs = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(regs.map((r) => r.unregister()))
+      } catch {}
 
-    navigator.serviceWorker.register("/sw.js").catch(() => {})
+      try {
+        if (!("caches" in window)) return
+        const keys = await caches.keys()
+        await Promise.all(keys.map((k) => caches.delete(k)))
+      } catch {}
+    })()
   }, [])
 
   return null

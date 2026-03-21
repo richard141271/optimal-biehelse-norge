@@ -109,30 +109,7 @@ export default function AdminMedlemmerPage() {
 
   useEffect(() => {
     const id = setTimeout(() => {
-      ;(async () => {
-        const res = await fetch("/api/admin/me", { cache: "no-store" })
-        if (!res.ok) {
-          setState({
-            type: "error",
-            message:
-              res.status === 401
-                ? "Du er ikke innlogget."
-                : "Kunne ikke sjekke tilgang.",
-            status: res.status,
-          })
-          return
-        }
-        const data = (await res.json()) as { role?: string | null }
-        const role = data.role ?? null
-        if (role !== "admin" && role !== "superadmin") {
-          setState({
-            type: "error",
-            message: "Du har ikke tilgang til admin.",
-          })
-          return
-        }
-        await hent()
-      })()
+      void hent()
     }, 0)
     return () => clearTimeout(id)
   }, [hent])

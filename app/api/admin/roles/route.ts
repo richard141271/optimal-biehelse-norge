@@ -98,7 +98,17 @@ export async function GET() {
     )
   }
 
-  return NextResponse.json({ ok: true, roller: data ?? [] })
+  const rows = (data ?? []) as { email?: string; role?: string; created_at?: string }[]
+  const ugyldige = rows
+    .map((r) => String(r.email ?? "").trim())
+    .filter((e) => e && !isValidEmail(e.toLowerCase()))
+
+  if (ugyldige.length) {
+    await gate.admin.from("admin_roles").delete().in("email", ugyldige)
+  }
+
+  const filtrert = rows.filter((r) => isValidEmail(String(r.email ?? "").trim().toLowerCase()))
+  return NextResponse.json({ ok: true, roller: filtrert })
 }
 
 export async function POST(request: Request) {

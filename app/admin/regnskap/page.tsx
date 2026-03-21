@@ -1,9 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Image from "next/image"
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,6 +18,7 @@ type RegnskapPost = {
   vare?: string
   notat?: string
   bilag_path?: string | null
+  bilag_url?: string | null
   kilde?: string | null
 }
 
@@ -69,13 +69,6 @@ function todayIso() {
   const mm = String(d.getMonth() + 1).padStart(2, "0")
   const dd = String(d.getDate()).padStart(2, "0")
   return `${yyyy}-${mm}-${dd}`
-}
-
-function guessExt(file: File) {
-  const t = file.type.toLowerCase()
-  if (t.includes("png")) return "png"
-  if (t.includes("webp")) return "webp"
-  return "jpg"
 }
 
 function normalizeOcrText(text: string) {
@@ -154,7 +147,6 @@ function extractItem(text: string) {
 }
 
 export default function AdminRegnskapPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [state, setState] = useState<State>({ type: "loading" })
   const [saving, setSaving] = useState(false)
   const [ocrLoading, setOcrLoading] = useState(false)
@@ -172,62 +164,29 @@ export default function AdminRegnskapPage() {
   })
 
   const hent = useCallback(async () => {
-    const sb = supabase
-    if (!sb) {
-      setState({
-        type: "error",
-        message: "Supabase er ikke konfigurert (mangler miljøvariabler).",
-      })
-      return
-    }
     setState({ type: "loading" })
-    const { data, error } = await sb
-      .from("regnskap_poster")
-      .select(
-        "id, created_at, dato, type, belop, motpart, vare, notat, bilag_path, kilde"
-      )
-      .order("dato", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(500)
+    const res = await fetch("/api/regnskap", { cache: "no-store" })
+    const payload = (await res.json()) as {
+      ok?: boolean
+      feil?: string
+      poster?: RegnskapPost[]
+    }
 
-    if (error) {
+    if (!res.ok || !payload.ok) {
       setState({
         type: "error",
-        message:
-          "Kunne ikke hente regnskap. Sjekk at tabell, bucket og tilgang er satt opp i Supabase.",
+        message: payload.feil ?? "Kunne ikke hente regnskap.",
+        status: res.status,
       })
       return
     }
 
-    setState({ type: "ready", poster: (data ?? []) as RegnskapPost[] })
-  }, [supabase])
+    setState({ type: "ready", poster: payload.poster ?? [] })
+  }, [])
 
   useEffect(() => {
     const id = setTimeout(() => {
-      ;(async () => {
-        const res = await fetch("/api/admin/me", { cache: "no-store" })
-        if (!res.ok) {
-          setState({
-            type: "error",
-            message:
-              res.status === 401
-                ? "Du er ikke innlogget."
-                : "Kunne ikke sjekke tilgang.",
-            status: res.status,
-          })
-          return
-        }
-        const data = (await res.json()) as { role?: string | null }
-        const role = data.role ?? null
-        if (role !== "admin" && role !== "superadmin") {
-          setState({
-            type: "error",
-            message: "Du har ikke tilgang til admin.",
-          })
-          return
-        }
-        await hent()
-      })()
+      void hent()
     }, 0)
     return () => clearTimeout(id)
   }, [hent])
@@ -284,23 +243,11 @@ export default function AdminRegnskapPage() {
     }
   }
 
-  async function apneBilag(path: string) {
-    const sb = supabase
-    if (!sb) return
-    const { data, error } = await sb.storage
-      .from("bilag")
-      .createSignedUrl(path, 60)
-
-    if (error || !data?.signedUrl) return
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer")
+  async function apneBilag(url: string) {
+    window.open(url, "_blank", "noopener,noreferrer")
   }
 
   async function lagre() {
-    const sb = supabase
-    if (!sb) {
-      alert("Supabase er ikke konfigurert (mangler miljøvariabler).")
-      return
-    }
     if (saving) return
     const belop = form.belop.trim().replace(",", ".")
     const belopTall = belop ? Number(belop) : NaN
@@ -311,33 +258,20 @@ export default function AdminRegnskapPage() {
 
     setSaving(true)
     try {
-      let bilagPath: string | null = null
-      if (form.bilag) {
-        const ext = guessExt(form.bilag)
-        bilagPath = `${todayIso()}/${crypto.randomUUID()}.${ext}`
-        const { error: uploadError } = await sb.storage
-          .from("bilag")
-          .upload(bilagPath, form.bilag, { upsert: false })
-        if (uploadError) {
-          alert("Kunne ikke laste opp bilag.")
-          return
-        }
-      }
+      const fd = new FormData()
+      fd.set("type", form.type)
+      fd.set("dato", form.dato)
+      fd.set("belop", String(belopTall))
+      fd.set("motpart", form.motpart)
+      fd.set("vare", form.vare)
+      fd.set("notat", form.notat)
+      if (form.bilagTekst) fd.set("bilagTekst", form.bilagTekst)
+      if (form.bilag) fd.set("bilag", form.bilag)
 
-      const { error } = await sb.from("regnskap_poster").insert({
-        type: form.type,
-        dato: form.dato,
-        belop: belopTall,
-        motpart: form.motpart.trim() || null,
-        vare: form.vare.trim() || null,
-        notat: form.notat.trim() || null,
-        bilag_path: bilagPath,
-        bilag_ocr_text: form.bilagTekst,
-        kilde: "manuelt",
-      })
-
-      if (error) {
-        alert("Kunne ikke lagre regnskapspost.")
+      const res = await fetch("/api/regnskap", { method: "POST", body: fd })
+      const payload = (await res.json()) as { ok?: boolean; feil?: string }
+      if (!res.ok || !payload.ok) {
+        alert(payload.feil ?? "Kunne ikke lagre regnskapspost.")
         return
       }
 
@@ -369,10 +303,10 @@ export default function AdminRegnskapPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={hent} disabled={!supabase}>
+          <Button variant="outline" onClick={hent}>
             Oppdater
           </Button>
-          <Button onClick={() => setShowNew((v) => !v)} disabled={!supabase}>
+          <Button onClick={() => setShowNew((v) => !v)}>
             {showNew ? "Lukk" : "Ny post"}
           </Button>
         </div>
@@ -591,11 +525,11 @@ export default function AdminRegnskapPage() {
                     <td className="px-4 py-3">{p.motpart ?? ""}</td>
                     <td className="px-4 py-3">{p.vare ?? ""}</td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      {p.bilag_path ? (
+                      {p.bilag_url ? (
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => apneBilag(p.bilag_path as string)}
+                          onClick={() => apneBilag(p.bilag_url as string)}
                         >
                           Åpne
                         </Button>

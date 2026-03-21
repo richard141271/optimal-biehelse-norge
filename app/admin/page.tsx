@@ -1,119 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
-import { Button } from "@/components/ui/button"
-
-type State =
-  | { type: "loading" }
-  | { type: "error"; message: string; status?: number; canBootstrap?: boolean }
-  | { type: "ready"; role: "admin" | "superadmin" }
 
 export default function AdminHomePage() {
-  const [state, setState] = useState<State>({ type: "loading" })
-  const [bootstrapStatus, setBootstrapStatus] = useState<
-    | { type: "idle" }
-    | { type: "sending" }
-    | { type: "error"; message: string }
-  >({ type: "idle" })
-
-  useEffect(() => {
-    const id = setTimeout(() => {
-      ;(async () => {
-        const res = await fetch("/api/admin/me", { cache: "no-store" })
-        if (!res.ok) {
-          setState({
-            type: "error",
-            message:
-              res.status === 401
-                ? "Du er ikke innlogget."
-                : "Kunne ikke sjekke tilgang.",
-            status: res.status,
-          })
-          return
-        }
-        const data = (await res.json()) as { email?: string; role?: string | null }
-        const role = data.role ?? null
-        if (role !== "admin" && role !== "superadmin") {
-          setState({
-            type: "error",
-            message:
-              "Du er innlogget, men har ikke tilgang til admin. Be en superbruker gi deg rolle i Admin → Tilgang.",
-            canBootstrap: true,
-          })
-          return
-        }
-        setState({ type: "ready", role })
-      })()
-    }, 0)
-    return () => clearTimeout(id)
-  }, [])
-
-  if (state.type === "loading") {
-    return (
-      <div className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">
-        Laster…
-      </div>
-    )
-  }
-
-  if (state.type === "error") {
-    return (
-      <div className="space-y-3">
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
-          {state.message}
-        </div>
-        {bootstrapStatus.type === "error" ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-            {bootstrapStatus.message}
-          </div>
-        ) : null}
-        {state.canBootstrap ? (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              disabled={bootstrapStatus.type === "sending"}
-              onClick={async () => {
-                setBootstrapStatus({ type: "sending" })
-                try {
-                  const res = await fetch("/api/admin/bootstrap", { method: "POST" })
-                  const data = (await res.json()) as { ok?: boolean; feil?: string }
-                  if (!res.ok || !data.ok) {
-                    setBootstrapStatus({
-                      type: "error",
-                      message:
-                        data.feil ??
-                        "Kunne ikke gi superbruker. Sjekk at Supabase-tabellene er satt opp.",
-                    })
-                    return
-                  }
-                  window.location.reload()
-                } catch {
-                  setBootstrapStatus({
-                    type: "error",
-                    message: "Kunne ikke gi superbruker akkurat nå.",
-                  })
-                }
-              }}
-            >
-              {bootstrapStatus.type === "sending"
-                ? "Setter superbruker…"
-                : "Gjør meg til superbruker"}
-            </Button>
-          </div>
-        ) : null}
-        {state.status === 401 ? (
-          <Link
-            href={`/min-side/login?next=${encodeURIComponent("/admin")}`}
-            className="text-sm underline underline-offset-4"
-          >
-            Gå til innlogging
-          </Link>
-        ) : null}
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
       <div className="space-y-1">
@@ -151,17 +40,15 @@ export default function AdminHomePage() {
             Registrer inntekter/utgifter og legg ved bilag.
           </div>
         </Link>
-        {state.role === "superadmin" ? (
-          <Link
-            href="/admin/tilgang"
-            className="rounded-xl border bg-card p-5 hover:bg-muted/40"
-          >
-            <div className="text-sm font-medium">Tilgang</div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              Gi og fjern admin-rettigheter.
-            </div>
-          </Link>
-        ) : null}
+        <Link
+          href="/admin/tilgang"
+          className="rounded-xl border bg-card p-5 hover:bg-muted/40"
+        >
+          <div className="text-sm font-medium">Tilgang</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Gi og fjern admin-rettigheter.
+          </div>
+        </Link>
       </div>
     </div>
   )

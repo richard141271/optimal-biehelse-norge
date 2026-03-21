@@ -88,10 +88,11 @@ export async function POST() {
     auth: { persistSession: false },
   })
 
-  const { count: superCount, error: superCountError } = await admin
+  const { data: superRows, error: superCountError } = await admin
     .from("admin_roles")
-    .select("email", { count: "exact", head: true })
+    .select("email")
     .eq("role", "superadmin")
+    .limit(500)
 
   if (superCountError) {
     const msg = String((superCountError as { message?: string } | null)?.message ?? "")
@@ -103,6 +104,17 @@ export async function POST() {
       { status: 400 }
     )
   }
+
+  const superEmails = (superRows ?? [])
+    .map((r) => String((r as { email?: string | null }).email ?? "").trim().toLowerCase())
+    .filter(Boolean)
+
+  const invalidSupers = superEmails.filter((e) => !isValidEmail(e))
+  if (invalidSupers.length) {
+    await admin.from("admin_roles").delete().in("email", invalidSupers)
+  }
+
+  const validSuperCount = superEmails.filter((e) => isValidEmail(e)).length
 
   const { data: medlemmer, error: medlemmerError } = await admin
     .from("medlemmer")
@@ -124,7 +136,7 @@ export async function POST() {
       .trim()
       .toLowerCase() === email
 
-  if ((superCount ?? 0) > 0 && !kunEnBruker) {
+  if (validSuperCount > 0 && !kunEnBruker) {
     return NextResponse.json(
       {
         ok: false,

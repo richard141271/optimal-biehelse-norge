@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 
 type Payload = {
   medlemsnummer?: string
@@ -31,6 +33,140 @@ function parseMoney(value: string) {
   const n = Number(normalized)
   if (!Number.isFinite(n) || n < 0) return null
   return n
+}
+
+export const dynamic = "force-dynamic"
+
+async function getLoggedInEmail() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseAnonKey) return null
+
+  const cookieStore = await cookies()
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll()
+      },
+      setAll(cookiesToSet) {
+        for (const { name, value, options } of cookiesToSet) {
+          cookieStore.set(name, value, options)
+        }
+      },
+    },
+  })
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const email = (user?.email ?? "").trim().toLowerCase()
+  return email || null
+}
+
+export async function GET() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      {
+        ok: false,
+        feil: "Supabase er ikke konfigurert. Legg inn miljøvariabler først.",
+      },
+      { status: 500 }
+    )
+  }
+
+  const email = await getLoggedInEmail()
+  if (!email) {
+    return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      {
+        ok: false,
+        feil: "Admin-visning av prosjekter krever SUPABASE_SERVICE_ROLE_KEY i miljøvariabler.",
+      },
+      { status: 500 }
+    )
+  }
+
+  const schemaFeil =
+    "Prosjekt-tabellen i Supabase mangler felter. Kjør denne SQL-en i Supabase (SQL Editor), og prøv igjen:\n\n" +
+    "create table if not exists public.prosjekt_soknader (\n" +
+    "  id uuid primary key default gen_random_uuid(),\n" +
+    "  created_at timestamptz not null default now(),\n" +
+    "  medlemsnummer integer,\n" +
+    "  navn text not null,\n" +
+    "  epost text not null,\n" +
+    "  telefon text,\n" +
+    "  tittel text not null,\n" +
+    "  sted text not null,\n" +
+    "  budsjett numeric,\n" +
+    "  beskrivelse text not null,\n" +
+    "  status text,\n" +
+    "  vedlegg_paths text[]\n" +
+    ");\n"
+
+  const bucket = "prosjekt-vedlegg"
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  })
+
+  const baseSelect =
+    "id, created_at, medlemsnummer, navn, epost, telefon, tittel, sted, budsjett, status"
+
+  const withVedlegg = await admin
+    .from("prosjekt_soknader")
+    .select(`${baseSelect}, vedlegg_paths`)
+    .order("created_at", { ascending: false })
+    .limit(500)
+
+  let rows = withVedlegg.data as unknown as Record<string, unknown>[] | null
+  let error = withVedlegg.error
+  if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (/vedlegg_paths/i.test(msg) || (/column/i.test(msg) && /vedlegg/i.test(msg))) {
+      const withoutVedlegg = await admin
+        .from("prosjekt_soknader")
+        .select(baseSelect)
+        .order("created_at", { ascending: false })
+        .limit(500)
+      rows = withoutVedlegg.data as unknown as Record<string, unknown>[] | null
+      error = withoutVedlegg.error
+    }
+  }
+
+  if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if ((/relation/i.test(msg) && /prosjekt_soknader/i.test(msg)) || /42p01/i.test(msg)) {
+      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+    }
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke hente prosjekter." },
+      { status: 400 }
+    )
+  }
+
+  const result = await Promise.all(
+    (rows ?? []).map(async (r) => {
+      const paths = Array.isArray(r.vedlegg_paths) ? (r.vedlegg_paths as string[]) : []
+      const signed = await Promise.all(
+        paths.slice(0, 12).map(async (p) => {
+          const { data } = await admin.storage.from(bucket).createSignedUrl(p, 60)
+          return data?.signedUrl ?? null
+        })
+      )
+      return {
+        ...r,
+        vedlegg_signed_urls: signed.filter(Boolean),
+      }
+    })
+  )
+
+  return NextResponse.json({ ok: true, prosjekter: result })
 }
 
 export async function POST(request: Request) {

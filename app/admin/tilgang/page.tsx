@@ -12,6 +12,10 @@ type Rolle = {
   created_at?: string
 }
 
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
 type State =
   | { type: "loading" }
   | { type: "error"; message: string; status?: number }
@@ -66,6 +70,10 @@ export default function AdminTilgangPage() {
     if (saving) return
     const e = email.trim().toLowerCase()
     if (!e) return
+    if (!isValidEmail(e)) {
+      alert("Skriv inn en gyldig e-post.")
+      return
+    }
     setSaving(true)
     try {
       const res = await fetch("/api/admin/roles", {
