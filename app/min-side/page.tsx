@@ -60,6 +60,7 @@ export default function MinSidePage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [adminRole, setAdminRole] = useState<"admin" | "superadmin" | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const [bootstrapped, setBootstrapped] = useState(false)
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -118,6 +119,18 @@ export default function MinSidePage() {
             setAdminRole(role)
           } else {
             setAdminRole(null)
+            if (!bootstrapped) {
+              setBootstrapped(true)
+              const bootstrapRes = await fetch("/api/admin/bootstrap", { method: "POST" })
+              const bootstrapData = (await bootstrapRes.json()) as {
+                ok?: boolean
+                role?: string | null
+              }
+              const br = bootstrapData.role ?? null
+              if (bootstrapRes.ok && bootstrapData.ok && (br === "admin" || br === "superadmin")) {
+                setAdminRole(br)
+              }
+            }
           }
         } catch {
           setAdminRole(null)
@@ -125,7 +138,7 @@ export default function MinSidePage() {
       })()
     }, 0)
     return () => clearTimeout(id)
-  }, [router, supabase])
+  }, [router, supabase, bootstrapped])
 
   async function loggUt() {
     if (!supabase) return

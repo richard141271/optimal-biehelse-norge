@@ -104,12 +104,32 @@ export async function POST() {
     )
   }
 
-  if ((superCount ?? 0) > 0) {
+  const { data: medlemmer, error: medlemmerError } = await admin
+    .from("medlemmer")
+    .select("epost, created_at")
+    .order("created_at", { ascending: true })
+    .limit(2)
+
+  if (medlemmerError) {
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke sjekke medlemsregister." },
+      { status: 400 }
+    )
+  }
+
+  const kunEnBruker =
+    Array.isArray(medlemmer) &&
+    medlemmer.length === 1 &&
+    String((medlemmer[0] as { epost?: string | null }).epost ?? "")
+      .trim()
+      .toLowerCase() === email
+
+  if ((superCount ?? 0) > 0 && !kunEnBruker) {
     return NextResponse.json(
       {
         ok: false,
         feil:
-          "Det finnes allerede en superbruker. Be superbruker gi deg rolle i Admin → Tilgang.",
+          "Det finnes allerede en superbruker. Be superbruker gi deg rolle i Adminpanelet.",
       },
       { status: 403 }
     )
