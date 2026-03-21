@@ -58,18 +58,39 @@ export default function MinSideLoginPage() {
       return
     }
 
+    if (status.type === "sending") return
+
     setStatus({ type: "sending" })
-    const { error } = await sb.auth.signInWithPassword({ email, password })
-    if (error) {
+    try {
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 15000)
+      )
+      const { error } = await Promise.race([
+        sb.auth.signInWithPassword({ email, password }),
+        timeout,
+      ])
+
+      if (error) {
+        setStatus({
+          type: "error",
+          message: "Kunne ikke logge inn. Sjekk e-post og passord.",
+        })
+        return
+      }
+
+      await sb.auth.getSession()
+      const next = getNextPath()
+      router.replace(next)
+      router.refresh()
+      setTimeout(() => {
+        setStatus((s) => (s.type === "sending" ? { type: "idle" } : s))
+      }, 2000)
+    } catch {
       setStatus({
         type: "error",
-        message: "Kunne ikke logge inn. Sjekk e-post og passord.",
+        message: "Innlogging tok for lang tid. Prøv igjen.",
       })
-      return
     }
-
-    router.push(getNextPath())
-    router.refresh()
   }
 
   return (
@@ -127,4 +148,3 @@ export default function MinSideLoginPage() {
     </main>
   )
 }
-
