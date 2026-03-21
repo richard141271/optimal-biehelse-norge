@@ -2,13 +2,14 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
 type Payload = {
-  type?: "innmeldt" | "stotte"
+  type?: "innmeldt" | "stotte" | "bedrift"
   navn?: string
   adresse?: string
   postnr?: string
   sted?: string
   epost?: string
   telefon?: string
+  passord?: string
 }
 
 function isValidEmail(email: string) {
@@ -44,15 +45,41 @@ export async function POST(request: Request) {
     )
   }
 
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      {
+        ok: false,
+        feil:
+          "Medlemsregistrering med passord krever SUPABASE_SERVICE_ROLE_KEY i miljøvariabler.",
+      },
+      { status: 500 }
+    )
+  }
+
   const medlemskapType = payload.type ?? "innmeldt"
   const navn = (payload.navn ?? "").trim()
   const adresse = (payload.adresse ?? "").trim()
   const postnr = (payload.postnr ?? "").trim()
   const sted = (payload.sted ?? "").trim()
-  const epost = (payload.epost ?? "").trim()
+  const epost = (payload.epost ?? "").trim().toLowerCase()
   const telefon = (payload.telefon ?? "").trim()
+  const passord = (payload.passord ?? "").trim()
 
-  if (medlemskapType === "innmeldt") {
+  if (!passord || passord.length < 8 || passord.length > 200) {
+    return NextResponse.json(
+      { ok: false, feil: "Passord må være minst 8 tegn." },
+      { status: 400 }
+    )
+  }
+
+  if (medlemskapType !== "innmeldt" && medlemskapType !== "stotte" && medlemskapType !== "bedrift") {
+    return NextResponse.json(
+      { ok: false, feil: "Ugyldig medlemskapstype." },
+      { status: 400 }
+    )
+  }
+
+  if (medlemskapType === "innmeldt" || medlemskapType === "bedrift") {
     if (navn.length < 2 || navn.length > 80) {
       return NextResponse.json(
         { ok: false, feil: "Skriv inn et gyldig navn." },
@@ -89,7 +116,7 @@ export async function POST(request: Request) {
     )
   }
 
-  if (medlemskapType === "innmeldt") {
+  if (medlemskapType === "innmeldt" || medlemskapType === "bedrift") {
     if (telefon.length < 6 || telefon.length > 20) {
       return NextResponse.json(
         { ok: false, feil: "Skriv inn et gyldig telefonnummer." },
@@ -105,12 +132,13 @@ export async function POST(request: Request) {
     }
   }
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey ?? supabaseAnonKey, {
+  const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   })
 
   const schemaFeil =
     "Medlemsregister-tabellen i Supabase mangler felter for medlemsnummer. Kjør denne SQL-en i Supabase (SQL Editor), og prøv igjen:\n\n" +
+    "alter table public.medlemmer add column if not exists user_id uuid;\n" +
     "alter table public.medlemmer add column if not exists medlemskap_type text;\n" +
     "alter table public.medlemmer add column if not exists medlemsnummer integer;\n" +
     "alter table public.medlemmer add column if not exists adresse text;\n" +
@@ -119,9 +147,44 @@ export async function POST(request: Request) {
     "create sequence if not exists public.medlemmer_medlemsnummer_seq start 1000;\n" +
     "alter table public.medlemmer alter column medlemsnummer set default nextval('public.medlemmer_medlemsnummer_seq');\n" +
     "select setval('public.medlemmer_medlemsnummer_seq', greatest((select coalesce(max(medlemsnummer), 999) from public.medlemmer), 999) + 1, false);\n" +
+    "create unique index if not exists medlemmer_user_id_uq on public.medlemmer(user_id) where user_id is not null;\n" +
     "create unique index if not exists medlemmer_medlemsnummer_uq on public.medlemmer(medlemsnummer) where medlemsnummer is not null;"
 
+  const { data: created, error: createError } =
+    await supabase.auth.admin.createUser({
+      email: epost,
+      password: passord,
+      email_confirm: true,
+    })
+
+  if (createError) {
+    const msg = String((createError as { message?: string } | null)?.message ?? "")
+    if (/already/i.test(msg) || /registered/i.test(msg) || /exists/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "E-post er allerede registrert. Logg inn på Min side i stedet for å registrere på nytt.",
+        },
+        { status: 400 }
+      )
+    }
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke opprette brukerkonto akkurat nå." },
+      { status: 400 }
+    )
+  }
+
+  const userId = created.user?.id ?? null
+  if (!userId) {
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke opprette brukerkonto akkurat nå." },
+      { status: 400 }
+    )
+  }
+
   const insertRow: Record<string, unknown> = {
+    user_id: userId,
     medlemskap_type: medlemskapType,
     navn: navn || null,
     adresse: adresse || null,
@@ -129,7 +192,6 @@ export async function POST(request: Request) {
     sted: sted || null,
     epost,
     telefon: telefon || null,
-    medlemsnummer: medlemskapType === "stotte" ? null : undefined,
   }
 
   const { data, error } = await supabase
@@ -143,10 +205,13 @@ export async function POST(request: Request) {
     if (
       /medlemsnummer/i.test(msg) ||
       /medlemskap_type/i.test(msg) ||
+      /user_id/i.test(msg) ||
       /column/i.test(msg)
     ) {
+      await supabase.auth.admin.deleteUser(userId)
       return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
     }
+    await supabase.auth.admin.deleteUser(userId)
     return NextResponse.json(
       { ok: false, feil: "Kunne ikke registrere medlemskap akkurat nå." },
       { status: 400 }
@@ -154,9 +219,9 @@ export async function POST(request: Request) {
   }
 
   if (
-    medlemskapType === "innmeldt" &&
     (data as { medlemsnummer?: number | null } | null)?.medlemsnummer == null
   ) {
+    await supabase.auth.admin.deleteUser(userId)
     return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
   }
 

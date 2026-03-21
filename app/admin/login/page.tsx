@@ -39,7 +39,7 @@ export default function AdminLoginPage() {
   const [passord, setPassord] = useState("")
   const [status, setStatus] = useState<Status>({ type: "idle" })
 
-  async function loggInnMedPassord() {
+  async function loggInn() {
     if (!supabase) {
       setStatus({
         type: "error",
@@ -52,21 +52,21 @@ export default function AdminLoginPage() {
       setStatus({ type: "error", message: "Skriv inn e-post." })
       return
     }
-    if (!passord) {
-      setStatus({ type: "error", message: "Skriv inn passord." })
+
+    const password = passord.trim()
+    if (!password) {
+      await sendInnloggingslenke()
       return
     }
 
     setStatus({ type: "sending" })
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password: passord,
-    })
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
       setStatus({
         type: "error",
-        message: "Kunne ikke logge inn. Sjekk e-post og passord.",
+        message:
+          "Kunne ikke logge inn med passord. Tøm passordfeltet og bruk innloggingslenke.",
       })
       return
     }
@@ -142,7 +142,7 @@ export default function AdminLoginPage() {
               autoComplete="current-password"
               value={passord}
               onChange={(e) => setPassord(e.target.value)}
-              placeholder="••••••••"
+              placeholder="La stå tomt for innloggingslenke"
             />
           </div>
 
@@ -160,7 +160,7 @@ export default function AdminLoginPage() {
 
           <div className="grid gap-2 sm:grid-cols-2">
             <Button
-              onClick={loggInnMedPassord}
+              onClick={loggInn}
               disabled={status.type === "sending" || !supabase}
               className="w-full"
             >

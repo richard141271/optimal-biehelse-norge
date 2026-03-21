@@ -27,6 +27,9 @@ export default function Home() {
             <Link href="/prosjekter" className="hover:text-foreground">
               Prosjekter
             </Link>
+            <Link href="/min-side" className="hover:text-foreground">
+              Min side
+            </Link>
             <a href="#medlemskap" className="hover:text-foreground">
               Bli medlem
             </a>

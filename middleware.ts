@@ -8,6 +8,13 @@ function isAdminPath(pathname: string) {
   return true
 }
 
+function isMemberPath(pathname: string) {
+  if (!pathname.startsWith("/min-side")) return false
+  if (pathname === "/min-side/login") return false
+  if (pathname.startsWith("/min-side/login/")) return false
+  return true
+}
+
 export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -46,9 +53,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  if (isMemberPath(request.nextUrl.pathname) && !user) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/min-side/login"
+    url.searchParams.set("next", request.nextUrl.pathname)
+    return NextResponse.redirect(url)
+  }
+
   return response
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/admin/:path*", "/min-side/:path*"],
 }

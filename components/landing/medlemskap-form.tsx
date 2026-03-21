@@ -1,9 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 
 type Status =
   | { type: "idle" }
@@ -12,17 +14,30 @@ type Status =
   | { type: "error"; message: string }
 
 export function MedlemskapForm() {
-  const [type, setType] = useState<"innmeldt" | "stotte">("innmeldt")
+  const router = useRouter()
+  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
+  const [type, setType] = useState<"innmeldt" | "stotte" | "bedrift">("innmeldt")
   const [navn, setNavn] = useState("")
   const [adresse, setAdresse] = useState("")
   const [postnr, setPostnr] = useState("")
   const [sted, setSted] = useState("")
   const [epost, setEpost] = useState("")
   const [telefon, setTelefon] = useState("")
+  const [passord, setPassord] = useState("")
+  const [passord2, setPassord2] = useState("")
   const [status, setStatus] = useState<Status>({ type: "idle" })
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    if (passord.trim().length < 8) {
+      setStatus({ type: "error", message: "Passord må være minst 8 tegn." })
+      return
+    }
+    if (passord !== passord2) {
+      setStatus({ type: "error", message: "Passordene er ikke like." })
+      return
+    }
 
     setStatus({ type: "sending" })
     try {
@@ -37,6 +52,7 @@ export function MedlemskapForm() {
           sted,
           epost,
           telefon,
+          passord,
         }),
       })
 
@@ -51,12 +67,22 @@ export function MedlemskapForm() {
       }
 
       setStatus({ type: "success" })
+      if (supabase) {
+        await supabase.auth.signInWithPassword({
+          email: epost.trim().toLowerCase(),
+          password: passord,
+        })
+        router.push("/min-side")
+        router.refresh()
+      }
       setNavn("")
       setAdresse("")
       setPostnr("")
       setSted("")
       setEpost("")
       setTelefon("")
+      setPassord("")
+      setPassord2("")
     } catch {
       setStatus({ type: "error", message: "Noe gikk galt. Prøv igjen." })
     }
@@ -81,6 +107,13 @@ export function MedlemskapForm() {
           >
             Støttemedlem
           </Button>
+          <Button
+            type="button"
+            variant={type === "bedrift" ? "default" : "outline"}
+            onClick={() => setType("bedrift")}
+          >
+            Bedriftsmedlem
+          </Button>
         </div>
       </div>
       <div className="space-y-2">
@@ -92,10 +125,10 @@ export function MedlemskapForm() {
           onChange={(e) => setNavn(e.target.value)}
           autoComplete="name"
           placeholder="Fullt navn"
-          required={type === "innmeldt"}
+          required={type === "innmeldt" || type === "bedrift"}
         />
       </div>
-      {type === "innmeldt" ? (
+      {type === "innmeldt" || type === "bedrift" ? (
         <>
           <div className="space-y-2">
             <Label htmlFor="adresse">Adresse</Label>
@@ -162,7 +195,34 @@ export function MedlemskapForm() {
           inputMode="tel"
           autoComplete="tel"
           placeholder="8–12 sifre"
-          required={type === "innmeldt"}
+          required={type === "innmeldt" || type === "bedrift"}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="passord">Passord</Label>
+        <Input
+          id="passord"
+          name="passord"
+          type="password"
+          value={passord}
+          onChange={(e) => setPassord(e.target.value)}
+          autoComplete="new-password"
+          placeholder="Minst 8 tegn"
+          required
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="passord2">Gjenta passord</Label>
+        <Input
+          id="passord2"
+          name="passord2"
+          type="password"
+          value={passord2}
+          onChange={(e) => setPassord2(e.target.value)}
+          autoComplete="new-password"
+          placeholder="Gjenta passord"
+          required
         />
       </div>
 
@@ -172,7 +232,7 @@ export function MedlemskapForm() {
         </Button>
         {status.type === "success" ? (
           <p className="text-sm text-foreground">
-            Takk! Vi har mottatt registreringen din.
+            Takk! Kontoen din er opprettet. Du kan logge inn på Min side.
           </p>
         ) : null}
         {status.type === "error" ? (
