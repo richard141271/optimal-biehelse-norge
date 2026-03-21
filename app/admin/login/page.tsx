@@ -19,6 +19,7 @@ type Status =
   | { type: "idle" }
   | { type: "sending" }
   | { type: "error"; message: string }
+  | { type: "info"; message: string }
 
 function supabaseErrorMessage(message: string | undefined) {
   const m = (message ?? "").toLowerCase()
@@ -46,14 +47,35 @@ export default function AdminLoginPage() {
   const [epost, setEpost] = useState("")
   const [passord, setPassord] = useState("")
   const [status, setStatus] = useState<Status>({ type: "idle" })
+  const [innloggetEpost, setInnloggetEpost] = useState<string | null>(null)
 
   useEffect(() => {
     const id = setTimeout(() => {
       ;(async () => {
         try {
+          const sp = new URLSearchParams(window.location.search)
+          const feil = (sp.get("feil") ?? "").trim()
+          if (feil === "ingen-tilgang") {
+            setStatus({
+              type: "info",
+              message:
+                "Du er innlogget, men har ikke admin-tilgang. Be en superbruker gi deg rolle i Admin → Tilgang.",
+            })
+          }
           const res = await fetch("/api/admin/me", { cache: "no-store" })
-          const data = (await res.json()) as { ok?: boolean; role?: string }
-          if (res.ok && data.ok && (data.role === "admin" || data.role === "superadmin")) {
+          const data = (await res.json()) as {
+            ok?: boolean
+            role?: string | null
+            email?: string | null
+          }
+          const role = data.role ?? null
+          const email = (data.email ?? "").trim()
+          if (res.ok && data.ok && email) {
+            setInnloggetEpost(email)
+          } else {
+            setInnloggetEpost(null)
+          }
+          if (res.ok && data.ok && (role === "admin" || role === "superadmin")) {
             router.replace(getNextPath())
             router.refresh()
           }
@@ -62,6 +84,27 @@ export default function AdminLoginPage() {
     }, 0)
     return () => clearTimeout(id)
   }, [router])
+
+  async function provBootstrap() {
+    setStatus({ type: "sending" })
+    try {
+      const res = await fetch("/api/admin/bootstrap", { method: "POST" })
+      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      if (res.ok && data.ok) {
+        router.replace(getNextPath())
+        router.refresh()
+        return
+      }
+      setStatus({
+        type: "error",
+        message:
+          data.feil ??
+          "Du har ikke admin-tilgang. Be en superbruker gi deg rolle i Admin → Tilgang.",
+      })
+    } catch {
+      setStatus({ type: "error", message: "Kunne ikke sette opp admin-tilgang." })
+    }
+  }
 
   async function loggInn() {
     if (!supabase) {
@@ -94,8 +137,24 @@ export default function AdminLoginPage() {
       return
     }
 
-    router.push(getNextPath())
-    router.refresh()
+    try {
+      const res = await fetch("/api/admin/me", { cache: "no-store" })
+      const data = (await res.json()) as {
+        ok?: boolean
+        role?: string | null
+        email?: string | null
+      }
+      const role = data.role ?? null
+      const loggedInEmail = (data.email ?? "").trim()
+      setInnloggetEpost(loggedInEmail || null)
+      if (res.ok && data.ok && (role === "admin" || role === "superadmin")) {
+        router.push(getNextPath())
+        router.refresh()
+        return
+      }
+    } catch {}
+
+    await provBootstrap()
   }
 
   return (
@@ -131,7 +190,7 @@ export default function AdminLoginPage() {
             />
           </div>
 
-          {status.type === "error" ? (
+          {status.type === "error" || status.type === "info" ? (
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {status.message}
             </div>
@@ -145,6 +204,32 @@ export default function AdminLoginPage() {
             >
               Logg inn
             </Button>
+            {innloggetEpost ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={provBootstrap}
+                  disabled={status.type === "sending"}
+                  className="w-full"
+                >
+                  Gjør meg til superbruker
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (!supabase) return
+                    await supabase.auth.signOut()
+                    setInnloggetEpost(null)
+                    setStatus({ type: "idle" })
+                    router.refresh()
+                  }}
+                  disabled={status.type === "sending" || !supabase}
+                  className="w-full"
+                >
+                  Logg ut
+                </Button>
+              </>
+            ) : null}
           </div>
 
           <div className="text-center text-sm text-muted-foreground">

@@ -7,34 +7,43 @@ import { Button } from "@/components/ui/button"
 
 type State =
   | { type: "loading" }
-  | { type: "ready"; epost: string | null }
+  | { type: "ready"; epost: string | null; innlogget: boolean }
 
 export function AdminUserMenu() {
   const router = useRouter()
   const pathname = usePathname()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [state, setState] = useState<State>(() =>
-    supabase ? { type: "loading" } : { type: "ready", epost: null }
+    supabase ? { type: "loading" } : { type: "ready", epost: null, innlogget: false }
   )
 
   useEffect(() => {
-    if (!supabase) return
     let active = true
-    supabase.auth
-      .getUser()
-      .then(({ data }) => {
+    ;(async () => {
+      try {
+        const res = await fetch("/api/admin/me", { cache: "no-store" })
         if (!active) return
-        setState({ type: "ready", epost: data.user?.email ?? null })
-      })
-      .catch(() => {
+        if (!res.ok) {
+          setState({ type: "ready", epost: null, innlogget: false })
+          return
+        }
+        const data = (await res.json()) as { ok?: boolean; email?: string | null }
+        if (!data.ok) {
+          setState({ type: "ready", epost: null, innlogget: false })
+          return
+        }
+        const epost = (data.email ?? "").trim()
+        setState({ type: "ready", epost: epost || null, innlogget: true })
+      } catch {
         if (!active) return
-        setState({ type: "ready", epost: null })
-      })
+        setState({ type: "ready", epost: null, innlogget: false })
+      }
+    })()
 
     return () => {
       active = false
     }
-  }, [supabase])
+  }, [pathname])
 
   async function loggUt() {
     if (!supabase) {
@@ -56,7 +65,7 @@ export function AdminUserMenu() {
           {state.epost}
         </div>
       ) : null}
-      {state.type === "ready" && !state.epost ? (
+      {state.type === "ready" && !state.innlogget ? (
         <Button variant="outline" onClick={() => router.push("/admin/login")} disabled={!supabase}>
           Logg inn
         </Button>
