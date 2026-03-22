@@ -22,6 +22,13 @@ type Prosjekt = {
   admin_svar?: string | null
   admin_svar_at?: string | null
   admin_svar_sent_at?: string | null
+  hendelser?: Array<{
+    id?: string
+    created_at?: string
+    type?: string
+    message?: string | null
+    actor_email?: string | null
+  }>
 }
 
 type State =
@@ -78,7 +85,12 @@ export default function AdminProsjektDetailPage() {
     const res = await fetch(`/api/admin/prosjekter/${encodeURIComponent(prosjektId)}?ts=${Date.now()}`, {
       cache: "no-store",
     })
-    const payload = (await res.json()) as { ok?: boolean; feil?: string; prosjekt?: Prosjekt }
+    const payload = (await res.json()) as {
+      ok?: boolean
+      feil?: string
+      prosjekt?: Prosjekt
+      schemaWarning?: string | null
+    }
     if (!res.ok || !payload.ok || !payload.prosjekt) {
       setState({
         type: "error",
@@ -90,6 +102,9 @@ export default function AdminProsjektDetailPage() {
     setState({ type: "ready", prosjekt: payload.prosjekt })
     setStatus(String(payload.prosjekt.status ?? "mottatt"))
     setSvar(String(payload.prosjekt.admin_svar ?? ""))
+    if (payload.schemaWarning) {
+      setInfo(payload.schemaWarning)
+    }
   }, [prosjektId])
 
   useEffect(() => {
@@ -112,12 +127,13 @@ export default function AdminProsjektDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       })
-      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      const data = (await res.json()) as { ok?: boolean; feil?: string; schemaWarning?: string | null }
       if (!res.ok || !data.ok) {
         setInfo(data.feil ?? "Kunne ikke oppdatere status.")
         return
       }
       setInfo("Status oppdatert.")
+      if (data.schemaWarning) setInfo(data.schemaWarning)
       await hent()
     } finally {
       setSavingStatus(false)
@@ -139,12 +155,13 @@ export default function AdminProsjektDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ svar: tekst, send: true }),
       })
-      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      const data = (await res.json()) as { ok?: boolean; feil?: string; schemaWarning?: string | null }
       if (!res.ok || !data.ok) {
         setInfo(data.feil ?? "Kunne ikke sende svar.")
         return
       }
       setInfo("Svar sendt.")
+      if (data.schemaWarning) setInfo(data.schemaWarning)
       await hent()
     } finally {
       setSendingSvar(false)
@@ -314,9 +331,32 @@ export default function AdminProsjektDetailPage() {
               </div>
             </div>
           </div>
+
+          <div className="rounded-2xl border bg-card p-6">
+            <h2 className="text-lg font-semibold">Logg</h2>
+            <div className="mt-4 space-y-2 text-sm">
+              {Array.isArray(state.prosjekt.hendelser) && state.prosjekt.hendelser.length ? (
+                state.prosjekt.hendelser.slice(0, 50).map((h, idx) => (
+                  <div
+                    key={h.id ?? `${idx}`}
+                    className="flex flex-col gap-1 border-b pb-2 last:border-b-0 last:pb-0"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium">{h.type ?? "hendelse"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatDato(h.created_at) || "—"}
+                      </div>
+                    </div>
+                    <div className="text-muted-foreground">{h.message ?? "—"}</div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-muted-foreground">Ingen logg enda.</div>
+              )}
+            </div>
+          </div>
         </div>
       ) : null}
     </div>
   )
 }
-

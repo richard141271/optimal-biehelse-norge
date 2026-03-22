@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 import { Button } from "@/components/ui/button"
@@ -461,7 +462,14 @@ export default function MinSidePage() {
                           <td className="whitespace-nowrap px-4 py-3">
                             {formatDate(p.created_at ?? null) || "—"}
                           </td>
-                          <td className="px-4 py-3">{p.tittel ?? "—"}</td>
+                          <td className="px-4 py-3">
+                            <Link
+                              href={`/min-side/prosjekter/${encodeURIComponent(p.id)}`}
+                              className="underline underline-offset-4 hover:text-foreground"
+                            >
+                              {p.tittel ?? "—"}
+                            </Link>
+                          </td>
                           <td className="whitespace-nowrap px-4 py-3">
                             {p.status ?? "mottatt"}
                           </td>

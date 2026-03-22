@@ -77,7 +77,17 @@ function schemaFeil() {
     "alter table public.prosjekt_soknader add column if not exists status text;\n" +
     "alter table public.prosjekt_soknader add column if not exists admin_svar text;\n" +
     "alter table public.prosjekt_soknader add column if not exists admin_svar_at timestamptz;\n" +
-    "alter table public.prosjekt_soknader add column if not exists admin_svar_sent_at timestamptz;\n"
+    "alter table public.prosjekt_soknader add column if not exists admin_svar_sent_at timestamptz;\n" +
+    "\n" +
+    "create table if not exists public.prosjekt_hendelser (\n" +
+    "  id uuid primary key default gen_random_uuid(),\n" +
+    "  created_at timestamptz not null default now(),\n" +
+    "  prosjekt_id uuid not null references public.prosjekt_soknader(id) on delete cascade,\n" +
+    "  actor_email text,\n" +
+    "  type text not null,\n" +
+    "  message text\n" +
+    ");\n" +
+    "create index if not exists prosjekt_hendelser_prosjekt_id_idx on public.prosjekt_hendelser(prosjekt_id);\n"
   )
 }
 
@@ -102,6 +112,7 @@ export async function GET(
 
   let row: Record<string, unknown> | null = null
   let errorMsg = ""
+  let schemaWarning: string | null = null
 
   const full = await gate.admin
     .from("prosjekt_soknader")
@@ -111,6 +122,9 @@ export async function GET(
 
   if (full.error) {
     errorMsg = String((full.error as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(errorMsg) && /admin_svar/i.test(errorMsg)) {
+      schemaWarning = schemaFeil()
+    }
     const fallback = await gate.admin
       .from("prosjekt_soknader")
       .select(`${baseSelect}, vedlegg_paths`)
@@ -143,12 +157,31 @@ export async function GET(
     })
   )
 
+  let hendelser: Record<string, unknown>[] | null = null
+  const logRes = await gate.admin
+    .from("prosjekt_hendelser")
+    .select("id, created_at, type, message, actor_email")
+    .eq("prosjekt_id", prosjektId)
+    .order("created_at", { ascending: false })
+    .limit(50)
+
+  if (logRes.error) {
+    const msg = String((logRes.error as { message?: string } | null)?.message ?? "")
+    if ((/relation/i.test(msg) && /prosjekt_hendelser/i.test(msg)) || /42p01/i.test(msg)) {
+      schemaWarning = schemaFeil()
+    }
+  } else {
+    hendelser = (logRes.data as unknown as Record<string, unknown>[] | null) ?? null
+  }
+
   return NextResponse.json({
     ok: true,
     prosjekt: {
       ...row,
       vedlegg_signed_urls: signed.filter(Boolean),
+      hendelser: hendelser ?? [],
     },
+    schemaWarning,
   })
 }
 
@@ -237,7 +270,7 @@ export async function PATCH(
 
   const { data: prosjekt, error: prosjektError } = await gate.admin
     .from("prosjekt_soknader")
-    .select("id, tittel, epost")
+    .select("id, tittel, epost, status")
     .eq("id", prosjektId)
     .maybeSingle()
 
@@ -247,6 +280,8 @@ export async function PATCH(
   if (!prosjekt) {
     return NextResponse.json({ ok: false, feil: "Fant ikke prosjekt." }, { status: 404 })
   }
+
+  const prevStatus = String((prosjekt as { status?: string | null } | null)?.status ?? "").trim() || null
 
   const update: Record<string, unknown> = {}
   if (nextStatus != null) update.status = nextStatus
@@ -271,8 +306,39 @@ export async function PATCH(
     )
   }
 
+  let schemaWarning: string | null = null
+  if (nextStatus != null && nextStatus !== prevStatus) {
+    const log = await gate.admin.from("prosjekt_hendelser").insert({
+      prosjekt_id: prosjektId,
+      actor_email: gate.email,
+      type: "status_endret",
+      message: `Status: ${(prevStatus ?? "—")} → ${nextStatus}`,
+    })
+    if (log.error) {
+      const msg = String((log.error as { message?: string } | null)?.message ?? "")
+      if ((/relation/i.test(msg) && /prosjekt_hendelser/i.test(msg)) || /42p01/i.test(msg)) {
+        schemaWarning = schemaFeil()
+      }
+    }
+  }
+
+  if (svar != null) {
+    const log = await gate.admin.from("prosjekt_hendelser").insert({
+      prosjekt_id: prosjektId,
+      actor_email: gate.email,
+      type: send ? "svar_sendt" : "svar_lagret",
+      message: send ? "Svar sendt til søker." : "Svar lagret (ikke sendt).",
+    })
+    if (log.error) {
+      const msg = String((log.error as { message?: string } | null)?.message ?? "")
+      if ((/relation/i.test(msg) && /prosjekt_hendelser/i.test(msg)) || /42p01/i.test(msg)) {
+        schemaWarning = schemaFeil()
+      }
+    }
+  }
+
   if (!send) {
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, schemaWarning })
   }
 
   const to = String((prosjekt as { epost?: string | null }).epost ?? "").trim()
@@ -297,6 +363,5 @@ export async function PATCH(
     .update({ admin_svar_sent_at: new Date().toISOString() })
     .eq("id", prosjektId)
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, schemaWarning })
 }
-

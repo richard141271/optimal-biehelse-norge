@@ -151,6 +151,8 @@ export default function AdminMedlemmerPage() {
       "Dette sletter ALLE andre medlemmer og brukerkontoer (test/feilregistreringer). Kun superbruker blir stående. Fortsette?"
     )
     if (!ok) return
+    const confirmText = window.prompt('Skriv "SLETT" for å bekrefte.')
+    if (String(confirmText ?? "").trim().toUpperCase() !== "SLETT") return
     setPurging(true)
     try {
       const res = await fetch("/api/admin/medlemmer", { method: "DELETE" })
@@ -272,7 +274,7 @@ export default function AdminMedlemmerPage() {
           ) : null}
           <div className="overflow-hidden rounded-xl border bg-card">
             <div className="overflow-auto">
-              <table className="w-full min-w-[1400px] text-sm">
+              <table className="w-full min-w-[1600px] text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
