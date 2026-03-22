@@ -13,7 +13,6 @@ async function getRole() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const bootstrapEmail = (process.env.ADMIN_BOOTSTRAP_EMAIL ?? "").trim().toLowerCase()
 
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
     return { ok: false as const, status: 500 as const }
@@ -45,20 +44,13 @@ async function getRole() {
   })
 
   const { data, error } = await admin
-    .from("admin_roles")
+    .from("medlemmer")
     .select("role")
-    .ilike("email", email)
+    .eq("epost", email)
     .maybeSingle()
 
   if (error) return { ok: false as const, status: 400 as const }
-  let role = (data?.role ?? null) as string | null
-  if (!role && bootstrapEmail && email === bootstrapEmail) {
-    const { error: upsertError } = await admin.from("admin_roles").upsert(
-      { email, role: "superadmin" },
-      { onConflict: "email" }
-    )
-    if (!upsertError) role = "superadmin"
-  }
+  const role = (data?.role ?? null) as string | null
   if (role !== "admin" && role !== "superadmin") {
     return { ok: false as const, status: 403 as const }
   }

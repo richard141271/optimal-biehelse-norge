@@ -107,13 +107,25 @@ export async function GET() {
     "  budsjett numeric,\n" +
     "  beskrivelse text not null,\n" +
     "  status text,\n" +
-    "  vedlegg_paths text[]\n" +
+    "  vedlegg_paths text[],\n" +
+    "  admin_svar text,\n" +
+    "  admin_svar_at timestamptz,\n" +
+    "  admin_svar_sent_at timestamptz\n" +
     ");\n"
 
   const bucket = "prosjekt-vedlegg"
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   })
+
+  const { data: roleRow } = await admin
+    .from("medlemmer")
+    .select("role")
+    .eq("epost", email)
+    .maybeSingle()
+  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
+    return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+  }
 
   const baseSelect =
     "id, created_at, medlemsnummer, navn, epost, telefon, tittel, sted, budsjett, status"

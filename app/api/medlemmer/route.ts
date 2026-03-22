@@ -2,8 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
 type Payload = {
-  type?: "innmeldt" | "stotte" | "bedrift"
-  orgnr?: string
+  type?: "innmeldt" | "stotte"
   navn?: string
   adresse?: string
   postnr?: string
@@ -27,10 +26,6 @@ function digitsOnly(value: string) {
 
 function isValidNorskTelefon(telefon: string) {
   return /^\d{8}$/.test(telefon)
-}
-
-function isValidOrgnr(orgnr: string) {
-  return /^\d{9}$/.test(orgnr)
 }
 
 export async function POST(request: Request) {
@@ -70,7 +65,6 @@ export async function POST(request: Request) {
   }
 
   const medlemskapType = payload.type ?? "innmeldt"
-  const orgnr = digitsOnly((payload.orgnr ?? "").trim())
   const navn = (payload.navn ?? "").trim()
   const adresse = (payload.adresse ?? "").trim()
   const postnr = (payload.postnr ?? "").trim()
@@ -86,30 +80,21 @@ export async function POST(request: Request) {
     )
   }
 
-  if (medlemskapType !== "innmeldt" && medlemskapType !== "stotte" && medlemskapType !== "bedrift") {
+  if (medlemskapType !== "innmeldt" && medlemskapType !== "stotte") {
     return NextResponse.json(
       { ok: false, feil: "Ugyldig medlemskapstype." },
       { status: 400 }
     )
   }
 
-  if (navn.length < 2 || navn.length > (medlemskapType === "bedrift" ? 120 : 80)) {
+  if (navn.length < 2 || navn.length > 80) {
     return NextResponse.json(
       { ok: false, feil: "Skriv inn et gyldig navn." },
       { status: 400 }
     )
   }
 
-  if (medlemskapType === "bedrift") {
-    if (!isValidOrgnr(orgnr)) {
-      return NextResponse.json(
-        { ok: false, feil: "Skriv inn et gyldig org.nr. (9 siffer)." },
-        { status: 400 }
-      )
-    }
-  }
-
-  if (medlemskapType === "innmeldt" || medlemskapType === "bedrift") {
+  if (medlemskapType === "innmeldt") {
     if (adresse.length < 4 || adresse.length > 200) {
       return NextResponse.json(
         { ok: false, feil: "Skriv inn en gyldig adresse." },
@@ -189,7 +174,7 @@ export async function POST(request: Request) {
     "alter table public.medlemmer add column if not exists user_id uuid;\n" +
     "alter table public.medlemmer add column if not exists medlemskap_type text;\n" +
     "alter table public.medlemmer add column if not exists medlemsnummer integer;\n" +
-    "alter table public.medlemmer add column if not exists orgnr text;\n" +
+    "alter table public.medlemmer add column if not exists role text not null default 'user';\n" +
     "alter table public.medlemmer add column if not exists adresse text;\n" +
     "alter table public.medlemmer add column if not exists postnr text;\n" +
     "alter table public.medlemmer add column if not exists sted text;\n" +
@@ -232,16 +217,47 @@ export async function POST(request: Request) {
     )
   }
 
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const role = ownerEmail && epost === ownerEmail ? "superadmin" : "user"
+
+  let nesteMedlemsnummer: number | null = null
+  const { data: maxRow, error: maxError } = await supabase
+    .from("medlemmer")
+    .select("medlemsnummer")
+    .order("medlemsnummer", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (maxError) {
+    const msg = String((maxError as { message?: string } | null)?.message ?? "")
+    if (/medlemsnummer/i.test(msg) || /column/i.test(msg)) {
+      await supabase.auth.admin.deleteUser(userId)
+      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+    }
+  } else {
+    const maxVal = Number((maxRow as { medlemsnummer?: number | null } | null)?.medlemsnummer ?? 999)
+    if (Number.isFinite(maxVal)) {
+      nesteMedlemsnummer = Math.max(999, maxVal) + 1
+    }
+  }
+
   const insertRow: Record<string, unknown> = {
     user_id: userId,
     medlemskap_type: medlemskapType,
-    orgnr: orgnr || null,
+    role,
     navn: navn || null,
     adresse: adresse || null,
     postnr: postnr || null,
     sted: sted || null,
     epost,
     telefon: telefon || null,
+  }
+  if (nesteMedlemsnummer != null) {
+    insertRow.medlemsnummer = nesteMedlemsnummer
   }
 
   const { data, error } = await supabase
@@ -252,31 +268,11 @@ export async function POST(request: Request) {
 
   if (error) {
     const msg = String((error as { message?: string } | null)?.message ?? "")
-    if (/orgnr/i.test(msg) && /column/i.test(msg)) {
-      const { data: retryData, error: retryError } = await supabase
-        .from("medlemmer")
-        .insert({
-          user_id: userId,
-          medlemskap_type: medlemskapType,
-          navn: navn || null,
-          adresse: adresse || null,
-          postnr: postnr || null,
-          sted: sted || null,
-          epost,
-          telefon: telefon || null,
-        })
-        .select("medlemsnummer")
-        .maybeSingle()
-
-      if (!retryError && (retryData as { medlemsnummer?: number | null } | null)?.medlemsnummer != null) {
-        return NextResponse.json({ ok: true })
-      }
-    }
     if (
       /medlemsnummer/i.test(msg) ||
       /medlemskap_type/i.test(msg) ||
       /user_id/i.test(msg) ||
-      /orgnr/i.test(msg) ||
+      /role/i.test(msg) ||
       /column/i.test(msg)
     ) {
       await supabase.auth.admin.deleteUser(userId)

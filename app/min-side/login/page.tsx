@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,20 +20,23 @@ export default function MinSideLoginPage() {
   const [passord, setPassord] = useState("")
   const [loading, setLoading] = useState(false)
   const [feil, setFeil] = useState<string | null>(null)
+  const epostRef = useRef<HTMLInputElement | null>(null)
+  const passordRef = useRef<HTMLInputElement | null>(null)
 
   async function sjekkAdminOgRedirect() {
     try {
       const res = await fetch("/api/admin/me", { cache: "no-store" })
-      const data = (await res.json()) as { ok?: boolean; feil?: string }
-      console.log("[admin/me]", res.status, data)
-      if (res.ok && data.ok) {
-        console.log("[redirect]", "/admin")
+      const data = (await res.json()) as {
+        ok?: boolean
+        feil?: string
+        role?: string | null
+      }
+      if (res.ok && data.ok && (data.role === "admin" || data.role === "superadmin")) {
         window.location.href = "/admin"
         return
       }
       setFeil(data.feil ?? "Du har ikke tilgang til admin.")
-    } catch (e) {
-      console.log("[admin/me] error", e)
+    } catch {
       setFeil("Kunne ikke sjekke admin-tilgang.")
     }
   }
@@ -44,8 +47,9 @@ export default function MinSideLoginPage() {
         const sb = supabase
         if (!sb) return
         try {
+          setEpost(epostRef.current?.value ?? "")
+          setPassord(passordRef.current?.value ?? "")
           const { data } = await sb.auth.getSession()
-          console.log("[session]", Boolean(data.session))
           if (data.session) await sjekkAdminOgRedirect()
         } catch {}
       })()
@@ -60,8 +64,8 @@ export default function MinSideLoginPage() {
       return
     }
 
-    const email = epost.trim()
-    const password = passord.trim()
+    const email = (epostRef.current?.value ?? epost).trim()
+    const password = (passordRef.current?.value ?? passord).trim()
     if (!email) {
       setFeil("Skriv inn e-post.")
       return
@@ -85,15 +89,10 @@ export default function MinSideLoginPage() {
         timeout,
       ])) as Awaited<ReturnType<typeof sb.auth.signInWithPassword>>
 
-      console.log("[login]", { hasSession: Boolean(data?.session), hasError: Boolean(error) })
-
       if (error || !data?.session) {
         setFeil("Kunne ikke logge inn. Sjekk e-post og passord.")
         return
       }
-
-      const sessionRes = await sb.auth.getSession()
-      console.log("[session after login]", Boolean(sessionRes.data.session))
 
       await sjekkAdminOgRedirect()
     } catch {
@@ -128,8 +127,10 @@ export default function MinSideLoginPage() {
                 inputMode="email"
                 autoCapitalize="none"
                 spellCheck={false}
+                ref={epostRef}
                 value={epost}
                 onChange={(e) => setEpost(e.target.value)}
+                onInput={(e) => setEpost((e.target as HTMLInputElement).value)}
                 placeholder="navn@eksempel.no"
               />
             </div>
@@ -140,8 +141,10 @@ export default function MinSideLoginPage() {
                 name="password"
                 type="password"
                 autoComplete="current-password"
+                ref={passordRef}
                 value={passord}
                 onChange={(e) => setPassord(e.target.value)}
+                onInput={(e) => setPassord((e.target as HTMLInputElement).value)}
                 placeholder="••••••••"
               />
             </div>

@@ -180,7 +180,14 @@ export default function AdminProsjekterPage() {
                     <td className="whitespace-nowrap px-4 py-3">
                       {formatDato(p.created_at)}
                     </td>
-                    <td className="px-4 py-3">{p.tittel ?? ""}</td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/admin/prosjekter/${encodeURIComponent(p.id)}`}
+                        className="underline underline-offset-4 hover:text-foreground"
+                      >
+                        {p.tittel ?? ""}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3">{p.sted ?? ""}</td>
                     <td className="whitespace-nowrap px-4 py-3">
                       {p.medlemsnummer ?? "—"}

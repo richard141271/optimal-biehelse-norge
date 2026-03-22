@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,15 +20,8 @@ function digitsOnly(value: string) {
 export function MedlemskapForm() {
   const router = useRouter()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
-  const [type, setType] = useState<"innmeldt" | "stotte" | "bedrift">("innmeldt")
+  const [type, setType] = useState<"innmeldt" | "stotte">("innmeldt")
   const [stotteMerInfo, setStotteMerInfo] = useState(false)
-  const [orgnr, setOrgnr] = useState("")
-  const [orgLookupStatus, setOrgLookupStatus] = useState<
-    | { type: "idle" }
-    | { type: "loading" }
-    | { type: "error"; message: string }
-    | { type: "success" }
-  >({ type: "idle" })
   const [navn, setNavn] = useState("")
   const [adresse, setAdresse] = useState("")
   const [postnr, setPostnr] = useState("")
@@ -40,16 +33,12 @@ export function MedlemskapForm() {
   const [status, setStatus] = useState<Status>({ type: "idle" })
 
   const skalViseAdressefelter =
-    type === "innmeldt" || type === "bedrift" || (type === "stotte" && stotteMerInfo)
-  const skalViseTelefon = type === "innmeldt" || type === "bedrift" || (type === "stotte" && stotteMerInfo)
+    type === "innmeldt" || (type === "stotte" && stotteMerInfo)
+  const skalViseTelefon = type === "innmeldt" || (type === "stotte" && stotteMerInfo)
 
-  function velgType(next: "innmeldt" | "stotte" | "bedrift") {
+  function velgType(next: "innmeldt" | "stotte") {
     setType(next)
     if (next !== "stotte") setStotteMerInfo(false)
-    if (next !== "bedrift") {
-      setOrgnr("")
-      setOrgLookupStatus({ type: "idle" })
-    }
     if (next === "stotte" && !stotteMerInfo) {
       setAdresse("")
       setPostnr("")
@@ -58,57 +47,6 @@ export function MedlemskapForm() {
     }
     setStatus({ type: "idle" })
   }
-
-  useEffect(() => {
-    if (type !== "bedrift") return
-    const v = digitsOnly(orgnr)
-    if (v.length !== 9) return
-
-    const controller = new AbortController()
-    const id = setTimeout(() => {
-      ;(async () => {
-        setOrgLookupStatus({ type: "loading" })
-        try {
-          const res = await fetch(
-            `https://data.brreg.no/enhetsregisteret/api/enheter/${v}`,
-            { signal: controller.signal }
-          )
-          if (!res.ok) {
-            setOrgLookupStatus({
-              type: "error",
-              message: "Fant ikke bedrift på org.nr.",
-            })
-            return
-          }
-          const data = (await res.json()) as {
-            navn?: string
-            forretningsadresse?: {
-              adresse?: string[]
-              postnummer?: string
-              poststed?: string
-            }
-          }
-          const adr = data.forretningsadresse ?? {}
-          const adrLine = (adr.adresse ?? []).filter(Boolean).join(", ")
-          setNavn((data.navn ?? "").trim())
-          setAdresse(adrLine)
-          setPostnr((adr.postnummer ?? "").trim())
-          setSted((adr.poststed ?? "").trim())
-          setOrgLookupStatus({ type: "success" })
-        } catch {
-          setOrgLookupStatus({
-            type: "error",
-            message: "Kunne ikke hente bedriftsinfo akkurat nå.",
-          })
-        }
-      })()
-    }, 250)
-
-    return () => {
-      clearTimeout(id)
-      controller.abort()
-    }
-  }, [orgnr, type])
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -135,12 +73,6 @@ export function MedlemskapForm() {
       }
     }
 
-    const org = digitsOnly(orgnr)
-    if (type === "bedrift" && org.length !== 9) {
-      setStatus({ type: "error", message: "Org.nr. må være 9 siffer." })
-      return
-    }
-
     setStatus({ type: "sending" })
     try {
       const response = await fetch("/api/medlemmer", {
@@ -148,7 +80,6 @@ export function MedlemskapForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type,
-          orgnr: type === "bedrift" ? org : undefined,
           navn,
           adresse,
           postnr,
@@ -179,8 +110,6 @@ export function MedlemskapForm() {
         router.refresh()
       }
       setStotteMerInfo(false)
-      setOrgnr("")
-      setOrgLookupStatus({ type: "idle" })
       setNavn("")
       setAdresse("")
       setPostnr("")
@@ -213,68 +142,18 @@ export function MedlemskapForm() {
           >
             Støttemedlem
           </Button>
-          <Button
-            type="button"
-            variant={type === "bedrift" ? "default" : "outline"}
-            onClick={() => velgType("bedrift")}
-          >
-            Bedriftsmedlem
-          </Button>
         </div>
       </div>
 
-      {type === "bedrift" ? (
-        <div className="rounded-xl border bg-card p-4 text-sm">
-          <div className="font-medium">Bedriftsmedlemskap – 1000 kr/år</div>
-          <p className="mt-2 text-muted-foreground">
-            Som bedriftsmedlem i OBNO viser dere støtte til bier, natur og
-            bærekraftige økosystemer.
-          </p>
-          <div className="mt-3 grid gap-1 text-muted-foreground">
-            <div>✔ Synlighet på vår nettside som støttespiller</div>
-            <div>✔ Digitalt medlemsbevis (kan brukes i markedsføring)</div>
-            <div>✔ Mulighet for samarbeid i lokale tiltak</div>
-            <div>✔ Omtale i våre kanaler</div>
-          </div>
-          <p className="mt-3 text-muted-foreground">
-            En enkel måte å bidra – med synlig verdi.
-          </p>
-        </div>
-      ) : null}
-
-      {type === "bedrift" ? (
-        <div className="space-y-2">
-          <Label htmlFor="orgnr">Org.nr.</Label>
-          <Input
-            id="orgnr"
-            name="orgnr"
-            value={orgnr}
-            onChange={(e) => {
-              setOrgLookupStatus({ type: "idle" })
-              setOrgnr(digitsOnly(e.target.value).slice(0, 9))
-            }}
-            inputMode="numeric"
-            placeholder="9 siffer"
-            required
-          />
-          {orgLookupStatus.type === "loading" ? (
-            <div className="text-xs text-muted-foreground">Henter bedriftsinfo…</div>
-          ) : null}
-          {orgLookupStatus.type === "error" ? (
-            <div className="text-xs text-destructive">{orgLookupStatus.message}</div>
-          ) : null}
-        </div>
-      ) : null}
-
       <div className="space-y-2">
-        <Label htmlFor="navn">{type === "bedrift" ? "Bedriftsnavn" : "Navn"}</Label>
+        <Label htmlFor="navn">Navn</Label>
         <Input
           id="navn"
           name="navn"
           value={navn}
           onChange={(e) => setNavn(e.target.value)}
           autoComplete="name"
-          placeholder={type === "bedrift" ? "Bedriftens navn" : "Fullt navn"}
+          placeholder="Fullt navn"
           required
         />
       </div>

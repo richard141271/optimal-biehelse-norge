@@ -110,6 +110,15 @@ export async function GET() {
     auth: { persistSession: false },
   })
 
+  const { data: roleRow } = await admin
+    .from("medlemmer")
+    .select("role")
+    .eq("epost", email)
+    .maybeSingle()
+  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
+    return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+  }
+
   const { data, error } = await admin
     .from("regnskap_poster")
     .select("id, created_at, dato, type, belop, motpart, vare, notat, bilag_path, kilde")
@@ -165,6 +174,15 @@ export async function POST(request: Request) {
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   })
+
+  const { data: roleRow } = await admin
+    .from("medlemmer")
+    .select("role")
+    .eq("epost", email)
+    .maybeSingle()
+  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
+    return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+  }
 
   let form: FormData
   try {

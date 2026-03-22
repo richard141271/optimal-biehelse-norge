@@ -72,12 +72,23 @@ export async function GET() {
     .limit(1)
     .maybeSingle()
 
-  if (!byEmail) {
-    return NextResponse.json(
-      { ok: false, feil: "Fant ingen medlemsdata for kontoen." },
-      { status: 404 }
-    )
+  if (byEmail) {
+    const byEmailRow = byEmail as { id?: string; user_id?: string | null }
+    if (!byEmailRow.user_id && byEmailRow.id) {
+      await admin
+        .from("medlemmer")
+        .update({ user_id: userId })
+        .eq("id", byEmailRow.id)
+        .is("user_id", null)
+    }
+    return NextResponse.json({ ok: true, medlem: byEmail })
   }
 
-  return NextResponse.json({ ok: true, medlem: byEmail })
+  return NextResponse.json(
+    {
+      ok: false,
+      feil: "Du er innlogget, men ikke registrert som medlem ennå. Registrer medlemskap først.",
+    },
+    { status: 404 }
+  )
 }

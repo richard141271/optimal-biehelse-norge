@@ -40,15 +40,6 @@ export default function AdminHomePage() {
             Registrer inntekter/utgifter og legg ved bilag.
           </div>
         </Link>
-        <Link
-          href="/admin/tilgang"
-          className="rounded-xl border bg-card p-5 hover:bg-muted/40"
-        >
-          <div className="text-sm font-medium">Tilgang</div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            Gi og fjern admin-rettigheter.
-          </div>
-        </Link>
       </div>
     </div>
   )

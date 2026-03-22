@@ -1,8 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
+import { useCallback, useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 
@@ -19,12 +18,13 @@ type Medlem = {
   telefon?: string | null
   kontingent_betalt_at?: string | null
   kontingent_gyldig_til?: string | null
+  role?: string | null
 }
 
 type State =
   | { type: "loading" }
   | { type: "error"; message: string; status?: number }
-  | { type: "ready"; medlemmer: Medlem[] }
+  | { type: "ready"; medlemmer: Medlem[]; count: number | null; minRolle: string | null }
 
 function formatDato(value?: string) {
   if (!value) return ""
@@ -49,40 +49,54 @@ function labelForType(type: string | null | undefined) {
   return "Medlem"
 }
 
+function labelForRole(role: string | null | undefined) {
+  if (role === "superadmin") return "Superbruker"
+  if (role === "admin") return "Admin"
+  return "—"
+}
+
 export default function AdminMedlemmerPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [state, setState] = useState<State>({ type: "loading" })
   const [query, setQuery] = useState("")
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
 
   const hent = useCallback(async () => {
-    if (!supabase) {
-      setState({
-        type: "error",
-        message: "Supabase er ikke konfigurert (mangler miljøvariabler).",
-      })
-      return
-    }
     setState({ type: "loading" })
-    const { data, error } = await supabase
-      .from("medlemmer")
-      .select(
-        "id, created_at, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til"
-      )
-      .order("created_at", { ascending: false })
-      .limit(1000)
-
-    if (error) {
+    try {
+      const res = await fetch(`/api/admin/medlemmer?ts=${Date.now()}`, {
+        cache: "no-store",
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        feil?: string
+        medlemmer?: Medlem[]
+        count?: number | null
+        minRolle?: string | null
+      }
+      if (!res.ok || !data.ok) {
+        setState({
+          type: "error",
+          message: data.feil ?? "Kunne ikke hente medlemsregister.",
+          status: res.status,
+        })
+        return
+      }
+      setState({
+        type: "ready",
+        medlemmer: data.medlemmer ?? [],
+        count: typeof data.count === "number" ? data.count : null,
+        minRolle: data.minRolle ?? null,
+      })
+    } catch {
       setState({
         type: "error",
         message:
-          "Kunne ikke hente medlemsregister. Sjekk at du er logget inn og at tilgang er satt opp i Supabase.",
+          "Kunne ikke hente medlemsregister. Sjekk nett og prøv igjen.",
       })
       return
     }
-
-    setState({ type: "ready", medlemmer: (data ?? []) as Medlem[] })
-  }, [supabase])
+  }, [])
 
   const markerKontingent = useCallback(
     async (medlemId: string, betalt: boolean) => {
@@ -105,6 +119,29 @@ export default function AdminMedlemmerPage() {
       }
     },
     [hent, savingId]
+  )
+
+  const settAdmin = useCallback(
+    async (medlemId: string, enabled: boolean) => {
+      if (savingRoleId) return
+      setSavingRoleId(medlemId)
+      try {
+        const res = await fetch("/api/admin/medlemmer", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ medlemId, role: enabled ? "admin" : "user" }),
+        })
+        const data = (await res.json()) as { feil?: string }
+        if (!res.ok) {
+          alert(data.feil ?? "Kunne ikke oppdatere tilgang.")
+          return
+        }
+        await hent()
+      } finally {
+        setSavingRoleId(null)
+      }
+    },
+    [hent, savingRoleId]
   )
 
   useEffect(() => {
@@ -141,7 +178,7 @@ export default function AdminMedlemmerPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={hent} disabled={!supabase}>
+          <Button variant="outline" onClick={hent}>
             Oppdater
           </Button>
         </div>
@@ -155,7 +192,11 @@ export default function AdminMedlemmerPage() {
           className="sm:max-w-sm"
         />
         <div className="text-sm text-muted-foreground">
-          {state.type === "ready" ? `${filtered.length} treff` : ""}
+          {state.type === "ready"
+            ? state.count === 0 || (state.medlemmer.length === 0 && !query.trim())
+              ? "0 medlemmer"
+              : `${filtered.length} treff`
+            : ""}
         </div>
       </div>
 
@@ -182,9 +223,15 @@ export default function AdminMedlemmerPage() {
       ) : null}
 
       {state.type === "ready" ? (
-        <div className="overflow-hidden rounded-xl border bg-card">
-          <div className="overflow-auto">
-            <table className="w-full text-sm">
+        <div className="space-y-3">
+          {state.count === 0 ? (
+            <div className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">
+              Medlemsregisteret er tomt.
+            </div>
+          ) : null}
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
@@ -204,6 +251,9 @@ export default function AdminMedlemmerPage() {
                   </th>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
                     E-post
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                    Rolle
                   </th>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
                     Telefon
@@ -244,6 +294,9 @@ export default function AdminMedlemmerPage() {
                     </td>
                     <td className="px-4 py-3">{m.epost ?? ""}</td>
                     <td className="whitespace-nowrap px-4 py-3">
+                      {labelForRole(m.role ?? null)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
                       {m.telefon ?? ""}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
@@ -255,33 +308,54 @@ export default function AdminMedlemmerPage() {
                         : "—"}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      {m.id ? (
-                        m.kontingent_gyldig_til ? (
-                          <Button
-                            variant="outline"
-                            onClick={() => markerKontingent(m.id as string, false)}
-                            disabled={savingId === m.id}
-                          >
-                            Marker ikke betalt
-                          </Button>
-                        ) : (
-                          <Button
-                            onClick={() => markerKontingent(m.id as string, true)}
-                            disabled={savingId === m.id}
-                          >
-                            Marker betalt
-                          </Button>
-                        )
-                      ) : (
-                        "—"
-                      )}
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {m.id ? (
+                          m.kontingent_gyldig_til ? (
+                            <Button
+                              variant="outline"
+                              onClick={() => markerKontingent(m.id as string, false)}
+                              disabled={savingId === m.id}
+                            >
+                              Marker ikke betalt
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={() => markerKontingent(m.id as string, true)}
+                              disabled={savingId === m.id}
+                            >
+                              Marker betalt
+                            </Button>
+                          )
+                        ) : null}
+                        {state.minRolle === "superadmin" &&
+                        m.id &&
+                        m.role !== "superadmin" ? (
+                          m.role === "admin" ? (
+                            <Button
+                              variant="outline"
+                              onClick={() => settAdmin(m.id as string, false)}
+                              disabled={savingRoleId === m.id}
+                            >
+                              Fjern admin
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              onClick={() => settAdmin(m.id as string, true)}
+                              disabled={savingRoleId === m.id}
+                            >
+                              Gi admin
+                            </Button>
+                          )
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {filtered.length === 0 ? (
                   <tr className="border-t">
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       className="px-4 py-6 text-center text-muted-foreground"
                     >
                       Ingen treff.
@@ -289,7 +363,8 @@ export default function AdminMedlemmerPage() {
                   </tr>
                 ) : null}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         </div>
       ) : null}
