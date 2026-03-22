@@ -73,9 +73,9 @@ export async function POST(request: Request) {
   const telefon = digitsOnly((payload.telefon ?? "").trim())
   const passord = (payload.passord ?? "").trim()
 
-  if (!passord || passord.length < 8 || passord.length > 200) {
+  if (!passord || passord.length < 6 || passord.length > 200) {
     return NextResponse.json(
-      { ok: false, feil: "Passord må være minst 8 tegn." },
+      { ok: false, feil: "Passord må være minst 6 tegn." },
       { status: 400 }
     )
   }

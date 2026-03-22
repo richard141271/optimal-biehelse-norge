@@ -277,8 +277,8 @@ export default function MinSidePage() {
     const pass1 = nyttPassord.trim()
     const pass2 = nyttPassord2.trim()
     if (pass1 || pass2) {
-      if (pass1.length < 8) {
-        setRedigerStatus({ type: "error", message: "Passord må være minst 8 tegn." })
+      if (pass1.length < 6) {
+        setRedigerStatus({ type: "error", message: "Passord må være minst 6 tegn." })
         return
       }
       if (pass1 !== pass2) {

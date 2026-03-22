@@ -51,8 +51,8 @@ export function MedlemskapForm() {
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (passord.trim().length < 8) {
-      setStatus({ type: "error", message: "Passord må være minst 8 tegn." })
+    if (passord.trim().length < 6) {
+      setStatus({ type: "error", message: "Passord må være minst 6 tegn." })
       return
     }
     if (passord !== passord2) {
