@@ -231,7 +231,7 @@ export default function AdminMedlemmerPage() {
           ) : null}
           <div className="overflow-hidden rounded-xl border bg-card">
             <div className="overflow-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[1200px] text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
@@ -294,7 +294,27 @@ export default function AdminMedlemmerPage() {
                     </td>
                     <td className="px-4 py-3">{m.epost ?? ""}</td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      {labelForRole(m.role ?? null)}
+                      {m.role === "superadmin" ? (
+                        labelForRole(m.role ?? null)
+                      ) : (
+                        <label className="inline-flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-foreground"
+                            checked={m.role === "admin"}
+                            disabled={
+                              state.minRolle !== "superadmin" ||
+                              !m.id ||
+                              savingRoleId === m.id
+                            }
+                            onChange={(e) => {
+                              if (!m.id) return
+                              void settAdmin(m.id, e.target.checked)
+                            }}
+                          />
+                          <span>{labelForRole(m.role ?? null)}</span>
+                        </label>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       {m.telefon ?? ""}
@@ -324,27 +344,6 @@ export default function AdminMedlemmerPage() {
                               disabled={savingId === m.id}
                             >
                               Marker betalt
-                            </Button>
-                          )
-                        ) : null}
-                        {state.minRolle === "superadmin" &&
-                        m.id &&
-                        m.role !== "superadmin" ? (
-                          m.role === "admin" ? (
-                            <Button
-                              variant="outline"
-                              onClick={() => settAdmin(m.id as string, false)}
-                              disabled={savingRoleId === m.id}
-                            >
-                              Fjern admin
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              onClick={() => settAdmin(m.id as string, true)}
-                              disabled={savingRoleId === m.id}
-                            >
-                              Gi admin
                             </Button>
                           )
                         ) : null}

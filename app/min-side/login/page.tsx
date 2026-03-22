@@ -14,6 +14,17 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
+function getRedirectTo() {
+  try {
+    const url = new URL(window.location.href)
+    const next = url.searchParams.get("next")
+    if (next && next.startsWith("/")) return next
+    return "/min-side"
+  } catch {
+    return "/min-side"
+  }
+}
+
 export default function MinSideLoginPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [epost, setEpost] = useState("")
@@ -22,24 +33,6 @@ export default function MinSideLoginPage() {
   const [feil, setFeil] = useState<string | null>(null)
   const epostRef = useRef<HTMLInputElement | null>(null)
   const passordRef = useRef<HTMLInputElement | null>(null)
-
-  async function sjekkAdminOgRedirect() {
-    try {
-      const res = await fetch("/api/admin/me", { cache: "no-store" })
-      const data = (await res.json()) as {
-        ok?: boolean
-        feil?: string
-        role?: string | null
-      }
-      if (res.ok && data.ok && (data.role === "admin" || data.role === "superadmin")) {
-        window.location.href = "/admin"
-        return
-      }
-      setFeil(data.feil ?? "Du har ikke tilgang til admin.")
-    } catch {
-      setFeil("Kunne ikke sjekke admin-tilgang.")
-    }
-  }
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -50,7 +43,7 @@ export default function MinSideLoginPage() {
           setEpost(epostRef.current?.value ?? "")
           setPassord(passordRef.current?.value ?? "")
           const { data } = await sb.auth.getSession()
-          if (data.session) await sjekkAdminOgRedirect()
+          if (data.session) window.location.href = getRedirectTo()
         } catch {}
       })()
     }, 0)
@@ -94,7 +87,7 @@ export default function MinSideLoginPage() {
         return
       }
 
-      await sjekkAdminOgRedirect()
+      window.location.href = getRedirectTo()
     } catch {
       setFeil("Innlogging tok for lang tid. Prøv igjen.")
     } finally {
