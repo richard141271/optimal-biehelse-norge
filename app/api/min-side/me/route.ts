@@ -3,16 +3,15 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
 
-export async function GET() {
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+async function getAuth() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
   if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.json(
-      { ok: false, feil: "Supabase er ikke konfigurert." },
-      { status: 500 }
-    )
+    return { ok: false as const, status: 500 as const, feil: "Supabase er ikke konfigurert." }
   }
 
   const cookieStore = await cookies()
@@ -34,10 +33,24 @@ export async function GET() {
   } = await supabase.auth.getUser()
 
   const userId = user?.id ?? null
-  const email = (user?.email ?? "").trim().toLowerCase()
-  if (!userId || !email) {
-    return NextResponse.json({ ok: false }, { status: 401 })
+  const email = String(user?.email ?? "").trim().toLowerCase()
+  if (!userId || !email || !isValidEmail(email)) {
+    return { ok: false as const, status: 401 as const, feil: "Ikke innlogget." }
   }
+
+  return { ok: true as const, userId, email, supabaseUrl }
+}
+
+function selectMedlem() {
+  return "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til"
+}
+
+export async function GET() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  const auth = await getAuth()
+  if (!auth.ok) return NextResponse.json({ ok: false, feil: auth.feil }, { status: auth.status })
+  const { userId, email, supabaseUrl } = auth
 
   if (!serviceRoleKey) {
     return NextResponse.json(
@@ -52,9 +65,7 @@ export async function GET() {
 
   const { data: byUserId } = await admin
     .from("medlemmer")
-    .select(
-      "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til"
-    )
+    .select(selectMedlem())
     .eq("user_id", userId)
     .maybeSingle()
 
@@ -64,9 +75,7 @@ export async function GET() {
 
   const { data: byEmail } = await admin
     .from("medlemmer")
-    .select(
-      "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til"
-    )
+    .select(selectMedlem())
     .eq("epost", email)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -91,4 +100,85 @@ export async function GET() {
     },
     { status: 404 }
   )
+}
+
+export async function PATCH(request: Request) {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const auth = await getAuth()
+  if (!auth.ok) return NextResponse.json({ ok: false, feil: auth.feil }, { status: auth.status })
+  const { userId, supabaseUrl } = auth
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { ok: false, feil: "Medlemsoppslag er ikke konfigurert." },
+      { status: 500 }
+    )
+  }
+
+  let payload: {
+    navn?: string
+    telefon?: string | null
+    adresse?: string | null
+    postnr?: string | null
+    sted?: string | null
+  }
+  try {
+    payload = (await request.json()) as {
+      navn?: string
+      telefon?: string | null
+      adresse?: string | null
+      postnr?: string | null
+      sted?: string | null
+    }
+  } catch {
+    return NextResponse.json({ ok: false, feil: "Ugyldig JSON." }, { status: 400 })
+  }
+
+  const navn = payload.navn != null ? String(payload.navn).trim() : ""
+  if (!navn) {
+    return NextResponse.json({ ok: false, feil: "Navn kan ikke være tomt." }, { status: 400 })
+  }
+  if (navn.length > 120) {
+    return NextResponse.json({ ok: false, feil: "Navn er for langt." }, { status: 400 })
+  }
+
+  const normalize = (v: unknown) => {
+    if (v === null || v === undefined) return null
+    const s = String(v).trim()
+    return s ? s : null
+  }
+
+  const update = {
+    navn,
+    telefon: normalize(payload.telefon),
+    adresse: normalize(payload.adresse),
+    postnr: normalize(payload.postnr),
+    sted: normalize(payload.sted),
+  }
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  })
+
+  const { data, error } = await admin
+    .from("medlemmer")
+    .update(update)
+    .eq("user_id", userId)
+    .select(selectMedlem())
+    .maybeSingle()
+
+  if (error) {
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke lagre opplysninger." },
+      { status: 400 }
+    )
+  }
+  if (!data) {
+    return NextResponse.json(
+      { ok: false, feil: "Fant ikke medlemsrad å oppdatere." },
+      { status: 404 }
+    )
+  }
+
+  return NextResponse.json({ ok: true, medlem: data })
 }

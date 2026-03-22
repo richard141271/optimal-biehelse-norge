@@ -262,19 +262,21 @@ export default function AdminMedlemmerPage() {
                     Rydd testdata og start medlemsnummer på nytt fra 1000.
                   </div>
                 </div>
-                <Button
-                  variant="destructive"
-                  onClick={slettAndreMedlemmer}
-                  disabled={purging}
-                >
-                  {purging ? "Sletter…" : "Slett alle andre medlemmer"}
-                </Button>
+                {state.medlemmer.length > 1 ? (
+                  <Button
+                    variant="destructive"
+                    onClick={slettAndreMedlemmer}
+                    disabled={purging}
+                  >
+                    {purging ? "Sletter…" : "Slett alle andre medlemmer"}
+                  </Button>
+                ) : null}
               </div>
             </div>
           ) : null}
-          <div className="overflow-hidden rounded-xl border bg-card">
-            <div className="overflow-auto">
-              <table className="w-full min-w-[1600px] text-sm">
+          <div className="rounded-xl border bg-card">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
@@ -289,7 +291,7 @@ export default function AdminMedlemmerPage() {
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
                     Navn
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="hidden whitespace-nowrap px-4 py-3 text-left font-medium lg:table-cell">
                     Adresse
                   </th>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
@@ -298,16 +300,16 @@ export default function AdminMedlemmerPage() {
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
                     Rolle
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="hidden whitespace-nowrap px-4 py-3 text-left font-medium lg:table-cell">
                     Telefon
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="hidden whitespace-nowrap px-4 py-3 text-left font-medium xl:table-cell">
                     Kontingent
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="hidden whitespace-nowrap px-4 py-3 text-left font-medium xl:table-cell">
                     Gyldig til
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right font-medium">
+                  <th className="hidden whitespace-nowrap px-4 py-3 text-right font-medium xl:table-cell">
                     Handling
                   </th>
                 </tr>
@@ -328,7 +330,7 @@ export default function AdminMedlemmerPage() {
                       {labelForType(m.medlemskap_type ?? null)}
                     </td>
                     <td className="px-4 py-3">{m.navn ?? ""}</td>
-                    <td className="px-4 py-3">
+                    <td className="hidden px-4 py-3 lg:table-cell">
                       {[m.adresse ?? null, [m.postnr ?? null, m.sted ?? null]
                         .filter(Boolean)
                         .join(" ")]
@@ -359,18 +361,18 @@ export default function AdminMedlemmerPage() {
                         </label>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="hidden whitespace-nowrap px-4 py-3 lg:table-cell">
                       {m.telefon ?? ""}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="hidden whitespace-nowrap px-4 py-3 xl:table-cell">
                       {prisForType(m.medlemskap_type ?? null)} kr / år
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="hidden whitespace-nowrap px-4 py-3 xl:table-cell">
                       {m.kontingent_gyldig_til
                         ? formatDato(m.kontingent_gyldig_til)
                         : "—"}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                    <td className="hidden whitespace-nowrap px-4 py-3 text-right xl:table-cell">
                       <div className="flex flex-wrap justify-end gap-2">
                         {m.id ? (
                           m.kontingent_gyldig_til ? (
@@ -397,7 +399,7 @@ export default function AdminMedlemmerPage() {
                 {filtered.length === 0 ? (
                   <tr className="border-t">
                     <td
-                      colSpan={11}
+                      colSpan={7}
                       className="px-4 py-6 text-center text-muted-foreground"
                     >
                       Ingen treff.

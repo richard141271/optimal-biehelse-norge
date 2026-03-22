@@ -95,6 +95,21 @@ export default function MinSidePage() {
     type: "loading",
   })
 
+  const [redigerOpen, setRedigerOpen] = useState(false)
+  const [redigerNavn, setRedigerNavn] = useState("")
+  const [redigerTelefon, setRedigerTelefon] = useState("")
+  const [redigerAdresse, setRedigerAdresse] = useState("")
+  const [redigerPostnr, setRedigerPostnr] = useState("")
+  const [redigerSted, setRedigerSted] = useState("")
+  const [nyttPassord, setNyttPassord] = useState("")
+  const [nyttPassord2, setNyttPassord2] = useState("")
+  const [redigerStatus, setRedigerStatus] = useState<
+    | { type: "idle" }
+    | { type: "saving" }
+    | { type: "success"; message: string }
+    | { type: "error"; message: string }
+  >({ type: "idle" })
+
   const [medlemsnummer, setMedlemsnummer] = useState("")
   const [navn, setNavn] = useState("")
   const [epost, setEpost] = useState("")
@@ -240,6 +255,76 @@ export default function MinSidePage() {
   const pris = prisForType(medlem.medlemskap_type ?? null)
   const typeLabel = labelForType(medlem.medlemskap_type ?? null)
 
+  function åpneRedigering() {
+    setRedigerNavn(String(medlem.navn ?? ""))
+    setRedigerTelefon(String(medlem.telefon ?? ""))
+    setRedigerAdresse(String(medlem.adresse ?? ""))
+    setRedigerPostnr(String(medlem.postnr ?? ""))
+    setRedigerSted(String(medlem.sted ?? ""))
+    setNyttPassord("")
+    setNyttPassord2("")
+    setRedigerStatus({ type: "idle" })
+    setRedigerOpen(true)
+  }
+
+  async function lagreRedigering() {
+    if (!supabase) return
+    const navnTrim = redigerNavn.trim()
+    if (!navnTrim) {
+      setRedigerStatus({ type: "error", message: "Navn kan ikke være tomt." })
+      return
+    }
+    const pass1 = nyttPassord.trim()
+    const pass2 = nyttPassord2.trim()
+    if (pass1 || pass2) {
+      if (pass1.length < 8) {
+        setRedigerStatus({ type: "error", message: "Passord må være minst 8 tegn." })
+        return
+      }
+      if (pass1 !== pass2) {
+        setRedigerStatus({ type: "error", message: "Passordene er ikke like." })
+        return
+      }
+    }
+
+    setRedigerStatus({ type: "saving" })
+    try {
+      const res = await fetch("/api/min-side/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          navn: navnTrim,
+          telefon: redigerTelefon.trim() || null,
+          adresse: redigerAdresse.trim() || null,
+          postnr: redigerPostnr.trim() || null,
+          sted: redigerSted.trim() || null,
+        }),
+      })
+      const data = (await res.json()) as { ok?: boolean; feil?: string; medlem?: Medlem }
+      if (!res.ok || !data.ok || !data.medlem) {
+        setRedigerStatus({ type: "error", message: data.feil ?? "Kunne ikke lagre opplysninger." })
+        return
+      }
+
+      setState({ type: "ready", medlem: data.medlem })
+      setNavn(navnTrim)
+      setTelefon(String(data.medlem.telefon ?? ""))
+
+      if (pass1) {
+        const { error } = await supabase.auth.updateUser({ password: pass1 })
+        if (error) {
+          setRedigerStatus({ type: "error", message: "Opplysninger lagret, men passord kunne ikke endres." })
+          return
+        }
+      }
+
+      setRedigerStatus({ type: "success", message: "Opplysninger lagret." })
+      setTimeout(() => setRedigerOpen(false), 500)
+    } catch {
+      setRedigerStatus({ type: "error", message: "Noe gikk galt. Prøv igjen." })
+    }
+  }
+
   async function sendProsjekt(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSendStatus({ type: "sending" })
@@ -329,42 +414,157 @@ export default function MinSidePage() {
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border bg-card p-6">
           <h2 className="text-lg font-semibold">Medlemsinfo</h2>
-          <dl className="mt-4 grid gap-3 text-sm">
-            <div className="flex items-start justify-between gap-4 border-b pb-3">
-              <dt className="text-muted-foreground">Navn</dt>
-              <dd className="text-right">{medlem.navn || "—"}</dd>
+          {redigerOpen ? (
+            <div className="mt-4 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="rediger_navn">Navn</Label>
+                  <Input
+                    id="rediger_navn"
+                    value={redigerNavn}
+                    onChange={(e) => setRedigerNavn(e.target.value)}
+                    autoComplete="name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rediger_telefon">Telefon</Label>
+                  <Input
+                    id="rediger_telefon"
+                    value={redigerTelefon}
+                    onChange={(e) => setRedigerTelefon(e.target.value)}
+                    autoComplete="tel"
+                    inputMode="tel"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rediger_adresse">Adresse</Label>
+                <Input
+                  id="rediger_adresse"
+                  value={redigerAdresse}
+                  onChange={(e) => setRedigerAdresse(e.target.value)}
+                  autoComplete="street-address"
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="rediger_postnr">Postnr</Label>
+                  <Input
+                    id="rediger_postnr"
+                    value={redigerPostnr}
+                    onChange={(e) => setRedigerPostnr(e.target.value)}
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rediger_sted">Sted</Label>
+                  <Input
+                    id="rediger_sted"
+                    value={redigerSted}
+                    onChange={(e) => setRedigerSted(e.target.value)}
+                    autoComplete="address-level2"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="nytt_passord">Nytt passord</Label>
+                  <Input
+                    id="nytt_passord"
+                    type="password"
+                    value={nyttPassord}
+                    onChange={(e) => setNyttPassord(e.target.value)}
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nytt_passord_2">Gjenta passord</Label>
+                  <Input
+                    id="nytt_passord_2"
+                    type="password"
+                    value={nyttPassord2}
+                    onChange={(e) => setNyttPassord2(e.target.value)}
+                    autoComplete="new-password"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm">
+                  {redigerStatus.type === "error" ? (
+                    <span className="text-destructive">{redigerStatus.message}</span>
+                  ) : redigerStatus.type === "success" ? (
+                    <span className="text-foreground">{redigerStatus.message}</span>
+                  ) : null}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setRedigerOpen(false)
+                      setRedigerStatus({ type: "idle" })
+                    }}
+                    disabled={redigerStatus.type === "saving"}
+                  >
+                    Avbryt
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={lagreRedigering}
+                    disabled={redigerStatus.type === "saving"}
+                  >
+                    {redigerStatus.type === "saving" ? "Lagrer…" : "Lagre"}
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="flex items-start justify-between gap-4 border-b pb-3">
-              <dt className="text-muted-foreground">E-post</dt>
-              <dd className="text-right">{medlem.epost || "—"}</dd>
-            </div>
-            <div className="flex items-start justify-between gap-4 border-b pb-3">
-              <dt className="text-muted-foreground">Telefon</dt>
-              <dd className="text-right">{medlem.telefon || "—"}</dd>
-            </div>
-            <div className="flex items-start justify-between gap-4 border-b pb-3">
-              <dt className="text-muted-foreground">Adresse</dt>
-              <dd className="text-right">
-                {medlem.adresse
-                  ? `${medlem.adresse}${medlem.postnr || medlem.sted ? ", " : ""}${[
-                      medlem.postnr,
-                      medlem.sted,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}`
-                  : "—"}
-              </dd>
-            </div>
-            <div className="flex items-start justify-between gap-4">
-              <dt className="text-muted-foreground">Medlemskap</dt>
-              <dd className="text-right">
-                <div>{typeLabel}</div>
-                {isAdmin ? (
-                  <div className="text-xs text-muted-foreground">Administrator</div>
-                ) : null}
-              </dd>
-            </div>
-          </dl>
+          ) : (
+            <>
+              <dl className="mt-4 grid gap-3 text-sm">
+                <div className="flex items-start justify-between gap-4 border-b pb-3">
+                  <dt className="text-muted-foreground">Navn</dt>
+                  <dd className="text-right">{medlem.navn || "—"}</dd>
+                </div>
+                <div className="flex items-start justify-between gap-4 border-b pb-3">
+                  <dt className="text-muted-foreground">E-post</dt>
+                  <dd className="text-right">{medlem.epost || "—"}</dd>
+                </div>
+                <div className="flex items-start justify-between gap-4 border-b pb-3">
+                  <dt className="text-muted-foreground">Telefon</dt>
+                  <dd className="text-right">{medlem.telefon || "—"}</dd>
+                </div>
+                <div className="flex items-start justify-between gap-4 border-b pb-3">
+                  <dt className="text-muted-foreground">Adresse</dt>
+                  <dd className="text-right">
+                    {medlem.adresse
+                      ? `${medlem.adresse}${medlem.postnr || medlem.sted ? ", " : ""}${[
+                          medlem.postnr,
+                          medlem.sted,
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}`
+                      : "—"}
+                  </dd>
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <dt className="text-muted-foreground">Medlemskap</dt>
+                  <dd className="text-right">
+                    <div>{typeLabel}</div>
+                    {isAdmin ? (
+                      <div className="text-xs text-muted-foreground">Administrator</div>
+                    ) : null}
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-4 flex justify-end">
+                <Button type="button" variant="outline" onClick={åpneRedigering}>
+                  Rediger opplysninger
+                </Button>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="rounded-2xl border bg-card p-6">
