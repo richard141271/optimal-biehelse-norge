@@ -60,6 +60,7 @@ export default function AdminMedlemmerPage() {
   const [query, setQuery] = useState("")
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
+  const [purging, setPurging] = useState(false)
 
   const hent = useCallback(async () => {
     setState({ type: "loading" })
@@ -143,6 +144,27 @@ export default function AdminMedlemmerPage() {
     },
     [hent, savingRoleId]
   )
+
+  const slettAndreMedlemmer = useCallback(async () => {
+    if (purging) return
+    const ok = window.confirm(
+      "Dette sletter ALLE andre medlemmer og brukerkontoer (test/feilregistreringer). Kun superbruker blir stående. Fortsette?"
+    )
+    if (!ok) return
+    setPurging(true)
+    try {
+      const res = await fetch("/api/admin/medlemmer", { method: "DELETE" })
+      const data = (await res.json()) as { ok?: boolean; feil?: string; slettet?: number }
+      if (!res.ok || !data.ok) {
+        alert(data.feil ?? "Kunne ikke slette medlemmer.")
+        return
+      }
+      await hent()
+      alert(`Slettet ${Number(data.slettet ?? 0)} medlemmer.`)
+    } finally {
+      setPurging(false)
+    }
+  }, [hent, purging])
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -229,9 +251,28 @@ export default function AdminMedlemmerPage() {
               Medlemsregisteret er tomt.
             </div>
           ) : null}
+          {state.minRolle === "superadmin" ? (
+            <div className="rounded-xl border bg-card p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-medium">Verktøy</div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    Rydd testdata og start medlemsnummer på nytt fra 1000.
+                  </div>
+                </div>
+                <Button
+                  variant="destructive"
+                  onClick={slettAndreMedlemmer}
+                  disabled={purging}
+                >
+                  {purging ? "Sletter…" : "Slett alle andre medlemmer"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <div className="overflow-hidden rounded-xl border bg-card">
             <div className="overflow-auto">
-              <table className="w-full min-w-[1200px] text-sm">
+              <table className="w-full min-w-[1400px] text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">

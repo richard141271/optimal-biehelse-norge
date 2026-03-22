@@ -133,7 +133,12 @@ export async function PATCH(request: Request) {
   const medlemId = String(payload.medlemId ?? "").trim()
   const role = String(payload.role ?? "").trim()
 
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(medlemId)) {
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      medlemId
+    )
+  const isNumericId = /^\d+$/.test(medlemId)
+  if (!medlemId || (!isUuid && !isNumericId)) {
     return NextResponse.json(
       { ok: false, feil: "Ugyldig medlem-id." },
       { status: 400 }
@@ -147,10 +152,12 @@ export async function PATCH(request: Request) {
     )
   }
 
+  const medlemIdValue = isNumericId ? Number(medlemId) : medlemId
+
   const { data: target, error: targetError } = await gate.admin
     .from("medlemmer")
     .select("id, role, epost")
-    .eq("id", medlemId)
+    .eq("id", medlemIdValue)
     .maybeSingle()
 
   if (targetError) {
@@ -177,7 +184,7 @@ export async function PATCH(request: Request) {
   const { error: updateError } = await gate.admin
     .from("medlemmer")
     .update({ role })
-    .eq("id", medlemId)
+    .eq("id", medlemIdValue)
 
   if (updateError) {
     const msg = String((updateError as { message?: string } | null)?.message ?? "")
@@ -198,4 +205,86 @@ export async function PATCH(request: Request) {
   }
 
   return NextResponse.json({ ok: true })
+}
+
+export async function DELETE() {
+  const gate = await requireAdmin()
+  if (!gate.ok) {
+    return NextResponse.json({ ok: false }, { status: gate.status })
+  }
+
+  if (gate.role !== "superadmin") {
+    return NextResponse.json(
+      { ok: false, feil: "Kun superbruker kan slette medlemmer." },
+      { status: 403 }
+    )
+  }
+
+  const { data: keep, error: keepError } = await gate.admin
+    .from("medlemmer")
+    .select("id, user_id, medlemsnummer, role, epost")
+    .eq("epost", gate.email)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (keepError) {
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke hente superbruker." },
+      { status: 400 }
+    )
+  }
+
+  if (!keep?.id) {
+    return NextResponse.json(
+      { ok: false, feil: "Fant ikke superbruker i medlemsregisteret." },
+      { status: 404 }
+    )
+  }
+
+  const keepId = keep.id as unknown as string | number
+
+  const { data: others, error: othersError } = await gate.admin
+    .from("medlemmer")
+    .select("id, user_id")
+    .neq("id", keepId)
+    .limit(5000)
+
+  if (othersError) {
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke hente medlemmer som skal slettes." },
+      { status: 400 }
+    )
+  }
+
+  const { error: deleteError } = await gate.admin
+    .from("medlemmer")
+    .delete()
+    .neq("id", keepId)
+
+  if (deleteError) {
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke slette medlemmer." },
+      { status: 400 }
+    )
+  }
+
+  const userIds = (others ?? [])
+    .map((r) => (r as { user_id?: string | null } | null)?.user_id ?? null)
+    .filter((v): v is string => Boolean(v))
+
+  for (const uid of userIds) {
+    try {
+      await gate.admin.auth.admin.deleteUser(uid)
+    } catch {}
+  }
+
+  if (keep.medlemsnummer !== 1000) {
+    await gate.admin
+      .from("medlemmer")
+      .update({ medlemsnummer: 1000 })
+      .eq("id", keepId)
+  }
+
+  return NextResponse.json({ ok: true, slettet: (others ?? []).length })
 }
