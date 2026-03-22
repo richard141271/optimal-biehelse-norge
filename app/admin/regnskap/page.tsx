@@ -146,11 +146,48 @@ function extractItem(text: string) {
   return ""
 }
 
+type InntektMal = {
+  id: string
+  label: string
+  vare: string
+  belop?: string
+}
+
+const builtinInntekter: InntektMal[] = [
+  { id: "medlemsavgift", label: "Medlemsavgift (100)", vare: "Medlemsavgift", belop: "100" },
+  { id: "stotte", label: "Støttemedlem (300)", vare: "Støttemedlem", belop: "300" },
+  { id: "bedrift", label: "Bedriftsmedlem (1000)", vare: "Bedriftsmedlem", belop: "1000" },
+  { id: "sponsor", label: "Sponsor", vare: "Sponsor" },
+  { id: "stotte2", label: "Støtte", vare: "Støtte" },
+  { id: "loddsalg", label: "Loddsalg", vare: "Loddsalg" },
+  { id: "salg", label: "Vare/tjeneste", vare: "Vare/tjeneste" },
+  { id: "donasjon", label: "Donasjon", vare: "Donasjon" },
+]
+
+function normalizeId(text: string) {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40)
+}
+
 export default function AdminRegnskapPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [saving, setSaving] = useState(false)
   const [ocrLoading, setOcrLoading] = useState(false)
   const [showNew, setShowNew] = useState(false)
+  const [newMode, setNewMode] = useState<null | "utgift" | "inntekt">(null)
+  const [motpartOptions, setMotpartOptions] = useState<string[]>([])
+  const [inntektMaler, setInntektMaler] = useState<InntektMal[]>([])
+  const [kontoNr, setKontoNr] = useState("")
+  const [saldo, setSaldo] = useState("")
+  const [filterQuery, setFilterQuery] = useState("")
+  const [filterType, setFilterType] = useState<"alle" | "inntekt" | "utgift">(
+    "alle"
+  )
   const [form, setForm] = useState<FormState>({
     type: "utgift",
     dato: todayIso(),
@@ -185,6 +222,20 @@ export default function AdminRegnskapPage() {
   }, [])
 
   useEffect(() => {
+    try {
+      const k = localStorage.getItem("obno.regnskap.kontonr")
+      const s = localStorage.getItem("obno.regnskap.saldo")
+      const m = localStorage.getItem("obno.regnskap.inntektMaler")
+      if (k) setKontoNr(k)
+      if (s) setSaldo(s)
+      if (m) {
+        const parsed = JSON.parse(m) as InntektMal[]
+        if (Array.isArray(parsed)) setInntektMaler(parsed)
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
     const id = setTimeout(() => {
       void hent()
     }, 0)
@@ -192,10 +243,185 @@ export default function AdminRegnskapPage() {
   }, [hent])
 
   useEffect(() => {
+    if (state.type !== "ready") return
+    const fraPoster = Array.from(
+      new Set(
+        state.poster
+          .map((p) => String(p.motpart ?? "").trim())
+          .filter(Boolean)
+          .slice(0, 500)
+      )
+    )
+
+    const id = setTimeout(() => {
+      ;(async () => {
+        try {
+          const res = await fetch(`/api/admin/medlemmer?ts=${Date.now()}`, { cache: "no-store" })
+          const data = (await res.json()) as { ok?: boolean; medlemmer?: Array<{ navn?: string | null }> }
+          const fraMedlemmer = Array.isArray(data.medlemmer)
+            ? Array.from(
+                new Set(
+                  data.medlemmer
+                    .map((m) => String(m.navn ?? "").trim())
+                    .filter(Boolean)
+                )
+              )
+            : []
+          setMotpartOptions(Array.from(new Set([...fraMedlemmer, ...fraPoster])).slice(0, 800))
+        } catch {
+          setMotpartOptions(fraPoster)
+        }
+      })()
+    }, 0)
+
+    return () => clearTimeout(id)
+  }, [state])
+
+  useEffect(() => {
     return () => {
       if (form.bilagPreviewUrl) URL.revokeObjectURL(form.bilagPreviewUrl)
     }
   }, [form.bilagPreviewUrl])
+
+  function sumInntekterUtgifter(poster: RegnskapPost[]) {
+    let inn = 0
+    let ut = 0
+    for (const p of poster) {
+      const bel = typeof p.belop === "number" ? p.belop : Number(String(p.belop ?? "").replace(",", "."))
+      if (!Number.isFinite(bel)) continue
+      if (p.type === "inntekt") inn += bel
+      if (p.type === "utgift") ut += bel
+    }
+    return { inn, ut, resultat: inn - ut }
+  }
+
+  const filtrertePoster =
+    state.type === "ready"
+      ? state.poster.filter((p) => {
+          if (filterType !== "alle" && p.type !== filterType) return false
+          const q = filterQuery.trim().toLowerCase()
+          if (!q) return true
+          const dato = formatDato(p.dato ?? p.created_at) || ""
+          const hay = [
+            String(p.type ?? ""),
+            String(p.belop ?? ""),
+            String(p.motpart ?? ""),
+            String(p.vare ?? ""),
+            String(p.notat ?? ""),
+            dato,
+          ]
+            .join(" ")
+            .toLowerCase()
+          return hay.includes(q)
+        })
+      : []
+
+  function resetFilter() {
+    setFilterQuery("")
+    setFilterType("alle")
+  }
+
+  function apneBudsjett() {
+    alert("Budsjett kommer. Foreløpig er dette kun en plassholder i toppmenyen.")
+  }
+
+  function apneLokallag() {
+    alert("Lokallagsrapporter kommer. Foreløpig er dette kun en plassholder i toppmenyen.")
+  }
+
+  function lastNedPdf() {
+    if (state.type !== "ready") return
+    const { inn, ut, resultat } = sumInntekterUtgifter(state.poster)
+    const rows = state.poster
+      .map((p) => {
+        const dato = formatDato(p.dato ?? p.created_at) || ""
+        const type = String(p.type ?? "")
+        const belop = formatBelop(p.belop) || ""
+        const motpart = String(p.motpart ?? "")
+        const vare = String(p.vare ?? "")
+        return `<tr><td>${dato}</td><td>${type}</td><td style="text-align:right;">${belop}</td><td>${motpart}</td><td>${vare}</td></tr>`
+      })
+      .join("")
+
+    const html = `<!doctype html>
+<html lang="nb">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Regnskap</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 24px; color: #111; }
+    h1 { margin: 0 0 6px; font-size: 18px; }
+    .meta { margin: 0 0 16px; color: #555; font-size: 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 12px 0 16px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 10px; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid #eee; padding: 8px 6px; vertical-align: top; }
+    th { text-align: left; color: #555; background: #fafafa; border-top: 1px solid #eee; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <h1>Regnskap</h1>
+  <p class="meta">Oppdatert: ${formatDato(new Date().toISOString())}</p>
+  <div class="grid">
+    <div class="card"><div style="color:#555">Kontonummer</div><div style="font-weight:600">${kontoNr || "—"}</div></div>
+    <div class="card"><div style="color:#555">Saldo</div><div style="font-weight:600">${saldo || "—"}</div></div>
+    <div class="card"><div style="color:#555">Resultat</div><div style="font-weight:600">${new Intl.NumberFormat("nb-NO", { style: "currency", currency: "NOK" }).format(resultat)}</div></div>
+    <div class="card"><div style="color:#555">Sum inntekter</div><div style="font-weight:600">${new Intl.NumberFormat("nb-NO", { style: "currency", currency: "NOK" }).format(inn)}</div></div>
+    <div class="card"><div style="color:#555">Sum utgifter</div><div style="font-weight:600">${new Intl.NumberFormat("nb-NO", { style: "currency", currency: "NOK" }).format(ut)}</div></div>
+    <div class="card"><div style="color:#555">Antall poster</div><div style="font-weight:600">${state.poster.length}</div></div>
+  </div>
+  <table>
+    <thead>
+      <tr><th>Dato</th><th>Type</th><th style="text-align:right;">Beløp</th><th>Butikk / firma</th><th>Vare / tjeneste</th></tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <script>window.print();</script>
+</body>
+</html>`
+
+    const w = window.open("", "_blank", "noopener,noreferrer")
+    if (!w) return
+    w.document.open()
+    w.document.write(html)
+    w.document.close()
+  }
+
+  function velgMode(mode: "utgift" | "inntekt") {
+    setNewMode(mode)
+    setForm((p) => ({ ...p, type: mode }))
+  }
+
+  function applyInntektMal(mal: InntektMal) {
+    setForm((p) => ({
+      ...p,
+      type: "inntekt",
+      vare: p.vare || mal.vare,
+      belop: p.belop || (mal.belop ?? ""),
+    }))
+    setNewMode("inntekt")
+  }
+
+  function lagreSomInntektMal() {
+    const vare = form.vare.trim()
+    const belop = form.belop.trim()
+    if (!vare) {
+      alert("Skriv inn vare / tjeneste før du lagrer mal.")
+      return
+    }
+    const id = `custom-${normalizeId(vare)}-${normalizeId(belop || "x")}`
+    const label = belop ? `${vare} (${belop})` : vare
+    const next: InntektMal[] = [
+      { id, label, vare, belop: belop || undefined },
+      ...inntektMaler.filter((m) => m.id !== id),
+    ].slice(0, 20)
+    setInntektMaler(next)
+    try {
+      localStorage.setItem("obno.regnskap.inntektMaler", JSON.stringify(next))
+    } catch {}
+  }
 
   async function velgBilag(file: File | null) {
     setForm((prev) => {
@@ -286,6 +512,7 @@ export default function AdminRegnskapPage() {
       }
 
       setShowNew(false)
+      setNewMode(null)
       setForm({
         type: "utgift",
         dato: todayIso(),
@@ -311,10 +538,72 @@ export default function AdminRegnskapPage() {
           <p className="text-muted-foreground">
             Inntekter, utgifter og bilag.
           </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+            <Input
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              placeholder="Søk i regnskap (beløp, motpart, vare, notat…)"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={filterType === "alle" ? "default" : "outline"}
+                onClick={() => setFilterType("alle")}
+              >
+                Alle
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={filterType === "inntekt" ? "default" : "outline"}
+                onClick={() => setFilterType("inntekt")}
+              >
+                Inntekter
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={filterType === "utgift" ? "default" : "outline"}
+                onClick={() => setFilterType("utgift")}
+              >
+                Utgifter
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={resetFilter}
+                disabled={!filterQuery.trim() && filterType === "alle"}
+              >
+                Tøm
+              </Button>
+            </div>
+          </div>
+          {state.type === "ready" ? (
+            <div className="mt-1 text-sm text-muted-foreground">
+              Viser {filtrertePoster.length} av {state.poster.length}
+            </div>
+          ) : null}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={hent}>
             Oppdater
+          </Button>
+          <Button variant="outline" onClick={lastNedPdf} disabled={state.type !== "ready"}>
+            Last ned PDF
+          </Button>
+          <Button
+            variant="outline"
+            onClick={apneBudsjett}
+          >
+            Lag budsjett
+          </Button>
+          <Button
+            variant="outline"
+            onClick={apneLokallag}
+          >
+            Lokallag
           </Button>
           <Button onClick={() => setShowNew((v) => !v)}>
             {showNew ? "Lukk" : "Ny post"}
@@ -322,29 +611,80 @@ export default function AdminRegnskapPage() {
         </div>
       </div>
 
+      <div className="rounded-xl border bg-card p-5">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="kontonr">Kontonummer</Label>
+            <Input
+              id="kontonr"
+              value={kontoNr}
+              onChange={(e) => {
+                const v = e.target.value
+                setKontoNr(v)
+                try {
+                  localStorage.setItem("obno.regnskap.kontonr", v)
+                } catch {}
+              }}
+              placeholder="Kontonummer til foreningen"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="saldo">Saldo</Label>
+            <Input
+              id="saldo"
+              inputMode="decimal"
+              value={saldo}
+              onChange={(e) => {
+                const v = e.target.value
+                setSaldo(v)
+                try {
+                  localStorage.setItem("obno.regnskap.saldo", v)
+                } catch {}
+              }}
+              placeholder="0,00"
+            />
+          </div>
+        </div>
+        {state.type === "ready" ? (
+          <div className="mt-3 text-sm text-muted-foreground">
+            Sum inntekter:{" "}
+            <span className="text-foreground">
+              {formatBelop(sumInntekterUtgifter(state.poster).inn)}
+            </span>{" "}
+            · Sum utgifter:{" "}
+            <span className="text-foreground">
+              {formatBelop(sumInntekterUtgifter(state.poster).ut)}
+            </span>{" "}
+            · Resultat:{" "}
+            <span className="text-foreground">
+              {formatBelop(sumInntekterUtgifter(state.poster).resultat)}
+            </span>
+          </div>
+        ) : null}
+      </div>
+
       {showNew ? (
         <div className="rounded-xl border bg-card p-5">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={form.type === "utgift" ? "default" : "outline"}
-                  onClick={() => setForm((p) => ({ ...p, type: "utgift" }))}
-                >
-                  Utgift
-                </Button>
-                <Button
-                  type="button"
-                  variant={form.type === "inntekt" ? "default" : "outline"}
-                  onClick={() => setForm((p) => ({ ...p, type: "inntekt" }))}
-                >
-                  Inntekt
-                </Button>
-              </div>
+          {newMode == null ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Button
+                type="button"
+                className="h-14 text-base"
+                onClick={() => velgMode("utgift")}
+              >
+                Utgift
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-14 text-base"
+                onClick={() => velgMode("inntekt")}
+              >
+                Inntekt
+              </Button>
             </div>
-
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="dato">Dato</Label>
@@ -378,17 +718,45 @@ export default function AdminRegnskapPage() {
                   setForm((p) => ({ ...p, motpart: e.target.value }))
                 }
                 placeholder="F.eks. Biltema, Coop, Posten"
+                list="motpart-options"
               />
+              <datalist id="motpart-options">
+                {motpartOptions.map((v) => (
+                  <option key={v} value={v} />
+                ))}
+              </datalist>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="vare">Vare / tjeneste</Label>
+              {form.type === "inntekt" ? (
+                <div className="flex flex-wrap gap-2">
+                  {[...builtinInntekter, ...inntektMaler].slice(0, 20).map((m) => (
+                    <Button
+                      key={m.id}
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-3 text-sm"
+                      onClick={() => applyInntektMal(m)}
+                    >
+                      {m.label}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
               <Input
                 id="vare"
                 value={form.vare}
                 onChange={(e) => setForm((p) => ({ ...p, vare: e.target.value }))}
                 placeholder="F.eks. fôr, utstyr, leie"
               />
+              {form.type === "inntekt" ? (
+                <div className="flex justify-end">
+                  <Button type="button" variant="outline" onClick={lagreSomInntektMal}>
+                    Lagre som mal
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -449,12 +817,14 @@ export default function AdminRegnskapPage() {
               ) : null}
             </div>
           </div>
+          )}
 
           <div className="mt-5 flex items-center justify-end gap-2">
             <Button
               variant="outline"
               onClick={() => {
                 setShowNew(false)
+                setNewMode(null)
                 velgBilag(null)
               }}
             >
@@ -516,7 +886,7 @@ export default function AdminRegnskapPage() {
                 </tr>
               </thead>
               <tbody>
-                {state.poster.map((p) => (
+                {filtrertePoster.map((p) => (
                   <tr key={p.id} className="border-t">
                     <td className="whitespace-nowrap px-4 py-3">
                       {formatDato(p.dato ?? p.created_at)}
@@ -549,13 +919,13 @@ export default function AdminRegnskapPage() {
                     </td>
                   </tr>
                 ))}
-                {state.poster.length === 0 ? (
+                {filtrertePoster.length === 0 ? (
                   <tr className="border-t">
                     <td
                       colSpan={6}
                       className="px-4 py-6 text-center text-muted-foreground"
                     >
-                      Ingen poster enda.
+                      Ingen treff.
                     </td>
                   </tr>
                 ) : null}
