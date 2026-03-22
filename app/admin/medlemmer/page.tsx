@@ -60,7 +60,6 @@ export default function AdminMedlemmerPage() {
   const [query, setQuery] = useState("")
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
-  const [purging, setPurging] = useState(false)
 
   const hent = useCallback(async () => {
     setState({ type: "loading" })
@@ -145,29 +144,6 @@ export default function AdminMedlemmerPage() {
     [hent, savingRoleId]
   )
 
-  const slettAndreMedlemmer = useCallback(async () => {
-    if (purging) return
-    const ok = window.confirm(
-      "Dette sletter ALLE andre medlemmer og brukerkontoer (test/feilregistreringer). Kun superbruker blir stående. Fortsette?"
-    )
-    if (!ok) return
-    const confirmText = window.prompt('Skriv "SLETT" for å bekrefte.')
-    if (String(confirmText ?? "").trim().toUpperCase() !== "SLETT") return
-    setPurging(true)
-    try {
-      const res = await fetch("/api/admin/medlemmer", { method: "DELETE" })
-      const data = (await res.json()) as { ok?: boolean; feil?: string; slettet?: number }
-      if (!res.ok || !data.ok) {
-        alert(data.feil ?? "Kunne ikke slette medlemmer.")
-        return
-      }
-      await hent()
-      alert(`Slettet ${Number(data.slettet ?? 0)} medlemmer.`)
-    } finally {
-      setPurging(false)
-    }
-  }, [hent, purging])
-
   useEffect(() => {
     const id = setTimeout(() => {
       void hent()
@@ -251,27 +227,6 @@ export default function AdminMedlemmerPage() {
           {state.count === 0 ? (
             <div className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">
               Medlemsregisteret er tomt.
-            </div>
-          ) : null}
-          {state.minRolle === "superadmin" ? (
-            <div className="rounded-xl border bg-card p-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-sm font-medium">Verktøy</div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    Rydd testdata og start medlemsnummer på nytt fra 1000.
-                  </div>
-                </div>
-                {state.medlemmer.length > 1 ? (
-                  <Button
-                    variant="destructive"
-                    onClick={slettAndreMedlemmer}
-                    disabled={purging}
-                  >
-                    {purging ? "Sletter…" : "Slett alle andre medlemmer"}
-                  </Button>
-                ) : null}
-              </div>
             </div>
           ) : null}
           <div className="rounded-xl border bg-card">
