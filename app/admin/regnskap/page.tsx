@@ -251,17 +251,25 @@ export default function AdminRegnskapPage() {
   }, [])
 
   const lagreInnstillinger = useCallback(async () => {
-    if (minRolle !== "superadmin") return
+    const kanEndreKonto = minRolle === "admin" || minRolle === "superadmin"
+    const kanEndreSaldo = minRolle === "superadmin"
+    if (!kanEndreKonto && !kanEndreSaldo) return
     if (!innstillingerLagret) return
-    if (innstillingerLagret.kontonummer === kontoNr && innstillingerLagret.saldo === saldo) return
     if (savingInnstillinger) return
+
+    const kontonummerChanged = innstillingerLagret.kontonummer !== kontoNr
+    const saldoChanged = innstillingerLagret.saldo !== saldo
+    const payload: { kontonummer?: string; saldo?: string } = {}
+    if (kanEndreKonto && kontonummerChanged) payload.kontonummer = kontoNr
+    if (kanEndreSaldo && saldoChanged) payload.saldo = saldo
+    if (Object.keys(payload).length === 0) return
 
     setSavingInnstillinger(true)
     try {
       const res = await fetch("/api/regnskap", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kontonummer: kontoNr, saldo }),
+        body: JSON.stringify(payload),
       })
       const data = (await res.json()) as {
         ok?: boolean
@@ -284,6 +292,30 @@ export default function AdminRegnskapPage() {
       setSavingInnstillinger(false)
     }
   }, [innstillingerLagret, kontoNr, minRolle, saldo, savingInnstillinger])
+
+  useEffect(() => {
+    if (!innstillingerLagret) return
+    const kanEndreKonto = minRolle === "admin" || minRolle === "superadmin"
+    if (!kanEndreKonto) return
+    if (innstillingerLagret.kontonummer === kontoNr) return
+    if (savingInnstillinger) return
+    const id = setTimeout(() => {
+      void lagreInnstillinger()
+    }, 800)
+    return () => clearTimeout(id)
+  }, [kontoNr, innstillingerLagret, lagreInnstillinger, minRolle, savingInnstillinger])
+
+  useEffect(() => {
+    if (!innstillingerLagret) return
+    const kanEndreSaldo = minRolle === "superadmin"
+    if (!kanEndreSaldo) return
+    if (innstillingerLagret.saldo === saldo) return
+    if (savingInnstillinger) return
+    const id = setTimeout(() => {
+      void lagreInnstillinger()
+    }, 800)
+    return () => clearTimeout(id)
+  }, [innstillingerLagret, lagreInnstillinger, minRolle, saldo, savingInnstillinger])
 
   useEffect(() => {
     let active = true
@@ -768,7 +800,7 @@ export default function AdminRegnskapPage() {
               onBlur={() => void lagreInnstillinger()}
               placeholder="Kontonummer til foreningen"
               className="h-10"
-              disabled={minRolle !== "superadmin" || savingInnstillinger}
+              disabled={(minRolle !== "admin" && minRolle !== "superadmin") || savingInnstillinger}
             />
           </div>
           <div className="space-y-2">

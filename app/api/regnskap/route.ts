@@ -627,12 +627,7 @@ export async function PUT(request: Request) {
     .select("role")
     .eq("epost", email)
     .maybeSingle()
-  if (roleRow?.role !== "superadmin") {
-    return NextResponse.json(
-      { ok: false, feil: "Kun superbruker kan endre kontonummer og saldo." },
-      { status: 403 }
-    )
-  }
+  const role = String(roleRow?.role ?? "")
 
   const innstillinger = await hentInnstillinger(admin)
   if (!innstillinger.ok) {
@@ -649,17 +644,52 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: false, feil: "Ugyldig JSON." }, { status: 400 })
   }
 
-  const kontonummer = payload.kontonummer != null ? String(payload.kontonummer).trim() : ""
+  const hasKontoUpdate = Object.prototype.hasOwnProperty.call(payload, "kontonummer")
+  const hasSaldoUpdate = Object.prototype.hasOwnProperty.call(payload, "saldo")
+  if (!hasKontoUpdate && !hasSaldoUpdate) {
+    return NextResponse.json({ ok: false, feil: "Ugyldig forespørsel." }, { status: 400 })
+  }
+
+  if (hasKontoUpdate && role !== "admin" && role !== "superadmin") {
+    return NextResponse.json({ ok: false, feil: "Kun admin kan endre kontonummer." }, { status: 403 })
+  }
+  if (hasSaldoUpdate && role !== "superadmin") {
+    return NextResponse.json({ ok: false, feil: "Kun superbruker kan endre saldo." }, { status: 403 })
+  }
+
+  const kontonummer = hasKontoUpdate ? String(payload.kontonummer ?? "").trim() : innstillinger.kontonummer
   const saldoInput = payload.saldo
   const saldoParsed =
-    typeof saldoInput === "number"
-      ? (Number.isFinite(saldoInput) ? saldoInput : null)
-      : saldoInput == null
-        ? null
-        : parseMoney(String(saldoInput))
+    !hasSaldoUpdate
+      ? null
+      : typeof saldoInput === "number"
+        ? (Number.isFinite(saldoInput) ? saldoInput : null)
+        : saldoInput == null
+          ? null
+          : parseMoney(String(saldoInput))
 
-  if (saldoParsed === null) {
+  if (hasSaldoUpdate && saldoParsed === null) {
     return NextResponse.json({ ok: false, feil: "Skriv inn en gyldig saldo." }, { status: 400 })
+  }
+
+  if (!hasSaldoUpdate) {
+    const { error } = await admin
+      .from("regnskap_innstillinger")
+      .update({
+        kontonummer: kontonummer || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", innstillingerId)
+
+    if (error) {
+      const msg = String((error as { message?: string } | null)?.message ?? "")
+      if (isSchemaError(msg, "regnskap_innstillinger")) {
+        return NextResponse.json({ ok: false, feil: innstillingerSchemaFeil }, { status: 500 })
+      }
+      return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere innstillinger." }, { status: 400 })
+    }
+
+    return NextResponse.json({ ok: true, innstillinger: { kontonummer } })
   }
 
   const { data: poster, error: posterError } = await admin
@@ -680,7 +710,7 @@ export async function PUT(request: Request) {
     if (type === "utgift") ut += bel
   }
   const resultat = inn - ut
-  const saldoJustering = saldoParsed - resultat
+  const saldoJustering = (saldoParsed as number) - resultat
 
   const { error } = await admin
     .from("regnskap_innstillinger")

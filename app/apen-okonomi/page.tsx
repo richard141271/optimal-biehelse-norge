@@ -43,11 +43,7 @@ function toNumber(value: number | string) {
 }
 
 function describeRow(p: RegnskapPost) {
-  const parts = [p.motpart?.trim(), p.vare?.trim()].filter(Boolean) as string[]
-  const main = parts.join(" – ").trim()
-  const note = (p.notat ?? "").trim()
-  if (!note) return main || "—"
-  return main ? `${main} (${note})` : note
+  return (p.vare ?? "").trim() || "—"
 }
 
 export default async function ApenOkonomiPage() {

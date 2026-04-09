@@ -151,7 +151,11 @@ export default function AdminMedlemmerPage() {
     async (m: Medlem, aktiv: boolean) => {
       if (changingId) return
       if (!m.id) return
-      if (state.type !== "ready" || state.minRolle !== "superadmin") return
+      if (
+        state.type !== "ready" ||
+        (state.minRolle !== "superadmin" && state.minRolle !== "admin")
+      )
+        return
       if (m.role === "superadmin") return
 
       const label = [
@@ -402,7 +406,7 @@ export default function AdminMedlemmerPage() {
                           )
                         ) : null}
                         {state.type === "ready" &&
-                        state.minRolle === "superadmin" &&
+                        (state.minRolle === "superadmin" || state.minRolle === "admin") &&
                         m.id &&
                         m.role !== "superadmin" ? (
                           m.aktiv === false ? (

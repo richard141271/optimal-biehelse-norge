@@ -160,13 +160,6 @@ export async function PATCH(request: Request) {
     )
   }
 
-  if (gate.role !== "superadmin") {
-    return NextResponse.json(
-      { ok: false, feil: "Kun superbruker kan gjøre endringer her." },
-      { status: 403 }
-    )
-  }
-
   let payload: { medlemId?: string; role?: string; aktiv?: boolean }
   try {
     payload = (await request.json()) as { medlemId?: string; role?: string; aktiv?: boolean }
@@ -196,6 +189,13 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       { ok: false, feil: "Ugyldig forespørsel." },
       { status: 400 }
+    )
+  }
+
+  if (hasRoleUpdate && gate.role !== "superadmin") {
+    return NextResponse.json(
+      { ok: false, feil: "Kun superbruker kan endre rolle." },
+      { status: 403 }
     )
   }
 
@@ -290,11 +290,8 @@ export async function DELETE(request: Request) {
     )
   }
 
-  if (gate.role !== "superadmin") {
-    return NextResponse.json(
-      { ok: false, feil: "Kun superbruker kan melde ut medlemmer." },
-      { status: 403 }
-    )
+  if (gate.role !== "admin" && gate.role !== "superadmin") {
+    return NextResponse.json({ ok: false, feil: "Kun admin kan melde ut medlemmer." }, { status: 403 })
   }
 
   let payload: { medlemId?: string } | null = null
