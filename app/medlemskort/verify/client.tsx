@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import { BadgeCheck, ShieldAlert, Sparkles } from "lucide-react"
 
 type Result =
   | { type: "loading" }
@@ -29,6 +30,44 @@ function labelForType(type: string | null | undefined) {
   if (type === "stotte") return "Støttemedlem"
   if (type === "bedrift") return "Bedriftsmedlem"
   return "Medlem"
+}
+
+function BeeMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 420 420"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        d="M210 124c-39 0-71 31-71 70 0 34 23 62 54 69v34c0 9 8 17 17 17s17-8 17-17v-34c31-7 54-35 54-69 0-39-32-70-71-70Z"
+        fill="currentColor"
+        opacity="0.9"
+      />
+      <path
+        d="M143 211c-18 0-33 13-37 31-3 18 7 36 24 43l41 17v-38l-32-13c-7-3-11-10-9-17 2-7 8-12 15-12h26v-11c0-6 1-12 2-18h-30Zm134 0h-30c1 6 2 12 2 18v11h26c7 0 13 5 15 12 2 7-2 14-9 17l-32 13v38l41-17c17-7 27-25 24-43-4-18-19-31-37-31Z"
+        fill="currentColor"
+        opacity="0.45"
+      />
+      <path
+        d="M170 168c13-12 26-18 40-18s27 6 40 18l-9 9c-10-10-20-14-31-14s-21 4-31 14l-9-9Z"
+        fill="currentColor"
+        opacity="0.45"
+      />
+      <path
+        d="M210 94c25 0 48 10 64 27l16-16c-20-20-48-32-80-32s-60 12-80 32l16 16c16-17 39-27 64-27Z"
+        fill="currentColor"
+        opacity="0.25"
+      />
+      <path
+        d="M196 210h28v12h-28v-12Zm0 23h28v12h-28v-12Zm0 23h28v12h-28v-12Z"
+        fill="currentColor"
+        opacity="0.28"
+      />
+    </svg>
+  )
 }
 
 export default function VerifiserMedlemskortClient() {
@@ -85,10 +124,20 @@ export default function VerifiserMedlemskortClient() {
   return (
     <main className="mx-auto w-full max-w-xl flex-1 px-4 py-10">
       <div className="space-y-6">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight">Verifisering</h1>
-          <p className="text-muted-foreground">Sjekk av aktivt medlemskap.</p>
-        </header>
+        <div className="relative overflow-hidden rounded-2xl border bg-card">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_14%,rgba(250,204,21,0.30),transparent_55%),radial-gradient(circle_at_85%_30%,rgba(34,197,94,0.18),transparent_52%),radial-gradient(circle_at_30%_90%,rgba(2,132,199,0.16),transparent_58%)]" />
+          <BeeMark className="pointer-events-none absolute -right-10 -top-10 h-56 w-56 text-foreground/10" />
+          <div className="relative p-6 sm:p-8">
+            <div className="inline-flex items-center gap-2 rounded-full border bg-background/70 px-3 py-1 text-xs text-muted-foreground">
+              <Sparkles className="h-4 w-4" />
+              Medlemskort-verifisering
+            </div>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight">OBNO</h1>
+            <p className="mt-1 text-muted-foreground">
+              Skanningen gir en rask sjekk av aktivt medlemskap.
+            </p>
+          </div>
+        </div>
 
         {result.type === "loading" ? (
           <div className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">Verifiserer…</div>
@@ -102,33 +151,40 @@ export default function VerifiserMedlemskortClient() {
 
         {result.type === "ready" ? (
           <div className="rounded-2xl border bg-card p-6">
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">Status</div>
-              <div
-                className={
-                  result.aktiv ? "text-xl font-semibold text-primary" : "text-xl font-semibold text-destructive"
-                }
-              >
-                {result.aktiv ? "Aktivt medlem" : "Ikke aktivt medlemskap"}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">Status</div>
+                <div className={result.aktiv ? "text-xl font-semibold text-primary" : "text-xl font-semibold text-destructive"}>
+                  {result.aktiv ? "Aktivt medlemskap" : "Ikke aktivt medlemskap"}
+                </div>
+              </div>
+              <div className={result.aktiv ? "rounded-xl border bg-primary/10 p-3 text-primary" : "rounded-xl border bg-destructive/10 p-3 text-destructive"}>
+                {result.aktiv ? <BadgeCheck className="h-6 w-6" /> : <ShieldAlert className="h-6 w-6" />}
               </div>
             </div>
 
-            <div className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
-              <div className="rounded-xl border bg-background p-4">
-                <div className="text-xs text-muted-foreground">Navn</div>
-                <div className="font-medium">{result.medlem.navn || "—"}</div>
+            {result.aktiv ? (
+              <div className="mt-4 rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
+                Medlemmet støtter OBNO og gjør alt for pollinatorene.
               </div>
+            ) : (
+              <div className="mt-4 rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
+                Medlemskapet er ikke aktivt. Be medlemmet fornye kontingent ved behov.
+              </div>
+            )}
+
+            <div className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
               <div className="rounded-xl border bg-background p-4">
                 <div className="text-xs text-muted-foreground">Medlemsnr.</div>
                 <div className="font-medium">{result.medlem.medlemsnummer ?? "—"}</div>
               </div>
+              <div className="rounded-xl border bg-background p-4">
+                <div className="text-xs text-muted-foreground">Type</div>
+                <div className="font-medium">{labelForType(result.medlem.medlemskap_type ?? null)}</div>
+              </div>
               <div className="rounded-xl border bg-background p-4 sm:col-span-2">
                 <div className="text-xs text-muted-foreground">Gyldig til</div>
                 <div className="font-medium">{formatDate(result.medlem.kontingent_gyldig_til) || "—"}</div>
-              </div>
-              <div className="rounded-xl border bg-background p-4 sm:col-span-2">
-                <div className="text-xs text-muted-foreground">Type</div>
-                <div className="font-medium">{labelForType(result.medlem.medlemskap_type ?? null)}</div>
               </div>
             </div>
           </div>
@@ -143,4 +199,3 @@ export default function VerifiserMedlemskortClient() {
     </main>
   )
 }
-
