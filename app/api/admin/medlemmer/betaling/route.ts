@@ -49,7 +49,20 @@ async function getRole() {
     .eq("epost", email)
     .maybeSingle()
 
-  if (error) return { ok: false as const, status: 400 as const }
+  if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && (/aktiv/i.test(msg) || /utmeldt_at/i.test(msg))) {
+      return {
+        ok: false as const,
+        status: 500 as const,
+        feil:
+          "Medlemsregister-tabellen mangler felt for inn-/utmelding. Kjør dette i Supabase (SQL Editor):\n\n" +
+          "alter table public.medlemmer add column if not exists aktiv boolean not null default true;\n" +
+          "alter table public.medlemmer add column if not exists utmeldt_at timestamptz;",
+      }
+    }
+    return { ok: false as const, status: 400 as const }
+  }
   const role = (data?.role ?? null) as string | null
   if (data?.aktiv === false) {
     return { ok: false as const, status: 403 as const }
@@ -64,7 +77,10 @@ async function getRole() {
 export async function PATCH(request: Request) {
   const gate = await getRole()
   if (!gate.ok) {
-    return NextResponse.json({ ok: false }, { status: gate.status })
+    return NextResponse.json(
+      { ok: false, feil: "feil" in gate ? gate.feil : undefined },
+      { status: gate.status }
+    )
   }
 
   let payload: { medlemId?: string; betalt?: boolean }
@@ -74,15 +90,17 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: false, feil: "Ugyldig JSON." }, { status: 400 })
   }
 
-  const medlemId = (payload.medlemId ?? "").trim()
+  const medlemId = String(payload.medlemId ?? "").trim()
   const betalt = payload.betalt === true
 
-  if (!isUuid(medlemId)) {
+  const isNumericId = /^\d+$/.test(medlemId)
+  if (!isUuid(medlemId) && !isNumericId) {
     return NextResponse.json(
       { ok: false, feil: "Ugyldig medlem-id." },
       { status: 400 }
     )
   }
+  const medlemIdValue = isNumericId ? Number(medlemId) : medlemId
 
   if (betalt) {
     const now = new Date()
@@ -95,8 +113,8 @@ export async function PATCH(request: Request) {
         kontingent_betalt_at: now.toISOString(),
         kontingent_gyldig_til: gyldigTil.toISOString(),
       })
-      .eq("id", medlemId)
-      .eq("aktiv", true)
+      .eq("id", medlemIdValue)
+      .or("aktiv.is.null,aktiv.eq.true")
 
     if (error) {
       const msg = String((error as { message?: string } | null)?.message ?? "")
@@ -126,8 +144,8 @@ export async function PATCH(request: Request) {
       kontingent_betalt_at: null,
       kontingent_gyldig_til: null,
     })
-    .eq("id", medlemId)
-    .eq("aktiv", true)
+    .eq("id", medlemIdValue)
+    .or("aktiv.is.null,aktiv.eq.true")
 
   if (error) {
     const msg = String((error as { message?: string } | null)?.message ?? "")

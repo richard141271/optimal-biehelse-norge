@@ -385,15 +385,15 @@ export default function AdminMedlemmerPage() {
                           m.kontingent_gyldig_til ? (
                             <Button
                               variant="outline"
-                              onClick={() => markerKontingent(m.id as string, false)}
-                              disabled={savingId === m.id}
+                              onClick={() => markerKontingent(String(m.id), false)}
+                              disabled={savingId === String(m.id)}
                             >
                               Marker ikke betalt
                             </Button>
                           ) : (
                             <Button
-                              onClick={() => markerKontingent(m.id as string, true)}
-                              disabled={savingId === m.id}
+                              onClick={() => markerKontingent(String(m.id), true)}
+                              disabled={savingId === String(m.id)}
                             >
                               Marker betalt
                             </Button>

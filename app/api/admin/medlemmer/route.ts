@@ -58,7 +58,29 @@ async function requireAdmin() {
     .eq("epost", user.email)
     .maybeSingle()
 
-  if (error) return { ok: false as const, status: 400 as const }
+  if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && (/aktiv/i.test(msg) || /utmeldt_at/i.test(msg))) {
+      return {
+        ok: false as const,
+        status: 500 as const,
+        feil:
+          "Medlemsregister-tabellen mangler felt for inn-/utmelding. Kjør dette i Supabase (SQL Editor):\n\n" +
+          "alter table public.medlemmer add column if not exists aktiv boolean not null default true;\n" +
+          "alter table public.medlemmer add column if not exists utmeldt_at timestamptz;",
+      }
+    }
+    if (/column/i.test(msg) && /role/i.test(msg)) {
+      return {
+        ok: false as const,
+        status: 500 as const,
+        feil:
+          "Medlemsregister-tabellen mangler feltet role. Kjør dette i Supabase (SQL Editor):\n\n" +
+          "alter table public.medlemmer add column if not exists role text not null default 'user';",
+      }
+    }
+    return { ok: false as const, status: 400 as const }
+  }
   if (data?.aktiv === false) {
     return { ok: false as const, status: 403 as const }
   }
@@ -78,7 +100,10 @@ async function requireAdmin() {
 export async function GET() {
   const gate = await requireAdmin()
   if (!gate.ok) {
-    return NextResponse.json({ ok: false }, { status: gate.status })
+    return NextResponse.json(
+      { ok: false, feil: "feil" in gate ? gate.feil : undefined },
+      { status: gate.status }
+    )
   }
 
   const { data, error, count } = await gate.admin
@@ -129,7 +154,10 @@ export async function GET() {
 export async function PATCH(request: Request) {
   const gate = await requireAdmin()
   if (!gate.ok) {
-    return NextResponse.json({ ok: false }, { status: gate.status })
+    return NextResponse.json(
+      { ok: false, feil: "feil" in gate ? gate.feil : undefined },
+      { status: gate.status }
+    )
   }
 
   if (gate.role !== "superadmin") {
@@ -256,7 +284,10 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   const gate = await requireAdmin()
   if (!gate.ok) {
-    return NextResponse.json({ ok: false }, { status: gate.status })
+    return NextResponse.json(
+      { ok: false, feil: "feil" in gate ? gate.feil : undefined },
+      { status: gate.status }
+    )
   }
 
   if (gate.role !== "superadmin") {
