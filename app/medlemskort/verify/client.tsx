@@ -3,7 +3,8 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { BadgeCheck, ShieldAlert, Sparkles } from "lucide-react"
+import { BadgeCheck, Crown, ShieldAlert, Sparkles } from "lucide-react"
+import { buttonVariants } from "@/components/ui/button"
 
 type Result =
   | { type: "loading" }
@@ -30,6 +31,12 @@ function labelForType(type: string | null | undefined) {
   if (type === "stotte") return "Støttemedlem"
   if (type === "bedrift") return "Bedriftsmedlem"
   return "Medlem"
+}
+
+function gradForType(type: string | null | undefined) {
+  if (type === "bedrift") return { label: "Bedriftsalliert", tone: "text-foreground" }
+  if (type === "stotte") return { label: "Støttespiller", tone: "text-foreground" }
+  return { label: "Grunnmedlem", tone: "text-foreground" }
 }
 
 function BeeMark({ className }: { className?: string }) {
@@ -76,6 +83,7 @@ export default function VerifiserMedlemskortClient() {
   const [result, setResult] = useState<Result>(() =>
     token ? { type: "loading" } : { type: "error", message: "Mangler QR-token." }
   )
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (!token) return
@@ -150,41 +158,105 @@ export default function VerifiserMedlemskortClient() {
         ) : null}
 
         {result.type === "ready" ? (
-          <div className="rounded-2xl border bg-card p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1">
-                <div className="text-sm text-muted-foreground">Status</div>
-                <div className={result.aktiv ? "text-xl font-semibold text-primary" : "text-xl font-semibold text-destructive"}>
-                  {result.aktiv ? "Aktivt medlemskap" : "Ikke aktivt medlemskap"}
+          <div className="relative overflow-hidden rounded-2xl border bg-card">
+            <div className="absolute inset-0 opacity-[0.14] [mask-image:radial-gradient(circle_at_45%_25%,black,transparent_70%)]">
+              <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" className="h-full w-full">
+                <defs>
+                  <pattern id="honey-verify" width="12" height="10.392" patternUnits="userSpaceOnUse">
+                    <path
+                      d="M6 0 12 3.464v3.464L6 10.392 0 6.928V3.464L6 0Z"
+                      stroke="currentColor"
+                      strokeWidth="0.8"
+                      fill="none"
+                    />
+                  </pattern>
+                </defs>
+                <rect width="120" height="120" fill="url(#honey-verify)" />
+              </svg>
+            </div>
+            <BeeMark className="pointer-events-none absolute -right-10 -bottom-16 h-72 w-72 rotate-[12deg] text-foreground/10" />
+
+            <div className="relative p-6 sm:p-8">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="text-xs text-muted-foreground">OFFISIELT DOKUMENT</div>
+                  <div className="text-2xl font-semibold tracking-tight">Verifisert medlem</div>
+                  <div className="text-sm text-muted-foreground">Optimal Biehelse Norge</div>
+                </div>
+                <div className={result.aktiv ? "rounded-xl border bg-primary/10 p-3 text-primary" : "rounded-xl border bg-destructive/10 p-3 text-destructive"}>
+                  {result.aktiv ? <BadgeCheck className="h-6 w-6" /> : <ShieldAlert className="h-6 w-6" />}
                 </div>
               </div>
-              <div className={result.aktiv ? "rounded-xl border bg-primary/10 p-3 text-primary" : "rounded-xl border bg-destructive/10 p-3 text-destructive"}>
-                {result.aktiv ? <BadgeCheck className="h-6 w-6" /> : <ShieldAlert className="h-6 w-6" />}
-              </div>
-            </div>
 
-            {result.aktiv ? (
-              <div className="mt-4 rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
-                Medlemmet støtter OBNO og gjør alt for pollinatorene.
-              </div>
-            ) : (
-              <div className="mt-4 rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
-                Medlemskapet er ikke aktivt. Be medlemmet fornye kontingent ved behov.
-              </div>
-            )}
+              <div className="mt-6 rounded-2xl border bg-background/70 p-6">
+                <div className="text-sm text-muted-foreground">Det bekreftes herved at</div>
+                <div className="mt-2 text-3xl font-semibold tracking-tight">
+                  {result.medlem.navn ? result.medlem.navn : `Medlem #${result.medlem.medlemsnummer ?? "—"}`}
+                </div>
+                <div className="mt-2 text-sm text-muted-foreground">
+                  har oppnådd status som{" "}
+                  <span className={result.aktiv ? "font-semibold text-primary" : "font-semibold text-destructive"}>
+                    {result.aktiv ? "AKTIVT MEDLEM" : "IKKE AKTIVT MEDLEM"}
+                  </span>
+                </div>
 
-            <div className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
-              <div className="rounded-xl border bg-background p-4">
-                <div className="text-xs text-muted-foreground">Medlemsnr.</div>
-                <div className="font-medium">{result.medlem.medlemsnummer ?? "—"}</div>
-              </div>
-              <div className="rounded-xl border bg-background p-4">
-                <div className="text-xs text-muted-foreground">Type</div>
-                <div className="font-medium">{labelForType(result.medlem.medlemskap_type ?? null)}</div>
-              </div>
-              <div className="rounded-xl border bg-background p-4 sm:col-span-2">
-                <div className="text-xs text-muted-foreground">Gyldig til</div>
-                <div className="font-medium">{formatDate(result.medlem.kontingent_gyldig_til) || "—"}</div>
+                <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+                  <div className="rounded-xl border bg-background p-4">
+                    <div className="text-xs text-muted-foreground">Medlemsnr.</div>
+                    <div className="font-medium">{result.medlem.medlemsnummer ?? "—"}</div>
+                  </div>
+                  <div className="rounded-xl border bg-background p-4">
+                    <div className="text-xs text-muted-foreground">Type</div>
+                    <div className="font-medium">{labelForType(result.medlem.medlemskap_type ?? null)}</div>
+                  </div>
+                  <div className="rounded-xl border bg-background p-4">
+                    <div className="text-xs text-muted-foreground">Grad</div>
+                    <div className="inline-flex items-center gap-2 font-medium">
+                      <Crown className="h-4 w-4 text-muted-foreground" />
+                      <span className={gradForType(result.medlem.medlemskap_type ?? null).tone}>
+                        {gradForType(result.medlem.medlemskap_type ?? null).label}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border bg-background p-4">
+                    <div className="text-xs text-muted-foreground">Gyldig til</div>
+                    <div className="font-medium">{formatDate(result.medlem.kontingent_gyldig_til) || "—"}</div>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className={buttonVariants({})}
+                    onClick={() => window.print()}
+                  >
+                    Skriv ut / lagre PDF
+                  </button>
+                  <button
+                    type="button"
+                    className={buttonVariants({ variant: "outline" })}
+                    onClick={async () => {
+                      try {
+                        const url = window.location.href
+                        if (navigator.share) {
+                          await navigator.share({ title: "OBNO – verifisert medlem", url })
+                        } else {
+                          await navigator.clipboard.writeText(url)
+                          setCopied(true)
+                          setTimeout(() => setCopied(false), 1500)
+                        }
+                      } catch {
+                        setCopied(false)
+                      }
+                    }}
+                  >
+                    {copied ? "Lenke kopiert" : "Del lenke"}
+                  </button>
+                </div>
+
+                <div className="mt-4 text-xs text-muted-foreground">
+                  Dokumentet vises ved scanning av medlemskortets QR-kode, og er digitalt verifisert.
+                </div>
               </div>
             </div>
           </div>

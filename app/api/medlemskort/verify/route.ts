@@ -68,7 +68,7 @@ export async function GET(request: Request) {
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
-  const { data: medlem, error } = await admin
+  const byUser = await admin
     .from("medlemmer")
     .select("navn, medlemsnummer, medlemskap_type, aktiv, kontingent_gyldig_til")
     .eq("user_id", verified.sub)
@@ -76,8 +76,24 @@ export async function GET(request: Request) {
     .limit(1)
     .maybeSingle()
 
-  if (error) {
+  if (byUser.error) {
     return NextResponse.json({ ok: false, feil: "Kunne ikke verifisere medlemskap." }, { status: 400 })
+  }
+
+  let medlem = byUser.data
+
+  if (!medlem && verified.mid != null) {
+    const byNr = await admin
+      .from("medlemmer")
+      .select("navn, medlemsnummer, medlemskap_type, aktiv, kontingent_gyldig_til")
+      .eq("medlemsnummer", verified.mid)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (byNr.error) {
+      return NextResponse.json({ ok: false, feil: "Kunne ikke verifisere medlemskap." }, { status: 400 })
+    }
+    medlem = byNr.data
   }
 
   const aktiv =
@@ -96,4 +112,3 @@ export async function GET(request: Request) {
     },
   })
 }
-
