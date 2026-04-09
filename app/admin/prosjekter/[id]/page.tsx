@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -65,6 +65,7 @@ const statusOptions = [
 export default function AdminProsjektDetailPage() {
   const params = useParams<{ id?: string }>()
   const prosjektId = String(params?.id ?? "").trim()
+  const router = useRouter()
 
   const [state, setState] = useState<State>({ type: "loading" })
   const [status, setStatus] = useState<string>("mottatt")
@@ -72,6 +73,8 @@ export default function AdminProsjektDetailPage() {
   const [savingStatus, setSavingStatus] = useState(false)
   const [sendingSvar, setSendingSvar] = useState(false)
   const [info, setInfo] = useState<string | null>(null)
+  const [minRolle, setMinRolle] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const selectClassName = useMemo(
     () =>
@@ -113,12 +116,66 @@ export default function AdminProsjektDetailPage() {
     return () => clearTimeout(id)
   }, [hent, prosjektId])
 
+  useEffect(() => {
+    let active = true
+    fetch(`/api/admin/me?ts=${Date.now()}`, { cache: "no-store" })
+      .then(async (res) => {
+        const data = (await res.json()) as { ok?: boolean; role?: string | null }
+        if (!active) return
+        setMinRolle(data.ok ? (data.role ?? null) : null)
+      })
+      .catch(() => {
+        if (!active) return
+        setMinRolle(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
   async function apneVedlegg(url: string) {
     window.open(url, "_blank", "noopener,noreferrer")
   }
 
+  const slettProsjekt = useCallback(async () => {
+    if (deleting) return
+    if (minRolle !== "superadmin") return
+    if (state.type !== "ready") return
+
+    const label = [
+      formatDato(state.prosjekt.created_at) || null,
+      state.prosjekt.tittel ?? null,
+      state.prosjekt.navn ?? null,
+    ]
+      .filter(Boolean)
+      .join(" · ")
+
+    const ok = confirm(
+      `Slette dette prosjektet?\n\n${label}\n\nDette sletter også vedlegg. Handlingen er uomgjørlig.`
+    )
+    if (!ok) return
+
+    setDeleting(true)
+    try {
+      const res = await fetch(
+        `/api/admin/prosjekter/${encodeURIComponent(prosjektId)}`,
+        { method: "DELETE" }
+      )
+      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      if (!res.ok || !data.ok) {
+        setInfo(data.feil ?? `Kunne ikke slette prosjekt. (HTTP ${res.status})`)
+        return
+      }
+      router.push("/admin/prosjekter")
+      router.refresh()
+    } finally {
+      setDeleting(false)
+    }
+  }, [deleting, minRolle, prosjektId, router, state])
+
   async function endreStatus() {
     if (state.type !== "ready" || savingStatus) return
+    setSavingStatus(true)
     setSavingStatus(true)
     setInfo(null)
     try {
@@ -170,13 +227,22 @@ export default function AdminProsjektDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <div className="text-sm text-muted-foreground">
-          <Link href="/admin/prosjekter" className="hover:text-foreground">
-            Tilbake til prosjekter
-          </Link>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <div className="text-sm text-muted-foreground">
+            <Link href="/admin/prosjekter" className="hover:text-foreground">
+              Tilbake til prosjekter
+            </Link>
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight">Prosjekt</h1>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Prosjekt</h1>
+        {state.type === "ready" && minRolle === "superadmin" ? (
+          <div className="flex gap-2">
+            <Button variant="destructive" onClick={() => void slettProsjekt()} disabled={deleting}>
+              Slett prosjekt
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {state.type === "loading" ? (

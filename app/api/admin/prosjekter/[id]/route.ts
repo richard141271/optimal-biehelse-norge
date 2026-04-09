@@ -365,3 +365,66 @@ export async function PATCH(
 
   return NextResponse.json({ ok: true, schemaWarning })
 }
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const gate = await requireAdmin()
+  if (!gate.ok) {
+    return NextResponse.json({ ok: false }, { status: gate.status })
+  }
+
+  if (gate.role !== "superadmin") {
+    return NextResponse.json(
+      { ok: false, feil: "Kun superbruker kan slette prosjekter." },
+      { status: 403 }
+    )
+  }
+
+  const { id } = await context.params
+  const prosjektId = String(id ?? "").trim()
+  if (!isUuid(prosjektId)) {
+    return NextResponse.json({ ok: false, feil: "Ugyldig id." }, { status: 400 })
+  }
+
+  const { data: row, error: rowError } = await gate.admin
+    .from("prosjekt_soknader")
+    .select("id, vedlegg_paths")
+    .eq("id", prosjektId)
+    .maybeSingle()
+
+  if (rowError) {
+    const msg = String((rowError as { message?: string } | null)?.message ?? "")
+    if ((/relation/i.test(msg) && /prosjekt_soknader/i.test(msg)) || /42p01/i.test(msg)) {
+      return NextResponse.json({ ok: false, feil: schemaFeil() }, { status: 500 })
+    }
+    return NextResponse.json({ ok: false, feil: "Kunne ikke hente prosjekt." }, { status: 400 })
+  }
+
+  if (!row) {
+    return NextResponse.json({ ok: false, feil: "Fant ikke prosjekt." }, { status: 404 })
+  }
+
+  const paths = Array.isArray(row.vedlegg_paths) ? (row.vedlegg_paths as string[]) : []
+  if (paths.length) {
+    try {
+      await gate.admin.storage.from(bucket).remove(paths)
+    } catch {}
+  }
+
+  try {
+    await gate.admin.from("prosjekt_hendelser").delete().eq("prosjekt_id", prosjektId)
+  } catch {}
+
+  const { error: deleteError } = await gate.admin
+    .from("prosjekt_soknader")
+    .delete()
+    .eq("id", prosjektId)
+
+  if (deleteError) {
+    return NextResponse.json({ ok: false, feil: "Kunne ikke slette prosjekt." }, { status: 400 })
+  }
+
+  return NextResponse.json({ ok: true })
+}

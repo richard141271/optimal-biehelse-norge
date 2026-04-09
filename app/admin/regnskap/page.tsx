@@ -179,6 +179,7 @@ export default function AdminRegnskapPage() {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [ocrLoading, setOcrLoading] = useState(false)
+  const [minRolle, setMinRolle] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [newMode, setNewMode] = useState<null | "utgift" | "inntekt">(null)
   const [editId, setEditId] = useState<string | null>(null)
@@ -235,6 +236,23 @@ export default function AdminRegnskapPage() {
         if (Array.isArray(parsed)) setInntektMaler(parsed)
       }
     } catch {}
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    fetch(`/api/admin/me?ts=${Date.now()}`, { cache: "no-store" })
+      .then(async (res) => {
+        const data = (await res.json()) as { ok?: boolean; role?: string | null }
+        if (!active) return
+        setMinRolle(data.ok ? (data.role ?? null) : null)
+      })
+      .catch(() => {
+        if (!active) return
+        setMinRolle(null)
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
   useEffect(() => {
@@ -1045,15 +1063,17 @@ export default function AdminRegnskapPage() {
                       >
                         Åpne/rediger
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="ml-2"
-                        disabled={deletingId === p.id}
-                        onClick={() => void slettPost(p)}
-                      >
-                        Slett
-                      </Button>
+                      {minRolle === "superadmin" ? (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="ml-2"
+                          disabled={deletingId === p.id}
+                          onClick={() => void slettPost(p)}
+                        >
+                          Slett
+                        </Button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
