@@ -126,7 +126,17 @@ async function hentInnstillinger(admin: SupabaseClient) {
       return { ok: false as const, schemaFeil: true as const }
     }
     if (/duplicate key/i.test(msg) || /already exists/i.test(msg)) {
-      return { ok: true as const, kontonummer: "", saldo: 0 }
+      const { data: again, error: againError } = await admin
+        .from("regnskap_innstillinger")
+        .select("kontonummer, saldo")
+        .eq("id", innstillingerId)
+        .maybeSingle()
+      if (againError || !again) return { ok: true as const, kontonummer: "", saldo: 0 }
+      return {
+        ok: true as const,
+        kontonummer: typeof again.kontonummer === "string" ? again.kontonummer : "",
+        saldo: toNumber((again as { saldo?: unknown } | null)?.saldo) ?? 0,
+      }
     }
     return { ok: false as const, schemaFeil: false as const }
   }
