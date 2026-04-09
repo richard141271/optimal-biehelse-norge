@@ -172,7 +172,7 @@ export default function Home() {
                 <div className="rounded-xl border bg-card p-5">
                   <div className="text-sm font-medium">Betal kontingent med Vipps</div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Vipps til 47372406:
+                    Vipps til 47372406 (Jørn Richard Thoresen):
                   </p>
                   <div className="mt-3 space-y-1 text-sm">
                     <div>
@@ -210,7 +210,10 @@ export default function Home() {
                 <div className="rounded-xl border bg-card p-5">
                   <div className="text-sm font-medium">Vipps</div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Vipps-nummer: <span className="font-medium text-foreground">47372406</span>
+                    Vipps-nummer:{" "}
+                    <span className="font-medium text-foreground">
+                      47372406 (Jørn Richard Thoresen)
+                    </span>
                   </p>
                   <div className="mt-3 space-y-1 text-sm">
                     <div>
