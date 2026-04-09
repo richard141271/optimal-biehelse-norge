@@ -60,6 +60,7 @@ export default function AdminMedlemmerPage() {
   const [query, setQuery] = useState("")
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const hent = useCallback(async () => {
     setState({ type: "loading" })
@@ -142,6 +143,46 @@ export default function AdminMedlemmerPage() {
       }
     },
     [hent, savingRoleId]
+  )
+
+  const slettMedlem = useCallback(
+    async (m: Medlem) => {
+      if (deletingId) return
+      if (!m.id) return
+      if (state.type !== "ready" || state.minRolle !== "superadmin") return
+      if (m.role === "superadmin") return
+
+      const label = [
+        m.medlemsnummer ? `#${m.medlemsnummer}` : null,
+        m.navn ?? null,
+        m.epost ?? null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+
+      const ok = confirm(
+        `Slette dette medlemmet?\n\n${label}\n\nMedlemsnummer vil bli renummerert uten hull. Handlingen er uomgjørlig.`
+      )
+      if (!ok) return
+
+      setDeletingId(m.id)
+      try {
+        const res = await fetch("/api/admin/medlemmer", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ medlemId: m.id }),
+        })
+        const data = (await res.json()) as { ok?: boolean; feil?: string }
+        if (!res.ok || !data.ok) {
+          alert(data.feil ?? `Kunne ikke slette medlem. (HTTP ${res.status})`)
+          return
+        }
+        await hent()
+      } finally {
+        setDeletingId(null)
+      }
+    },
+    [deletingId, hent, state]
   )
 
   useEffect(() => {
@@ -346,6 +387,18 @@ export default function AdminMedlemmerPage() {
                               Marker betalt
                             </Button>
                           )
+                        ) : null}
+                        {state.type === "ready" &&
+                        state.minRolle === "superadmin" &&
+                        m.id &&
+                        m.role !== "superadmin" ? (
+                          <Button
+                            variant="destructive"
+                            onClick={() => void slettMedlem(m)}
+                            disabled={deletingId === m.id}
+                          >
+                            Slett
+                          </Button>
                         ) : null}
                       </div>
                     </td>

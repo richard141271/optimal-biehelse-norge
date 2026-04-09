@@ -466,3 +466,81 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({ ok: true })
 }
+
+export async function DELETE(request: Request) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { ok: false, feil: "Supabase er ikke konfigurert. Legg inn miljøvariabler først." },
+      { status: 500 }
+    )
+  }
+
+  const email = await getLoggedInEmail()
+  if (!email) {
+    return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { ok: false, feil: "Regnskap i admin krever SUPABASE_SERVICE_ROLE_KEY i miljøvariabler." },
+      { status: 500 }
+    )
+  }
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  })
+
+  const { data: roleRow } = await admin
+    .from("medlemmer")
+    .select("role")
+    .eq("epost", email)
+    .maybeSingle()
+  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
+    return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+  }
+
+  let payload: { id?: string }
+  try {
+    payload = (await request.json()) as { id?: string }
+  } catch {
+    return NextResponse.json({ ok: false, feil: "Ugyldig JSON." }, { status: 400 })
+  }
+
+  const id = String(payload.id ?? "").trim()
+  if (!id) {
+    return NextResponse.json({ ok: false, feil: "Mangler id for regnskapspost." }, { status: 400 })
+  }
+
+  const { data: existingRow, error: existingError } = await admin
+    .from("regnskap_poster")
+    .select("bilag_path")
+    .eq("id", id)
+    .maybeSingle()
+
+  if (existingError) {
+    return NextResponse.json({ ok: false, feil: "Kunne ikke hente regnskapspost." }, { status: 400 })
+  }
+  if (!existingRow) {
+    return NextResponse.json({ ok: false, feil: "Regnskapspost finnes ikke." }, { status: 404 })
+  }
+
+  const bilagPath = typeof existingRow.bilag_path === "string" ? existingRow.bilag_path : null
+
+  const { error: deleteError } = await admin.from("regnskap_poster").delete().eq("id", id)
+  if (deleteError) {
+    return NextResponse.json({ ok: false, feil: "Kunne ikke slette regnskapspost." }, { status: 400 })
+  }
+
+  if (bilagPath) {
+    try {
+      await admin.storage.from(bucket).remove([bilagPath])
+    } catch {}
+  }
+
+  return NextResponse.json({ ok: true })
+}

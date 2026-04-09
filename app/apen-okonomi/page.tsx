@@ -1,22 +1,106 @@
 import Link from "next/link"
+import { createClient } from "@supabase/supabase-js"
 
-type Post = {
+export const dynamic = "force-dynamic"
+
+const apenOkonomiStartDato = "2026-04-09"
+
+type RegnskapPost = {
+  id: string
   dato: string
-  beskrivelse: string
-  belop: number
+  type: string
+  belop: number | string
+  motpart: string | null
+  vare: string | null
+  notat: string | null
 }
 
-const inntekter: Post[] = []
-const utgifter: Post[] = []
+function parseIsoDate(value: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim())
+  if (!m) return null
+  const y = Number(m[1])
+  const mo = Number(m[2])
+  const da = Number(m[3])
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(da)) return null
+  return new Date(y, mo - 1, da)
+}
+
+function formatDato(value: string) {
+  const d = parseIsoDate(value)
+  if (!d) return value
+  return d.toLocaleDateString("nb-NO")
+}
 
 function formatKr(value: number) {
   return `${value.toLocaleString("nb-NO")} kr`
 }
 
-export default function ApenOkonomiPage() {
-  const saldo =
-    inntekter.reduce((sum, p) => sum + p.belop, 0) - utgifter.reduce((sum, p) => sum + p.belop, 0)
+function toNumber(value: number | string) {
+  if (typeof value === "number") return value
+  const n = Number(String(value).replace(",", "."))
+  if (!Number.isFinite(n)) return 0
+  return n
+}
+
+function describeRow(p: RegnskapPost) {
+  const parts = [p.motpart?.trim(), p.vare?.trim()].filter(Boolean) as string[]
+  const main = parts.join(" – ").trim()
+  const note = (p.notat ?? "").trim()
+  if (!note) return main || "—"
+  return main ? `${main} (${note})` : note
+}
+
+export default async function ApenOkonomiPage() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  const startDatoLabel = formatDato(apenOkonomiStartDato)
   const sistOppdatert = new Date().toLocaleDateString("nb-NO")
+
+  let rows: RegnskapPost[] = []
+  let feil: string | null = null
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    feil = "Regnskap er ikke konfigurert ennå."
+  } else {
+    const admin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
+    })
+
+    const { data, error } = await admin
+      .from("regnskap_poster")
+      .select("id, dato, type, belop, motpart, vare, notat")
+      .gte("dato", apenOkonomiStartDato)
+      .order("dato", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1000)
+
+    if (error) {
+      feil = "Kunne ikke hente regnskap."
+    } else {
+      rows = (data ?? []) as RegnskapPost[]
+    }
+  }
+
+  const inntekter = rows
+    .filter((p) => String(p.type).toLowerCase() === "inntekt")
+    .map((p) => ({
+      id: p.id,
+      dato: formatDato(p.dato),
+      beskrivelse: describeRow(p),
+      belop: toNumber(p.belop),
+    }))
+
+  const utgifter = rows
+    .filter((p) => String(p.type).toLowerCase() === "utgift")
+    .map((p) => ({
+      id: p.id,
+      dato: formatDato(p.dato),
+      beskrivelse: describeRow(p),
+      belop: toNumber(p.belop),
+    }))
+
+  const saldo = inntekter.reduce((sum, p) => sum + p.belop, 0) - utgifter.reduce((sum, p) => sum + p.belop, 0)
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
@@ -34,6 +118,9 @@ export default function ApenOkonomiPage() {
             Full åpenhet: Alle midler tilhører OBNO og dokumenteres løpende. I en
             overgangsperiode kan innbetalinger gå til en midlertidig løsning frem til
             organisasjonsnummer og kontonummer er på plass.
+          </p>
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Viser regnskapsposter fra og med {startDatoLabel}. Eldre historikk vises ikke her.
           </p>
         </header>
 
@@ -54,6 +141,9 @@ export default function ApenOkonomiPage() {
                 <div>{sistOppdatert}</div>
               </div>
             </div>
+            {feil ? (
+              <div className="mt-4 text-sm text-muted-foreground">{feil}</div>
+            ) : null}
           </div>
 
           <div className="rounded-2xl border bg-card p-6 sm:p-8">
@@ -88,7 +178,7 @@ export default function ApenOkonomiPage() {
                     </tr>
                   ) : (
                     inntekter.map((p) => (
-                      <tr key={`${p.dato}-${p.beskrivelse}`} className="border-b">
+                      <tr key={p.id} className="border-b">
                         <td className="px-4 py-3">{p.dato}</td>
                         <td className="px-4 py-3">{p.beskrivelse}</td>
                         <td className="px-4 py-3">{formatKr(p.belop)}</td>
@@ -120,7 +210,7 @@ export default function ApenOkonomiPage() {
                     </tr>
                   ) : (
                     utgifter.map((p) => (
-                      <tr key={`${p.dato}-${p.beskrivelse}`} className="border-b">
+                      <tr key={p.id} className="border-b">
                         <td className="px-4 py-3">{p.dato}</td>
                         <td className="px-4 py-3">{p.beskrivelse}</td>
                         <td className="px-4 py-3">{formatKr(p.belop)}</td>
@@ -147,4 +237,3 @@ export default function ApenOkonomiPage() {
     </main>
   )
 }
-

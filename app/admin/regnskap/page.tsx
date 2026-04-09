@@ -177,6 +177,7 @@ function normalizeId(text: string) {
 export default function AdminRegnskapPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [ocrLoading, setOcrLoading] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [newMode, setNewMode] = useState<null | "utgift" | "inntekt">(null)
@@ -555,6 +556,44 @@ export default function AdminRegnskapPage() {
       await hent()
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function slettPost(p: RegnskapPost) {
+    if (deletingId) return
+    const id = String(p.id ?? "").trim()
+    if (!id) return
+
+    const label = [
+      formatDato(p.dato ?? p.created_at),
+      p.type ?? "",
+      formatBelop(p.belop),
+      p.motpart ?? "",
+      p.vare ?? "",
+    ]
+      .filter(Boolean)
+      .join(" · ")
+
+    const ok = confirm(
+      `Slette denne posten?\n\n${label}\n\nHandlingen er uomgjørlig.`
+    )
+    if (!ok) return
+
+    setDeletingId(id)
+    try {
+      const res = await fetch("/api/regnskap", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      if (!res.ok || !data.ok) {
+        alert(data.feil ?? `Kunne ikke slette posten. (HTTP ${res.status})`)
+        return
+      }
+      await hent()
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -1005,6 +1044,15 @@ export default function AdminRegnskapPage() {
                         onClick={() => apneRedigering(p)}
                       >
                         Åpne/rediger
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="ml-2"
+                        disabled={deletingId === p.id}
+                        onClick={() => void slettPost(p)}
+                      >
+                        Slett
                       </Button>
                     </td>
                   </tr>

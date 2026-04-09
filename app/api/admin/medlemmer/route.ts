@@ -207,7 +207,7 @@ export async function PATCH(request: Request) {
   return NextResponse.json({ ok: true })
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const gate = await requireAdmin()
   if (!gate.ok) {
     return NextResponse.json({ ok: false }, { status: gate.status })
@@ -218,6 +218,150 @@ export async function DELETE() {
       { ok: false, feil: "Kun superbruker kan slette medlemmer." },
       { status: 403 }
     )
+  }
+
+  let payload: { medlemId?: string } | null = null
+  try {
+    payload = (await request.json()) as { medlemId?: string }
+  } catch {
+    payload = null
+  }
+
+  const medlemId = String(payload?.medlemId ?? "").trim()
+  if (medlemId) {
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        medlemId
+      )
+    const isNumericId = /^\d+$/.test(medlemId)
+    if (!isUuid && !isNumericId) {
+      return NextResponse.json(
+        { ok: false, feil: "Ugyldig medlem-id." },
+        { status: 400 }
+      )
+    }
+
+    const medlemIdValue = isNumericId ? Number(medlemId) : medlemId
+
+    const { data: target, error: targetError } = await gate.admin
+      .from("medlemmer")
+      .select("id, user_id, role, epost")
+      .eq("id", medlemIdValue)
+      .maybeSingle()
+
+    if (targetError) {
+      return NextResponse.json(
+        { ok: false, feil: "Kunne ikke hente medlem." },
+        { status: 400 }
+      )
+    }
+
+    if (!target?.id) {
+      return NextResponse.json(
+        { ok: false, feil: "Fant ikke medlem." },
+        { status: 404 }
+      )
+    }
+
+    if (target.role === "superadmin") {
+      return NextResponse.json(
+        { ok: false, feil: "Superbruker kan ikke slettes." },
+        { status: 400 }
+      )
+    }
+
+    const { error: deleteError } = await gate.admin
+      .from("medlemmer")
+      .delete()
+      .eq("id", medlemIdValue)
+
+    if (deleteError) {
+      return NextResponse.json(
+        { ok: false, feil: "Kunne ikke slette medlem." },
+        { status: 400 }
+      )
+    }
+
+    const userId = (target as { user_id?: string | null } | null)?.user_id ?? null
+    if (userId) {
+      try {
+        await gate.admin.auth.admin.deleteUser(userId)
+      } catch {}
+    }
+
+    const { data: keep, error: keepError } = await gate.admin
+      .from("medlemmer")
+      .select("id")
+      .eq("epost", gate.email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (keepError) {
+      return NextResponse.json(
+        { ok: false, feil: "Kunne ikke oppdatere medlemsnummer." },
+        { status: 400 }
+      )
+    }
+
+    const keepId = keep?.id ?? null
+
+    const { data: alle, error: alleError } = await gate.admin
+      .from("medlemmer")
+      .select("id, created_at")
+      .order("created_at", { ascending: true })
+      .limit(5000)
+
+    if (alleError) {
+      return NextResponse.json(
+        { ok: false, feil: "Kunne ikke oppdatere medlemsnummer." },
+        { status: 400 }
+      )
+    }
+
+    const list = (alle ?? [])
+      .map((r) => ({
+        id: (r as { id?: string | number | null } | null)?.id ?? null,
+        created_at: String((r as { created_at?: string | null } | null)?.created_at ?? ""),
+      }))
+      .filter((r): r is { id: string | number; created_at: string } => Boolean(r.id))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+
+    const ordered = keepId
+      ? [keepId, ...list.map((r) => r.id).filter((id) => id !== keepId)]
+      : list.map((r) => r.id)
+
+    if (ordered.length) {
+      const { error: nullError } = await gate.admin
+        .from("medlemmer")
+        .update({ medlemsnummer: null })
+        .in("id", ordered as unknown as (string | number)[])
+
+      if (nullError) {
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere medlemsnummer." },
+          { status: 400 }
+        )
+      }
+
+      let nr = 1000
+      for (const id of ordered) {
+        const { error: updError } = await gate.admin
+          .from("medlemmer")
+          .update({ medlemsnummer: nr })
+          .eq("id", id as unknown as string | number)
+
+        if (updError) {
+          return NextResponse.json(
+            { ok: false, feil: "Kunne ikke oppdatere medlemsnummer." },
+            { status: 400 }
+          )
+        }
+        nr += 1
+      }
+    }
+
+    return NextResponse.json({ ok: true })
   }
 
   const { data: keep, error: keepError } = await gate.admin
