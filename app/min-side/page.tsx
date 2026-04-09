@@ -120,6 +120,7 @@ export default function MinSidePage() {
   const [beskrivelse, setBeskrivelse] = useState("")
   const [vedlegg, setVedlegg] = useState<File[]>([])
   const [sendStatus, setSendStatus] = useState<SendStatus>({ type: "idle" })
+  const [showProsjektSkjema, setShowProsjektSkjema] = useState(false)
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -691,14 +692,18 @@ export default function MinSidePage() {
         </section>
 
         <section className="rounded-2xl border bg-card p-6">
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold">Søk om prosjekt</h2>
-            <p className="text-sm text-muted-foreground">
-              Send inn et prosjektforslag direkte fra Min side.
-            </p>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            aria-expanded={showProsjektSkjema}
+            aria-controls="prosjekt-skjema"
+            onClick={() => setShowProsjektSkjema((v) => !v)}
+          >
+            {showProsjektSkjema ? "Skjul prosjekt-skjema" : "Søk om prosjekt"}
+          </Button>
 
-          <form onSubmit={sendProsjekt} className="mt-6 space-y-4">
+          {showProsjektSkjema ? (
+            <form id="prosjekt-skjema" onSubmit={sendProsjekt} className="mt-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="medlemsnummer">Medlemsnummer</Label>
@@ -828,6 +833,7 @@ export default function MinSidePage() {
               ) : null}
             </div>
           </form>
+          ) : null}
         </section>
       </div>
     </main>
