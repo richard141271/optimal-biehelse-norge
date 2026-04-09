@@ -163,30 +163,6 @@ async function hentInnstillinger(admin: SupabaseClient) {
   return { ok: true as const, kontonummer: "", saldo: 0 }
 }
 
-async function oppdaterSaldo(admin: SupabaseClient, delta: number) {
-  const innstillinger = await hentInnstillinger(admin)
-  if (!innstillinger.ok) return innstillinger
-
-  const nextSaldo = (innstillinger.saldo ?? 0) + delta
-  const { error } = await admin
-    .from("regnskap_innstillinger")
-    .update({ saldo: nextSaldo, updated_at: new Date().toISOString() })
-    .eq("id", innstillingerId)
-
-  if (error) {
-    const msg = String((error as { message?: string } | null)?.message ?? "")
-    if (isSchemaError(msg, "regnskap_innstillinger")) {
-      return { ok: false as const, schemaFeil: true as const }
-    }
-    return { ok: false as const, schemaFeil: false as const }
-  }
-  return { ok: true as const, kontonummer: innstillinger.kontonummer, saldo: nextSaldo }
-}
-
-function deltaForPost(type: string, belop: number) {
-  return type === "inntekt" ? belop : -belop
-}
-
 function describeError(error: unknown) {
   if (!error) return null
   if (typeof error === "string") return error
@@ -278,22 +254,23 @@ export async function GET() {
     if (type === "utgift") ut += bel
   }
 
+  const resultat = inn - ut
   const innstillinger = await hentInnstillinger(admin)
   if (!innstillinger.ok) {
     return NextResponse.json({
       ok: true,
       poster: result,
-      innstillinger: { kontonummer: "", saldo: 0 },
+      innstillinger: { kontonummer: "", saldo: resultat },
       innstillingerFeil: innstillinger.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke hente innstillinger.",
-      summer: { inn, ut, resultat: inn - ut },
+      summer: { inn, ut, resultat },
     })
   }
 
   return NextResponse.json({
     ok: true,
     poster: result,
-    innstillinger: { kontonummer: innstillinger.kontonummer, saldo: innstillinger.saldo },
-    summer: { inn, ut, resultat: inn - ut },
+    innstillinger: { kontonummer: innstillinger.kontonummer, saldo: resultat + (innstillinger.saldo ?? 0) },
+    summer: { inn, ut, resultat },
   })
 }
 
@@ -441,15 +418,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, feil: "Kunne ikke lagre regnskapspost." }, { status: 400 })
   }
 
-  const delta = deltaForPost(type, belop)
-  const saldoUpdate = await oppdaterSaldo(admin, delta)
-  if (!saldoUpdate.ok) {
-    return NextResponse.json({
-      ok: true,
-      innstillingerFeil: saldoUpdate.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke oppdatere saldo.",
-    })
-  }
-
   return NextResponse.json({ ok: true })
 }
 
@@ -539,8 +507,6 @@ export async function PATCH(request: Request) {
   }
 
   const oldBilagPath = typeof existingRow.bilag_path === "string" ? existingRow.bilag_path : null
-  const oldType = String((existingRow as { type?: unknown } | null)?.type ?? "")
-  const oldBelop = toNumber((existingRow as { belop?: unknown } | null)?.belop) ?? 0
 
   let newBilagPath: string | null = null
   if (bilag instanceof File && bilag.size > 0) {
@@ -625,17 +591,6 @@ export async function PATCH(request: Request) {
     await admin.storage.from(bucket).remove([oldBilagPath])
   }
 
-  const delta = deltaForPost(type, belop) - deltaForPost(oldType, oldBelop)
-  if (delta !== 0) {
-    const saldoUpdate = await oppdaterSaldo(admin, delta)
-    if (!saldoUpdate.ok) {
-      return NextResponse.json({
-        ok: true,
-        innstillingerFeil: saldoUpdate.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke oppdatere saldo.",
-      })
-    }
-  }
-
   return NextResponse.json({ ok: true })
 }
 
@@ -707,11 +662,31 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: false, feil: "Skriv inn en gyldig saldo." }, { status: 400 })
   }
 
+  const { data: poster, error: posterError } = await admin
+    .from("regnskap_poster")
+    .select("type, belop")
+    .limit(5000)
+
+  if (posterError) {
+    return NextResponse.json({ ok: false, feil: "Kunne ikke beregne saldo fra regnskap." }, { status: 400 })
+  }
+
+  let inn = 0
+  let ut = 0
+  for (const p of (poster ?? []) as Record<string, unknown>[]) {
+    const type = String((p as { type?: unknown } | null)?.type ?? "")
+    const bel = toNumber((p as { belop?: unknown } | null)?.belop) ?? 0
+    if (type === "inntekt") inn += bel
+    if (type === "utgift") ut += bel
+  }
+  const resultat = inn - ut
+  const saldoJustering = saldoParsed - resultat
+
   const { error } = await admin
     .from("regnskap_innstillinger")
     .update({
       kontonummer: kontonummer || null,
-      saldo: saldoParsed,
+      saldo: saldoJustering,
       updated_at: new Date().toISOString(),
     })
     .eq("id", innstillingerId)
@@ -793,21 +768,10 @@ export async function DELETE(request: Request) {
   }
 
   const bilagPath = typeof existingRow.bilag_path === "string" ? existingRow.bilag_path : null
-  const oldType = String((existingRow as { type?: unknown } | null)?.type ?? "")
-  const oldBelop = toNumber((existingRow as { belop?: unknown } | null)?.belop) ?? 0
 
   const { error: deleteError } = await admin.from("regnskap_poster").delete().eq("id", id)
   if (deleteError) {
     return NextResponse.json({ ok: false, feil: "Kunne ikke slette regnskapspost." }, { status: 400 })
-  }
-
-  let innstillingerFeil: string | null = null
-  const delta = -deltaForPost(oldType, oldBelop)
-  if (delta !== 0) {
-    const saldoUpdate = await oppdaterSaldo(admin, delta)
-    if (!saldoUpdate.ok) {
-      innstillingerFeil = saldoUpdate.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke oppdatere saldo."
-    }
   }
 
   if (bilagPath) {
@@ -816,5 +780,5 @@ export async function DELETE(request: Request) {
     } catch {}
   }
 
-  return NextResponse.json(innstillingerFeil ? { ok: true, innstillingerFeil } : { ok: true })
+  return NextResponse.json({ ok: true })
 }
