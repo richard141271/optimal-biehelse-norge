@@ -348,21 +348,27 @@ export async function PATCH(
     return NextResponse.json({ ok: true, schemaWarning })
   }
 
-  const to = String((prosjekt as { epost?: string | null }).epost ?? "").trim()
-  if (!isValidEmail(to)) {
-    return NextResponse.json(
-      { ok: false, feil: "Prosjektet mangler gyldig e-postadresse." },
-      { status: 400 }
-    )
-  }
+  const resendApiKey = String(process.env.RESEND_API_KEY ?? "").trim()
+  const resendFrom = String(process.env.RESEND_FROM ?? "").trim()
+  const canSendEmail = Boolean(resendApiKey && resendFrom)
 
-  const tittel = String((prosjekt as { tittel?: string | null }).tittel ?? "Prosjektforslag").trim()
-  const subject = `Svar på prosjektforslag: ${tittel}`
-  const text = `Hei!\n\nHer er svar på prosjektforslaget ditt:\n\n${svar}\n\nHilsen\nOBNO`
+  if (canSendEmail) {
+    const to = String((prosjekt as { epost?: string | null }).epost ?? "").trim()
+    if (!isValidEmail(to)) {
+      return NextResponse.json(
+        { ok: false, feil: "Prosjektet mangler gyldig e-postadresse." },
+        { status: 400 }
+      )
+    }
 
-  const mail = await sendResendEmail(to, subject, text)
-  if (!mail.ok) {
-    return NextResponse.json({ ok: false, feil: mail.feil }, { status: 500 })
+    const tittel = String((prosjekt as { tittel?: string | null }).tittel ?? "Prosjektforslag").trim()
+    const subject = `Svar på prosjektforslag: ${tittel}`
+    const text = `Hei!\n\nHer er svar på prosjektforslaget ditt:\n\n${svar}\n\nHilsen\nOBNO`
+
+    const mail = await sendResendEmail(to, subject, text)
+    if (!mail.ok) {
+      return NextResponse.json({ ok: false, feil: mail.feil }, { status: 500 })
+    }
   }
 
   const sentUpdate = await gate.admin

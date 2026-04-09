@@ -212,8 +212,8 @@ export default function AdminMedlemmerPage() {
       : []
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">
             Medlemsregister
@@ -294,7 +294,7 @@ export default function AdminMedlemmerPage() {
                   <th className="hidden whitespace-nowrap px-3 py-2 text-left font-medium xl:table-cell">
                     Adresse
                   </th>
-                  <th className="px-3 py-2 text-left font-medium">
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
                     E-post
                   </th>
                   <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
@@ -340,7 +340,9 @@ export default function AdminMedlemmerPage() {
                         .filter(Boolean)
                         .join(", ") || "—"}
                     </td>
-                    <td className="px-3 py-2 break-all">{m.epost ?? ""}</td>
+                    <td className="px-3 py-2 max-w-[200px] truncate sm:max-w-[260px]" title={m.epost ?? ""}>
+                      {m.epost ?? ""}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2">
                       {m.aktiv === false ? "Innaktiv" : "Aktiv"}
                     </td>
