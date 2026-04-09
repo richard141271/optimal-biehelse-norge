@@ -192,6 +192,7 @@ export default function AdminRegnskapPage() {
     kontonummer: string
     saldo: string
   } | null>(null)
+  const [innstillingerFeil, setInnstillingerFeil] = useState<string | null>(null)
   const [filterQuery, setFilterQuery] = useState("")
   const [filterType, setFilterType] = useState<"alle" | "inntekt" | "utgift">(
     "alle"
@@ -216,6 +217,7 @@ export default function AdminRegnskapPage() {
       feil?: string
       poster?: RegnskapPost[]
       innstillinger?: { kontonummer?: string | null; saldo?: number | string | null }
+      innstillingerFeil?: string
     }
 
     if (!res.ok || !payload.ok) {
@@ -224,6 +226,7 @@ export default function AdminRegnskapPage() {
         message: payload.feil ?? "Kunne ikke hente regnskap.",
         status: res.status,
       })
+      setInnstillingerFeil(null)
       return
     }
 
@@ -234,6 +237,7 @@ export default function AdminRegnskapPage() {
     setKontoNr(kontonummer)
     setSaldo(saldoText)
     setInnstillingerLagret({ kontonummer, saldo: saldoText })
+    setInnstillingerFeil(payload.innstillingerFeil ? String(payload.innstillingerFeil) : null)
   }, [])
 
   useEffect(() => {
@@ -800,6 +804,12 @@ export default function AdminRegnskapPage() {
           </div>
         ) : null}
       </div>
+
+      {innstillingerFeil ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive whitespace-pre-wrap">
+          {innstillingerFeil}
+        </div>
+      ) : null}
 
       {showNew ? (
         <div className="rounded-xl border bg-card p-5">

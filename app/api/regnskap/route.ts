@@ -87,6 +87,28 @@ const innstillingerSchemaFeil =
   "values ('main', null, 0)\n" +
   "on conflict (id) do nothing;\n"
 
+function isMissingTable(message: string, table: string) {
+  const m = message.toLowerCase()
+  if (m.includes("42p01")) return true
+  if (!m.includes(table.toLowerCase())) return false
+  if (m.includes("relation") && m.includes("does not exist")) return true
+  if (m.includes("schema cache")) return true
+  if (m.includes("could not find the table")) return true
+  if (m.includes("not found")) return true
+  if (m.includes("does not exist")) return true
+  return false
+}
+
+function isSchemaError(message: string, table: string) {
+  const m = message.toLowerCase()
+  if (isMissingTable(m, table)) return true
+  if (m.includes("column") && m.includes(table.toLowerCase())) return true
+  if (m.includes("column") && (m.includes("kontonummer") || m.includes("saldo") || m.includes("updated_at"))) {
+    return true
+  }
+  return false
+}
+
 async function hentInnstillinger(admin: SupabaseClient) {
   const { data, error } = await admin
     .from("regnskap_innstillinger")
@@ -96,10 +118,7 @@ async function hentInnstillinger(admin: SupabaseClient) {
 
   if (error) {
     const msg = String((error as { message?: string } | null)?.message ?? "")
-    if ((/relation/i.test(msg) && /regnskap_innstillinger/i.test(msg)) || /42p01/i.test(msg)) {
-      return { ok: false as const, schemaFeil: true as const }
-    }
-    if (/column/i.test(msg) && /(kontonummer|saldo|updated_at)/i.test(msg)) {
+    if (isSchemaError(msg, "regnskap_innstillinger")) {
       return { ok: false as const, schemaFeil: true as const }
     }
     return { ok: false as const, schemaFeil: false as const }
@@ -122,7 +141,7 @@ async function hentInnstillinger(admin: SupabaseClient) {
 
   if (insertError) {
     const msg = String((insertError as { message?: string } | null)?.message ?? "")
-    if ((/relation/i.test(msg) && /regnskap_innstillinger/i.test(msg)) || /42p01/i.test(msg)) {
+    if (isSchemaError(msg, "regnskap_innstillinger")) {
       return { ok: false as const, schemaFeil: true as const }
     }
     if (/duplicate key/i.test(msg) || /already exists/i.test(msg)) {
@@ -154,7 +173,13 @@ async function oppdaterSaldo(admin: SupabaseClient, delta: number) {
     .update({ saldo: nextSaldo, updated_at: new Date().toISOString() })
     .eq("id", innstillingerId)
 
-  if (error) return { ok: false as const, schemaFeil: false as const }
+  if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (isSchemaError(msg, "regnskap_innstillinger")) {
+      return { ok: false as const, schemaFeil: true as const }
+    }
+    return { ok: false as const, schemaFeil: false as const }
+  }
   return { ok: true as const, kontonummer: innstillinger.kontonummer, saldo: nextSaldo }
 }
 
@@ -244,14 +269,6 @@ export async function GET() {
     })
   )
 
-  const innstillinger = await hentInnstillinger(admin)
-  if (!innstillinger.ok) {
-    return NextResponse.json(
-      { ok: false, feil: innstillinger.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke hente innstillinger." },
-      { status: innstillinger.schemaFeil ? 500 : 400 }
-    )
-  }
-
   let inn = 0
   let ut = 0
   for (const p of result) {
@@ -259,6 +276,17 @@ export async function GET() {
     const bel = toNumber((p as { belop?: unknown } | null)?.belop) ?? 0
     if (type === "inntekt") inn += bel
     if (type === "utgift") ut += bel
+  }
+
+  const innstillinger = await hentInnstillinger(admin)
+  if (!innstillinger.ok) {
+    return NextResponse.json({
+      ok: true,
+      poster: result,
+      innstillinger: { kontonummer: "", saldo: 0 },
+      innstillingerFeil: innstillinger.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke hente innstillinger.",
+      summer: { inn, ut, resultat: inn - ut },
+    })
   }
 
   return NextResponse.json({
@@ -302,19 +330,8 @@ export async function POST(request: Request) {
     .select("role")
     .eq("epost", email)
     .maybeSingle()
-  if (roleRow?.role !== "superadmin") {
-    return NextResponse.json(
-      { ok: false, feil: "Kun superbruker kan slette regnskapsposter." },
-      { status: 403 }
-    )
-  }
-
-  const innstillinger = await hentInnstillinger(admin)
-  if (!innstillinger.ok) {
-    return NextResponse.json(
-      { ok: false, feil: innstillinger.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke hente innstillinger." },
-      { status: innstillinger.schemaFeil ? 500 : 400 }
-    )
+  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
+    return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
   }
 
   let form: FormData
@@ -427,10 +444,10 @@ export async function POST(request: Request) {
   const delta = deltaForPost(type, belop)
   const saldoUpdate = await oppdaterSaldo(admin, delta)
   if (!saldoUpdate.ok) {
-    return NextResponse.json(
-      { ok: false, feil: saldoUpdate.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke oppdatere saldo." },
-      { status: saldoUpdate.schemaFeil ? 500 : 400 }
-    )
+    return NextResponse.json({
+      ok: true,
+      innstillingerFeil: saldoUpdate.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke oppdatere saldo.",
+    })
   }
 
   return NextResponse.json({ ok: true })
@@ -471,14 +488,6 @@ export async function PATCH(request: Request) {
     .maybeSingle()
   if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
     return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
-  }
-
-  const innstillinger = await hentInnstillinger(admin)
-  if (!innstillinger.ok) {
-    return NextResponse.json(
-      { ok: false, feil: innstillinger.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke hente innstillinger." },
-      { status: innstillinger.schemaFeil ? 500 : 400 }
-    )
   }
 
   let form: FormData
@@ -620,10 +629,10 @@ export async function PATCH(request: Request) {
   if (delta !== 0) {
     const saldoUpdate = await oppdaterSaldo(admin, delta)
     if (!saldoUpdate.ok) {
-      return NextResponse.json(
-        { ok: false, feil: saldoUpdate.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke oppdatere saldo." },
-        { status: saldoUpdate.schemaFeil ? 500 : 400 }
-      )
+      return NextResponse.json({
+        ok: true,
+        innstillingerFeil: saldoUpdate.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke oppdatere saldo.",
+      })
     }
   }
 
@@ -709,7 +718,7 @@ export async function PUT(request: Request) {
 
   if (error) {
     const msg = String((error as { message?: string } | null)?.message ?? "")
-    if ((/relation/i.test(msg) && /regnskap_innstillinger/i.test(msg)) || /42p01/i.test(msg)) {
+    if (isSchemaError(msg, "regnskap_innstillinger")) {
       return NextResponse.json({ ok: false, feil: innstillingerSchemaFeil }, { status: 500 })
     }
     return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere innstillinger." }, { status: 400 })
@@ -751,15 +760,10 @@ export async function DELETE(request: Request) {
     .select("role")
     .eq("epost", email)
     .maybeSingle()
-  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
-    return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
-  }
-
-  const innstillinger = await hentInnstillinger(admin)
-  if (!innstillinger.ok) {
+  if (roleRow?.role !== "superadmin") {
     return NextResponse.json(
-      { ok: false, feil: innstillinger.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke hente innstillinger." },
-      { status: innstillinger.schemaFeil ? 500 : 400 }
+      { ok: false, feil: "Kun superbruker kan slette regnskapsposter." },
+      { status: 403 }
     )
   }
 
@@ -797,14 +801,12 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: false, feil: "Kunne ikke slette regnskapspost." }, { status: 400 })
   }
 
+  let innstillingerFeil: string | null = null
   const delta = -deltaForPost(oldType, oldBelop)
   if (delta !== 0) {
     const saldoUpdate = await oppdaterSaldo(admin, delta)
     if (!saldoUpdate.ok) {
-      return NextResponse.json(
-        { ok: false, feil: saldoUpdate.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke oppdatere saldo." },
-        { status: saldoUpdate.schemaFeil ? 500 : 400 }
-      )
+      innstillingerFeil = saldoUpdate.schemaFeil ? innstillingerSchemaFeil : "Kunne ikke oppdatere saldo."
     }
   }
 
@@ -814,5 +816,5 @@ export async function DELETE(request: Request) {
     } catch {}
   }
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json(innstillingerFeil ? { ok: true, innstillingerFeil } : { ok: true })
 }
