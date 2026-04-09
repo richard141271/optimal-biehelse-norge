@@ -121,9 +121,16 @@ export async function GET(
     if (/column/i.test(msg) && /admin_svar/i.test(msg)) {
       schemaWarning = schemaFeil()
     }
+    let fallbackSelect = `${baseSelect}, vedlegg_paths`
+    if (/admin_svar_sent_at/i.test(msg)) {
+      fallbackSelect = `${baseSelect}, vedlegg_paths, admin_svar, admin_svar_at`
+    } else if (/admin_svar_at/i.test(msg)) {
+      fallbackSelect = `${baseSelect}, vedlegg_paths, admin_svar`
+    }
+
     const fallback = await admin
       .from("prosjekt_soknader")
-      .select(`${baseSelect}, vedlegg_paths`)
+      .select(fallbackSelect)
       .eq("id", prosjektId)
       .eq("epost", email)
       .maybeSingle()
@@ -179,4 +186,3 @@ export async function GET(
     schemaWarning,
   })
 }
-

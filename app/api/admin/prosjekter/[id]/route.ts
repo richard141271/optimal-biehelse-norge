@@ -125,9 +125,16 @@ export async function GET(
     if (/column/i.test(errorMsg) && /admin_svar/i.test(errorMsg)) {
       schemaWarning = schemaFeil()
     }
+    let fallbackSelect = `${baseSelect}, vedlegg_paths`
+    if (/admin_svar_sent_at/i.test(errorMsg)) {
+      fallbackSelect = `${baseSelect}, vedlegg_paths, admin_svar, admin_svar_at`
+    } else if (/admin_svar_at/i.test(errorMsg)) {
+      fallbackSelect = `${baseSelect}, vedlegg_paths, admin_svar`
+    }
+
     const fallback = await gate.admin
       .from("prosjekt_soknader")
-      .select(`${baseSelect}, vedlegg_paths`)
+      .select(fallbackSelect)
       .eq("id", prosjektId)
       .maybeSingle()
     if (fallback.error) {
@@ -358,10 +365,17 @@ export async function PATCH(
     return NextResponse.json({ ok: false, feil: mail.feil }, { status: 500 })
   }
 
-  await gate.admin
+  const sentUpdate = await gate.admin
     .from("prosjekt_soknader")
     .update({ admin_svar_sent_at: new Date().toISOString() })
     .eq("id", prosjektId)
+
+  if (sentUpdate.error) {
+    const msg = String((sentUpdate.error as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /admin_svar_sent_at/i.test(msg)) {
+      schemaWarning = schemaFeil()
+    }
+  }
 
   return NextResponse.json({ ok: true, schemaWarning })
 }
