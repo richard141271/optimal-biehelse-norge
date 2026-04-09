@@ -177,6 +177,7 @@ function normalizeId(text: string) {
 export default function AdminRegnskapPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [saving, setSaving] = useState(false)
+  const [savingInnstillinger, setSavingInnstillinger] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [ocrLoading, setOcrLoading] = useState(false)
   const [minRolle, setMinRolle] = useState<string | null>(null)
@@ -187,6 +188,10 @@ export default function AdminRegnskapPage() {
   const [inntektMaler, setInntektMaler] = useState<InntektMal[]>([])
   const [kontoNr, setKontoNr] = useState("")
   const [saldo, setSaldo] = useState("")
+  const [innstillingerLagret, setInnstillingerLagret] = useState<{
+    kontonummer: string
+    saldo: string
+  } | null>(null)
   const [filterQuery, setFilterQuery] = useState("")
   const [filterType, setFilterType] = useState<"alle" | "inntekt" | "utgift">(
     "alle"
@@ -210,6 +215,7 @@ export default function AdminRegnskapPage() {
       ok?: boolean
       feil?: string
       poster?: RegnskapPost[]
+      innstillinger?: { kontonummer?: string | null; saldo?: number | string | null }
     }
 
     if (!res.ok || !payload.ok) {
@@ -222,21 +228,58 @@ export default function AdminRegnskapPage() {
     }
 
     setState({ type: "ready", poster: payload.poster ?? [] })
+    const kontonummer = String(payload.innstillinger?.kontonummer ?? "")
+    const saldoValue = payload.innstillinger?.saldo ?? ""
+    const saldoText = saldoValue === null || saldoValue === undefined ? "" : String(saldoValue)
+    setKontoNr(kontonummer)
+    setSaldo(saldoText)
+    setInnstillingerLagret({ kontonummer, saldo: saldoText })
   }, [])
 
   useEffect(() => {
     try {
-      const k = localStorage.getItem("obno.regnskap.kontonr")
-      const s = localStorage.getItem("obno.regnskap.saldo")
       const m = localStorage.getItem("obno.regnskap.inntektMaler")
-      if (k) setKontoNr(k)
-      if (s) setSaldo(s)
       if (m) {
         const parsed = JSON.parse(m) as InntektMal[]
         if (Array.isArray(parsed)) setInntektMaler(parsed)
       }
     } catch {}
   }, [])
+
+  const lagreInnstillinger = useCallback(async () => {
+    if (minRolle !== "superadmin") return
+    if (!innstillingerLagret) return
+    if (innstillingerLagret.kontonummer === kontoNr && innstillingerLagret.saldo === saldo) return
+    if (savingInnstillinger) return
+
+    setSavingInnstillinger(true)
+    try {
+      const res = await fetch("/api/regnskap", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kontonummer: kontoNr, saldo }),
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        feil?: string
+        innstillinger?: { kontonummer?: string | null; saldo?: number | string | null }
+      }
+      if (!res.ok || !data.ok) {
+        alert(data.feil ?? "Kunne ikke lagre innstillinger.")
+        return
+      }
+      const kontonummer = String(data.innstillinger?.kontonummer ?? kontoNr ?? "")
+      const saldoValue = data.innstillinger?.saldo ?? saldo
+      const saldoText = saldoValue === null || saldoValue === undefined ? "" : String(saldoValue)
+      setKontoNr(kontonummer)
+      setSaldo(saldoText)
+      setInnstillingerLagret({ kontonummer, saldo: saldoText })
+    } catch {
+      alert("Kunne ikke lagre innstillinger. Sjekk nett og prøv igjen.")
+    } finally {
+      setSavingInnstillinger(false)
+    }
+  }, [innstillingerLagret, kontoNr, minRolle, saldo, savingInnstillinger])
 
   useEffect(() => {
     let active = true
@@ -716,14 +759,12 @@ export default function AdminRegnskapPage() {
               id="kontonr"
               value={kontoNr}
               onChange={(e) => {
-                const v = e.target.value
-                setKontoNr(v)
-                try {
-                  localStorage.setItem("obno.regnskap.kontonr", v)
-                } catch {}
+                setKontoNr(e.target.value)
               }}
+              onBlur={() => void lagreInnstillinger()}
               placeholder="Kontonummer til foreningen"
               className="h-10"
+              disabled={minRolle !== "superadmin" || savingInnstillinger}
             />
           </div>
           <div className="space-y-2">
@@ -733,14 +774,12 @@ export default function AdminRegnskapPage() {
               inputMode="decimal"
               value={saldo}
               onChange={(e) => {
-                const v = e.target.value
-                setSaldo(v)
-                try {
-                  localStorage.setItem("obno.regnskap.saldo", v)
-                } catch {}
+                setSaldo(e.target.value)
               }}
+              onBlur={() => void lagreInnstillinger()}
               placeholder="0,00"
               className="h-10"
+              disabled={minRolle !== "superadmin" || savingInnstillinger}
             />
           </div>
         </div>
