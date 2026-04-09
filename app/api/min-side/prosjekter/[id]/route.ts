@@ -13,6 +13,13 @@ function isUuid(value: string) {
   )
 }
 
+function isAktivKontingent(gyldigTil?: string | null) {
+  if (!gyldigTil) return false
+  const d = new Date(gyldigTil)
+  if (Number.isNaN(d.getTime())) return false
+  return d.getTime() > Date.now()
+}
+
 export const dynamic = "force-dynamic"
 
 async function getLoggedInEmail() {
@@ -101,6 +108,38 @@ export async function GET(
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   })
+
+  const { data: medlem, error: medlemError } = await admin
+    .from("medlemmer")
+    .select("aktiv, kontingent_gyldig_til")
+    .eq("epost", email)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (medlemError) {
+    const msg = String((medlemError as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /(kontingent_gyldig_til|aktiv)/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet aktiv/kontingent_gyldig_til. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists aktiv boolean not null default true;\n" +
+            "alter table public.medlemmer add column if not exists kontingent_gyldig_til date;",
+        },
+        { status: 500 }
+      )
+    }
+    return NextResponse.json({ ok: false, feil: "Kunne ikke verifisere medlemskap." }, { status: 400 })
+  }
+
+  if (!medlem || medlem.aktiv === false || !isAktivKontingent(medlem.kontingent_gyldig_til ?? null)) {
+    return NextResponse.json(
+      { ok: false, feil: "Prosjekter er kun tilgjengelig for aktive medlemmer." },
+      { status: 403 }
+    )
+  }
 
   const baseSelect =
     "id, created_at, medlemsnummer, navn, epost, telefon, tittel, sted, budsjett, beskrivelse, status"

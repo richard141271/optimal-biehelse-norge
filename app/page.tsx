@@ -24,9 +24,6 @@ export default function Home() {
             <Link href="/biehelse" className="hover:text-foreground">
               Biehelse
             </Link>
-            <Link href="/prosjekter" className="hover:text-foreground">
-              Prosjekter
-            </Link>
             <a href="#medlemskap" className="hover:text-foreground">
               Bli medlem
             </a>

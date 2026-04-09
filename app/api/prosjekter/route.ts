@@ -26,6 +26,13 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function isAktivKontingent(gyldigTil?: string | null) {
+  if (!gyldigTil) return false
+  const d = new Date(gyldigTil)
+  if (Number.isNaN(d.getTime())) return false
+  return d.getTime() > Date.now()
+}
+
 function parseMoney(value: string) {
   const trimmed = value.trim()
   if (!trimmed) return null
@@ -255,7 +262,7 @@ export async function POST(request: Request) {
 
   const { data: byUserId, error: byUserIdError } = await admin
     .from("medlemmer")
-    .select("id, user_id, medlemsnummer, navn, epost, telefon, aktiv")
+    .select("id, user_id, medlemsnummer, navn, epost, telefon, aktiv, kontingent_gyldig_til")
     .eq("user_id", auth.userId)
     .maybeSingle()
 
@@ -276,13 +283,14 @@ export async function POST(request: Request) {
           epost?: string | null
           telefon?: string | null
           aktiv?: boolean | null
+          kontingent_gyldig_til?: string | null
         }
       | null) ?? null
 
   if (!medlem) {
     const { data: byEmail, error: byEmailError } = await admin
       .from("medlemmer")
-      .select("id, user_id, medlemsnummer, navn, epost, telefon, aktiv")
+      .select("id, user_id, medlemsnummer, navn, epost, telefon, aktiv, kontingent_gyldig_til")
       .eq("epost", auth.email)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -305,6 +313,7 @@ export async function POST(request: Request) {
             epost?: string | null
             telefon?: string | null
             aktiv?: boolean | null
+            kontingent_gyldig_til?: string | null
           }
         | null) ?? null
 
@@ -326,6 +335,16 @@ export async function POST(request: Request) {
   if (medlem.aktiv === false) {
     return NextResponse.json(
       { ok: false, feil: "Du er meldt ut. Kontakt oss hvis du ønsker å bli aktivert igjen." },
+      { status: 403 }
+    )
+  }
+
+  if (!isAktivKontingent(medlem.kontingent_gyldig_til ?? null)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        feil: "Medlemskapet ditt er ikke aktivt. Betal kontingent og prøv igjen.",
+      },
       { status: 403 }
     )
   }

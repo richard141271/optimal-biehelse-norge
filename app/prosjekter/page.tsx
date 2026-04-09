@@ -17,6 +17,7 @@ type Gate =
   | { type: "loading" }
   | { type: "anon" }
   | { type: "not_member"; message: string }
+  | { type: "not_active"; message: string }
   | {
       type: "ready"
       medlem: {
@@ -24,8 +25,16 @@ type Gate =
         navn?: string | null
         epost?: string | null
         telefon?: string | null
+        kontingent_gyldig_til?: string | null
       }
     }
+
+function isAktiv(gyldigTil?: string | null) {
+  if (!gyldigTil) return false
+  const d = new Date(gyldigTil)
+  if (Number.isNaN(d.getTime())) return false
+  return d.getTime() > Date.now()
+}
 
 export default function ProsjekterPage() {
   const [gate, setGate] = useState<Gate>({ type: "loading" })
@@ -52,6 +61,7 @@ export default function ProsjekterPage() {
             navn?: string | null
             epost?: string | null
             telefon?: string | null
+            kontingent_gyldig_til?: string | null
           }
         }
         if (!active) return
@@ -61,6 +71,13 @@ export default function ProsjekterPage() {
             return
           }
           setGate({ type: "not_member", message: payload.feil ?? "Ingen tilgang." })
+          return
+        }
+        if (!isAktiv(payload.medlem.kontingent_gyldig_til ?? null)) {
+          setGate({
+            type: "not_active",
+            message: "Prosjekter er kun tilgjengelig for aktive medlemmer.",
+          })
           return
         }
         setGate({ type: "ready", medlem: payload.medlem })
@@ -81,7 +98,10 @@ export default function ProsjekterPage() {
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (gate.type !== "ready") {
-      setStatus({ type: "error", message: "Du må være innlogget som medlem for å sende inn prosjekt." })
+      setStatus({
+        type: "error",
+        message: "Du må være innlogget som aktivt medlem for å sende inn prosjekt.",
+      })
       return
     }
     setStatus({ type: "sending" })
@@ -169,10 +189,10 @@ export default function ProsjekterPage() {
                     Gå til innlogging
                   </Link>
                 </div>
-              ) : gate.type === "not_member" ? (
+              ) : gate.type === "not_member" || gate.type === "not_active" ? (
                 <div className="mt-3">
                   <Link href="/#medlemskap" className="underline underline-offset-4">
-                    Registrer medlemskap
+                    Betal / registrer medlemskap
                   </Link>
                 </div>
               ) : null}

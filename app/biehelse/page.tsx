@@ -76,10 +76,10 @@ export default function BiehelsePage() {
           </p>
           <div className="mt-4">
             <Link
-              href="/prosjekter"
+              href="/min-side"
               className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
             >
-              Gå til prosjekter
+              Logg inn som medlem
             </Link>
           </div>
         </section>

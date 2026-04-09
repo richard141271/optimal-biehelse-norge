@@ -173,8 +173,11 @@ export default function MinSidePage() {
     return () => clearTimeout(id)
   }, [router, supabase])
 
+  const kontingentGyldigTil = state.type === "ready" ? (state.medlem.kontingent_gyldig_til ?? null) : null
+
   useEffect(() => {
     if (state.type !== "ready") return
+    if (!isAktiv(kontingentGyldigTil)) return
     const id = setTimeout(() => {
       ;(async () => {
         const res = await fetch(`/api/min-side/prosjekter?ts=${Date.now()}`, {
@@ -199,7 +202,7 @@ export default function MinSidePage() {
       })()
     }, 0)
     return () => clearTimeout(id)
-  }, [state.type])
+  }, [state.type, kontingentGyldigTil])
 
   async function loggUt() {
     if (!supabase) return
@@ -612,9 +615,11 @@ export default function MinSidePage() {
           </div>
 
           <p className="mt-4 text-sm text-muted-foreground">
-            {aktiv
-              ? "Medlemskortet er aktivt frem til gyldighetsdato."
-              : "Medlemskortet blir aktivt når kontingent er registrert som betalt."}
+            <Link href="/min-side/medlemskort" className="underline underline-offset-4">
+              {aktiv
+                ? "Medlemskortet er aktivt frem til gyldighetsdato."
+                : "Medlemskortet blir aktivt når kontingent er registrert som betalt."}
+            </Link>
           </p>
         </div>
       </div>
@@ -628,6 +633,12 @@ export default function MinSidePage() {
             </p>
           </div>
 
+          {!aktiv ? (
+            <div className="mt-4 text-sm text-muted-foreground">
+              Prosjekter er kun tilgjengelig for aktive medlemmer.
+            </div>
+          ) : null}
+
           {prosjekterState.type === "loading" ? (
             <div className="mt-4 text-sm text-muted-foreground">Laster…</div>
           ) : null}
@@ -638,7 +649,7 @@ export default function MinSidePage() {
             </div>
           ) : null}
 
-          {prosjekterState.type === "ready" ? (
+          {aktiv && prosjekterState.type === "ready" ? (
             prosjekterState.prosjekter.length ? (
               <div className="mt-4 overflow-hidden rounded-xl border bg-background">
                 <div className="overflow-auto">
@@ -697,12 +708,16 @@ export default function MinSidePage() {
             variant="outline"
             aria-expanded={showProsjektSkjema}
             aria-controls="prosjekt-skjema"
-            onClick={() => setShowProsjektSkjema((v) => !v)}
+            disabled={!aktiv}
+            onClick={() => {
+              if (!aktiv) return
+              setShowProsjektSkjema((v) => !v)
+            }}
           >
             {showProsjektSkjema ? "Skjul prosjekt-skjema" : "Søk om prosjekt"}
           </Button>
 
-          {showProsjektSkjema ? (
+          {aktiv && showProsjektSkjema ? (
             <form id="prosjekt-skjema" onSubmit={sendProsjekt} className="mt-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
