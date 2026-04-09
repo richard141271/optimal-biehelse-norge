@@ -172,24 +172,18 @@ export default function Home() {
                 <div className="rounded-xl border bg-card p-5">
                   <div className="text-sm font-medium">Betal kontingent med Vipps</div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Vipps til 47372406. Velg beløp under:
+                    Vipps til 47372406:
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <a
-                      href="vipps://pay?recipient=47372406&amount=100&message=OBNO%20Medlemskap"
-                      className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-                    >
-                      Medlemskap 100 kr
-                    </a>
-                    <a
-                      href="vipps://pay?recipient=47372406&amount=300&message=OBNO%20St%C3%B8ttemedlem"
-                      className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
-                    >
-                      Støttemedlem 300 kr
-                    </a>
+                  <div className="mt-3 space-y-1 text-sm">
+                    <div>
+                      <span className="font-medium">Medlemskap:</span> 100 kr / år
+                    </div>
+                    <div>
+                      <span className="font-medium">Støttemedlem:</span> 300 kr / år
+                    </div>
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Fungerer ikke lenken? Åpne Vipps-appen og søk opp 47372406.
+                    Åpne Vipps-appen og betal til 47372406.
                   </p>
                 </div>
               </div>
@@ -209,7 +203,7 @@ export default function Home() {
                 </h2>
                 <p className="text-muted-foreground">
                   Bidrag går til kunnskapsarbeid, utstyr og aktiviteter som styrker
-                  biehelse og pollinatorer. Betalingsinformasjon legges inn her.
+                  biehelse og pollinatorer. Du kan støtte oss med Vipps.
                 </p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -218,22 +212,16 @@ export default function Home() {
                   <p className="mt-1 text-sm text-muted-foreground">
                     Vipps-nummer: <span className="font-medium text-foreground">47372406</span>
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <a
-                      href="vipps://pay?recipient=47372406&amount=100&message=OBNO%20Medlemskap"
-                      className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-                    >
-                      Medlemskap 100 kr
-                    </a>
-                    <a
-                      href="vipps://pay?recipient=47372406&amount=300&message=OBNO%20St%C3%B8ttemedlem"
-                      className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
-                    >
-                      Støttemedlem 300 kr
-                    </a>
+                  <div className="mt-3 space-y-1 text-sm">
+                    <div>
+                      <span className="font-medium">Medlemskap:</span> 100 kr / år
+                    </div>
+                    <div>
+                      <span className="font-medium">Støttemedlem:</span> 300 kr / år
+                    </div>
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Hvis lenken ikke åpner Vipps: åpne appen manuelt og søk 47372406.
+                    Åpne Vipps-appen og betal til 47372406.
                   </p>
                 </div>
                 <div className="rounded-xl border bg-card p-5">
