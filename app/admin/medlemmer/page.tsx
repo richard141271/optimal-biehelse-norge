@@ -305,7 +305,7 @@ export default function AdminMedlemmerPage() {
                   <th className="hidden whitespace-nowrap px-4 py-3 text-left font-medium xl:table-cell">
                     Gyldig til
                   </th>
-                  <th className="hidden whitespace-nowrap px-4 py-3 text-right font-medium xl:table-cell">
+                  <th className="whitespace-nowrap px-4 py-3 text-right font-medium">
                     Handling
                   </th>
                 </tr>
@@ -368,7 +368,7 @@ export default function AdminMedlemmerPage() {
                         ? formatDato(m.kontingent_gyldig_til)
                         : "—"}
                     </td>
-                    <td className="hidden whitespace-nowrap px-4 py-3 text-right xl:table-cell">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
                       <div className="flex flex-wrap justify-end gap-2">
                         {m.id ? (
                           m.kontingent_gyldig_til ? (
@@ -407,7 +407,7 @@ export default function AdminMedlemmerPage() {
                 {filtered.length === 0 ? (
                   <tr className="border-t">
                     <td
-                      colSpan={7}
+                      colSpan={11}
                       className="px-4 py-6 text-center text-muted-foreground"
                     >
                       Ingen treff.
