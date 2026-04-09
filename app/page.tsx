@@ -174,6 +174,20 @@ export default function Home() {
                   <p className="mt-1 text-sm text-muted-foreground">
                     Vipps til 47372406 (Jørn Richard Thoresen):
                   </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href="/vipps?belop=100&type=medlemskap"
+                      className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+                    >
+                      Medlemskap 100 kr
+                    </Link>
+                    <Link
+                      href="/vipps?belop=300&type=stottemedlem"
+                      className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
+                    >
+                      Støttemedlem 300 kr
+                    </Link>
+                  </div>
                   <div className="mt-3 space-y-1 text-sm">
                     <div>
                       <span className="font-medium">Medlemskap:</span> 100 kr / år
@@ -184,6 +198,11 @@ export default function Home() {
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     Åpne Vipps-appen og betal til 47372406.
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    <Link href="/apen-okonomi" className="underline underline-offset-4">
+                      Se Åpen økonomi
+                    </Link>
                   </p>
                 </div>
               </div>
@@ -215,6 +234,20 @@ export default function Home() {
                       47372406 (Jørn Richard Thoresen)
                     </span>
                   </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href="/vipps?belop=100&type=medlemskap"
+                      className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+                    >
+                      Medlemskap 100 kr
+                    </Link>
+                    <Link
+                      href="/vipps?belop=300&type=stottemedlem"
+                      className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
+                    >
+                      Støttemedlem 300 kr
+                    </Link>
+                  </div>
                   <div className="mt-3 space-y-1 text-sm">
                     <div>
                       <span className="font-medium">Medlemskap:</span> 100 kr / år
@@ -225,6 +258,11 @@ export default function Home() {
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     Åpne Vipps-appen og betal til 47372406.
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    <Link href="/apen-okonomi" className="underline underline-offset-4">
+                      Se Åpen økonomi
+                    </Link>
                   </p>
                 </div>
                 <div className="rounded-xl border bg-card p-5">
