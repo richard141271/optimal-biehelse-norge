@@ -180,6 +180,7 @@ export default function AdminRegnskapPage() {
   const [ocrLoading, setOcrLoading] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [newMode, setNewMode] = useState<null | "utgift" | "inntekt">(null)
+  const [editId, setEditId] = useState<string | null>(null)
   const [motpartOptions, setMotpartOptions] = useState<string[]>([])
   const [inntektMaler, setInntektMaler] = useState<InntektMal[]>([])
   const [kontoNr, setKontoNr] = useState("")
@@ -390,8 +391,29 @@ export default function AdminRegnskapPage() {
   }
 
   function velgMode(mode: "utgift" | "inntekt") {
+    setEditId(null)
     setNewMode(mode)
     setForm((p) => ({ ...p, type: mode }))
+  }
+
+  function apneRedigering(p: RegnskapPost) {
+    const type = p.type === "inntekt" ? "inntekt" : "utgift"
+    const datoSource = String(p.dato ?? p.created_at ?? todayIso())
+    const dato = datoSource.includes("T") ? datoSource.slice(0, 10) : datoSource
+    setEditId(p.id)
+    setShowNew(true)
+    setNewMode(type)
+    setForm({
+      type,
+      dato: dato || todayIso(),
+      belop: p.belop === null || p.belop === undefined ? "" : String(p.belop),
+      motpart: String(p.motpart ?? ""),
+      vare: String(p.vare ?? ""),
+      notat: String(p.notat ?? ""),
+      bilag: null,
+      bilagPreviewUrl: null,
+      bilagTekst: null,
+    })
   }
 
   function applyInntektMal(mal: InntektMal) {
@@ -498,7 +520,12 @@ export default function AdminRegnskapPage() {
       if (form.bilagTekst) fd.set("bilagTekst", form.bilagTekst)
       if (form.bilag) fd.set("bilag", form.bilag)
 
-      const res = await fetch("/api/regnskap", { method: "POST", body: fd })
+      if (editId) fd.set("id", editId)
+
+      const res = await fetch("/api/regnskap", {
+        method: editId ? "PATCH" : "POST",
+        body: fd,
+      })
       let payload: { ok?: boolean; feil?: string } | null = null
       try {
         payload = (await res.json()) as { ok?: boolean; feil?: string }
@@ -513,6 +540,7 @@ export default function AdminRegnskapPage() {
 
       setShowNew(false)
       setNewMode(null)
+      setEditId(null)
       setForm({
         type: "utgift",
         dato: todayIso(),
@@ -543,6 +571,7 @@ export default function AdminRegnskapPage() {
               value={filterQuery}
               onChange={(e) => setFilterQuery(e.target.value)}
               placeholder="Søk i regnskap (beløp, motpart, vare, notat…)"
+              className="h-10"
             />
             <div className="flex flex-wrap gap-2">
               <Button
@@ -605,7 +634,18 @@ export default function AdminRegnskapPage() {
           >
             Lokallag
           </Button>
-          <Button onClick={() => setShowNew((v) => !v)}>
+          <Button
+            onClick={() => {
+              if (showNew) {
+                setShowNew(false)
+                setNewMode(null)
+                setEditId(null)
+                void velgBilag(null)
+                return
+              }
+              setShowNew(true)
+            }}
+          >
             {showNew ? "Lukk" : "Ny post"}
           </Button>
         </div>
@@ -626,6 +666,7 @@ export default function AdminRegnskapPage() {
                 } catch {}
               }}
               placeholder="Kontonummer til foreningen"
+              className="h-10"
             />
           </div>
           <div className="space-y-2">
@@ -642,6 +683,7 @@ export default function AdminRegnskapPage() {
                 } catch {}
               }}
               placeholder="0,00"
+              className="h-10"
             />
           </div>
         </div>
@@ -684,139 +726,174 @@ export default function AdminRegnskapPage() {
               </Button>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="dato">Dato</Label>
-                <Input
-                  id="dato"
-                  type="date"
-                  value={form.dato}
-                  onChange={(e) => setForm((p) => ({ ...p, dato: e.target.value }))}
-                />
+            <div className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                {editId ? "Rediger post" : "Ny post"}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="belop">Beløp (NOK)</Label>
-                <Input
-                  id="belop"
-                  inputMode="decimal"
-                  value={form.belop}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, belop: e.target.value }))
-                  }
-                  placeholder="0,00"
-                />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={form.type === "utgift" ? "default" : "outline"}
+                  onClick={() => {
+                    setForm((p) => ({ ...p, type: "utgift" }))
+                    setNewMode("utgift")
+                  }}
+                >
+                  Utgift
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={form.type === "inntekt" ? "default" : "outline"}
+                  onClick={() => {
+                    setForm((p) => ({ ...p, type: "inntekt" }))
+                    setNewMode("inntekt")
+                  }}
+                >
+                  Inntekt
+                </Button>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="motpart">Butikk / firma</Label>
-              <Input
-                id="motpart"
-                value={form.motpart}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, motpart: e.target.value }))
-                }
-                placeholder="F.eks. Biltema, Coop, Posten"
-                list="motpart-options"
-              />
-              <datalist id="motpart-options">
-                {motpartOptions.map((v) => (
-                  <option key={v} value={v} />
-                ))}
-              </datalist>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vare">Vare / tjeneste</Label>
-              {form.type === "inntekt" ? (
-                <div className="flex flex-wrap gap-2">
-                  {[...builtinInntekter, ...inntektMaler].slice(0, 20).map((m) => (
-                    <Button
-                      key={m.id}
-                      type="button"
-                      variant="outline"
-                      className="h-8 px-3 text-sm"
-                      onClick={() => applyInntektMal(m)}
-                    >
-                      {m.label}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
-              <Input
-                id="vare"
-                value={form.vare}
-                onChange={(e) => setForm((p) => ({ ...p, vare: e.target.value }))}
-                placeholder="F.eks. fôr, utstyr, leie"
-              />
-              {form.type === "inntekt" ? (
-                <div className="flex justify-end">
-                  <Button type="button" variant="outline" onClick={lagreSomInntektMal}>
-                    Lagre som mal
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="notat">Notat</Label>
-              <Textarea
-                id="notat"
-                value={form.notat}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, notat: e.target.value }))
-                }
-                placeholder="Hva gjelder posten?"
-              />
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label>Bilag (foto)</Label>
-              <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
-                <Input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={(e) => velgBilag(e.target.files?.[0] ?? null)}
-                />
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={!form.bilag || ocrLoading}
-                    onClick={analyserBilag}
-                  >
-                    {ocrLoading ? "Analyserer…" : "Analyser bilag"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => velgBilag(null)}
-                  >
-                    Fjern
-                  </Button>
-                </div>
-              </div>
-              {form.bilagPreviewUrl ? (
-                <div className="overflow-hidden rounded-xl border bg-muted/30">
-                  <Image
-                    src={form.bilagPreviewUrl}
-                    alt="Forhåndsvisning av bilag"
-                    className="h-auto w-full"
-                    width={1200}
-                    height={800}
-                    unoptimized
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="dato">Dato</Label>
+                  <Input
+                    id="dato"
+                    type="date"
+                    value={form.dato}
+                    onChange={(e) => setForm((p) => ({ ...p, dato: e.target.value }))}
+                    className="h-10"
                   />
                 </div>
-              ) : null}
-              {form.bilagTekst ? (
-                <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">
-                  OCR-forslag er fylt inn der det var mulig.
+                <div className="space-y-2">
+                  <Label htmlFor="belop">Beløp (NOK)</Label>
+                  <Input
+                    id="belop"
+                    inputMode="decimal"
+                    value={form.belop}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, belop: e.target.value }))
+                    }
+                    placeholder="0,00"
+                    className="h-10"
+                  />
                 </div>
-              ) : null}
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="motpart">Butikk / firma</Label>
+                  <Input
+                    id="motpart"
+                    value={form.motpart}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, motpart: e.target.value }))
+                    }
+                    placeholder="F.eks. Biltema, Coop, Posten"
+                    list="motpart-options"
+                    className="h-10"
+                  />
+                  <datalist id="motpart-options">
+                    {motpartOptions.map((v) => (
+                      <option key={v} value={v} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="vare">Vare / tjeneste</Label>
+                  {form.type === "inntekt" ? (
+                    <div className="flex flex-wrap gap-2">
+                      {[...builtinInntekter, ...inntektMaler].slice(0, 20).map((m) => (
+                        <Button
+                          key={m.id}
+                          type="button"
+                          variant="outline"
+                          className="h-8 px-3 text-sm"
+                          onClick={() => applyInntektMal(m)}
+                        >
+                          {m.label}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <Input
+                    id="vare"
+                    value={form.vare}
+                    onChange={(e) => setForm((p) => ({ ...p, vare: e.target.value }))}
+                    placeholder="F.eks. fôr, utstyr, leie"
+                    className="h-10"
+                  />
+                  {form.type === "inntekt" ? (
+                    <div className="flex justify-end">
+                      <Button type="button" variant="outline" onClick={lagreSomInntektMal}>
+                        Lagre som mal
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="notat">Notat</Label>
+                <Textarea
+                  id="notat"
+                  value={form.notat}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, notat: e.target.value }))
+                  }
+                  placeholder="Hva gjelder posten?"
+                  className="min-h-28"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Bilag (foto)</Label>
+                <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => velgBilag(e.target.files?.[0] ?? null)}
+                    className="h-10"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!form.bilag || ocrLoading}
+                      onClick={analyserBilag}
+                    >
+                      {ocrLoading ? "Analyserer…" : "Analyser bilag"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => velgBilag(null)}
+                    >
+                      Fjern
+                    </Button>
+                  </div>
+                </div>
+                {form.bilagPreviewUrl ? (
+                  <div className="overflow-hidden rounded-xl border bg-muted/30">
+                    <Image
+                      src={form.bilagPreviewUrl}
+                      alt="Forhåndsvisning av bilag"
+                      className="h-auto w-full"
+                      width={1200}
+                      height={800}
+                      unoptimized
+                    />
+                  </div>
+                ) : null}
+                {form.bilagTekst ? (
+                  <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">
+                    OCR-forslag er fylt inn der det var mulig.
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
           )}
 
           <div className="mt-5 flex items-center justify-end gap-2">
@@ -825,13 +902,14 @@ export default function AdminRegnskapPage() {
               onClick={() => {
                 setShowNew(false)
                 setNewMode(null)
+                setEditId(null)
                 velgBilag(null)
               }}
             >
               Avbryt
             </Button>
             <Button onClick={lagre} disabled={saving}>
-              {saving ? "Lagrer…" : "Lagre post"}
+              {saving ? "Lagrer…" : editId ? "Oppdater post" : "Lagre post"}
             </Button>
           </div>
         </div>
@@ -883,6 +961,9 @@ export default function AdminRegnskapPage() {
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
                     Bilag
                   </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right font-medium">
+                    Handling
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -917,12 +998,21 @@ export default function AdminRegnskapPage() {
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => apneRedigering(p)}
+                      >
+                        Åpne/rediger
+                      </Button>
+                    </td>
                   </tr>
                 ))}
                 {filtrertePoster.length === 0 ? (
                   <tr className="border-t">
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-4 py-6 text-center text-muted-foreground"
                     >
                       Ingen treff.

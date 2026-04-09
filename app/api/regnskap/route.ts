@@ -293,3 +293,176 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true })
 }
+
+export async function PATCH(request: Request) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { ok: false, feil: "Supabase er ikke konfigurert. Legg inn miljøvariabler først." },
+      { status: 500 }
+    )
+  }
+
+  const email = await getLoggedInEmail()
+  if (!email) {
+    return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { ok: false, feil: "Regnskap i admin krever SUPABASE_SERVICE_ROLE_KEY i miljøvariabler." },
+      { status: 500 }
+    )
+  }
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  })
+
+  const { data: roleRow } = await admin
+    .from("medlemmer")
+    .select("role")
+    .eq("epost", email)
+    .maybeSingle()
+  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
+    return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+  }
+
+  let form: FormData
+  try {
+    form = await request.formData()
+  } catch {
+    return NextResponse.json(
+      {
+        ok: false,
+        feil: "Ugyldig forespørsel (kunne ikke lese fil). Hvis du laster opp bilag: prøv et mindre bilde.",
+      },
+      { status: 400 }
+    )
+  }
+
+  const id = String(form.get("id") ?? "").trim()
+  if (!id) {
+    return NextResponse.json({ ok: false, feil: "Mangler id for regnskapspost." }, { status: 400 })
+  }
+
+  const type = String(form.get("type") ?? "").trim()
+  const dato = String(form.get("dato") ?? "").trim() || todayIso()
+  const belop = parseMoney(String(form.get("belop") ?? ""))
+  const motpart = String(form.get("motpart") ?? "").trim()
+  const vare = String(form.get("vare") ?? "").trim()
+  const notat = String(form.get("notat") ?? "").trim()
+  const bilagTekst = String(form.get("bilagTekst") ?? "").trim()
+  const bilag = form.get("bilag")
+
+  if (type !== "utgift" && type !== "inntekt") {
+    return NextResponse.json({ ok: false, feil: "Velg type (utgift/inntekt)." }, { status: 400 })
+  }
+
+  if (!belop && belop !== 0) {
+    return NextResponse.json({ ok: false, feil: "Skriv inn et gyldig beløp." }, { status: 400 })
+  }
+
+  const { data: existingRow, error: existingError } = await admin
+    .from("regnskap_poster")
+    .select("bilag_path")
+    .eq("id", id)
+    .maybeSingle()
+
+  if (existingError) {
+    return NextResponse.json({ ok: false, feil: "Kunne ikke hente regnskapspost." }, { status: 400 })
+  }
+  if (!existingRow) {
+    return NextResponse.json({ ok: false, feil: "Regnskapspost finnes ikke." }, { status: 404 })
+  }
+
+  const oldBilagPath = typeof existingRow.bilag_path === "string" ? existingRow.bilag_path : null
+
+  let newBilagPath: string | null = null
+  if (bilag instanceof File && bilag.size > 0) {
+    if (bilag.size > 4 * 1024 * 1024) {
+      return NextResponse.json(
+        { ok: false, feil: "Bilag er for stort (maks 4 MB)." },
+        { status: 400 }
+      )
+    }
+
+    const { error: createBucketError } = await admin.storage.createBucket(bucket, {
+      public: false,
+    })
+    if (createBucketError) {
+      const msg = String((createBucketError as { message?: string } | null)?.message ?? "")
+      if (!/exists/i.test(msg) && !/already/i.test(msg)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            feil: "Lagring av bilag er ikke satt opp i Supabase Storage. Lag en bucket som heter 'bilag' (private), og prøv igjen.",
+          },
+          { status: 500 }
+        )
+      }
+    }
+
+    const ext = (bilag.type || "").toLowerCase().includes("png")
+      ? "png"
+      : (bilag.type || "").toLowerCase().includes("webp")
+        ? "webp"
+        : "jpg"
+    newBilagPath = `${todayIso()}/${crypto.randomUUID()}.${ext}`
+    const body = await bilag.arrayBuffer()
+    const { error: uploadError } = await admin.storage
+      .from(bucket)
+      .upload(newBilagPath, body, { upsert: false, contentType: bilag.type || undefined })
+    if (uploadError) {
+      const msg = describeError(uploadError)
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: msg ? `Kunne ikke laste opp bilag: ${msg}` : "Kunne ikke laste opp bilag.",
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  const update: Record<string, unknown> = {
+    type,
+    dato,
+    belop,
+    motpart: motpart || null,
+    vare: vare || null,
+    notat: notat || null,
+    bilag_ocr_text: bilagTekst || null,
+    kilde: "manuelt",
+  }
+  if (newBilagPath) update.bilag_path = newBilagPath
+
+  const { error: updateError } = await admin.from("regnskap_poster").update(update).eq("id", id)
+
+  if (updateError) {
+    const msg = String((updateError as { message?: string } | null)?.message ?? "")
+    if (
+      (/(relation|column)/i.test(msg) && /regnskap_poster/i.test(msg)) ||
+      /42p01/i.test(msg) ||
+      /bilag_ocr_text/i.test(msg)
+    ) {
+      if (newBilagPath) {
+        await admin.storage.from(bucket).remove([newBilagPath])
+      }
+      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+    }
+    if (newBilagPath) {
+      await admin.storage.from(bucket).remove([newBilagPath])
+    }
+    return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere regnskapspost." }, { status: 400 })
+  }
+
+  if (newBilagPath && oldBilagPath && oldBilagPath !== newBilagPath) {
+    await admin.storage.from(bucket).remove([oldBilagPath])
+  }
+
+  return NextResponse.json({ ok: true })
+}

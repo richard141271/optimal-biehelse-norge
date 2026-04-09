@@ -263,7 +263,7 @@ export function MedlemskapForm() {
           value={passord}
           onChange={(e) => setPassord(e.target.value)}
           autoComplete="new-password"
-          placeholder="Minst 8 tegn"
+          placeholder="Minst 6 tegn"
           required
         />
       </div>
