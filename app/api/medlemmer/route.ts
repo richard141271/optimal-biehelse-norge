@@ -175,6 +175,8 @@ export async function POST(request: Request) {
     "alter table public.medlemmer add column if not exists medlemskap_type text;\n" +
     "alter table public.medlemmer add column if not exists medlemsnummer integer;\n" +
     "alter table public.medlemmer add column if not exists role text not null default 'user';\n" +
+    "alter table public.medlemmer add column if not exists aktiv boolean not null default true;\n" +
+    "alter table public.medlemmer add column if not exists utmeldt_at timestamptz;\n" +
     "alter table public.medlemmer add column if not exists adresse text;\n" +
     "alter table public.medlemmer add column if not exists postnr text;\n" +
     "alter table public.medlemmer add column if not exists sted text;\n" +

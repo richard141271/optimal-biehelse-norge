@@ -94,7 +94,7 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
             <div className="text-sm font-medium">Hvis Vipps ikke åpner</div>
             <p className="mt-2 text-sm text-muted-foreground">
               Noen nettlesere/innstillinger kan blokkere app-åpning. Da kan du åpne
-              Vipps manuelt og bruke nummeret over.
+              Vipps manuelt og bruke {vippsNummer} ({vippsNavn}).
             </p>
             <div className="mt-4 space-y-2 text-sm">
               <a

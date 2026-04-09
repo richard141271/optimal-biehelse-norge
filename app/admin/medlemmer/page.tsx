@@ -19,6 +19,8 @@ type Medlem = {
   kontingent_betalt_at?: string | null
   kontingent_gyldig_til?: string | null
   role?: string | null
+  aktiv?: boolean | null
+  utmeldt_at?: string | null
 }
 
 type State =
@@ -60,7 +62,7 @@ export default function AdminMedlemmerPage() {
   const [query, setQuery] = useState("")
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [changingId, setChangingId] = useState<string | null>(null)
 
   const hent = useCallback(async () => {
     setState({ type: "loading" })
@@ -145,9 +147,9 @@ export default function AdminMedlemmerPage() {
     [hent, savingRoleId]
   )
 
-  const slettMedlem = useCallback(
-    async (m: Medlem) => {
-      if (deletingId) return
+  const settAktiv = useCallback(
+    async (m: Medlem, aktiv: boolean) => {
+      if (changingId) return
       if (!m.id) return
       if (state.type !== "ready" || state.minRolle !== "superadmin") return
       if (m.role === "superadmin") return
@@ -160,29 +162,31 @@ export default function AdminMedlemmerPage() {
         .filter(Boolean)
         .join(" · ")
 
-      const ok = confirm(
-        `Slette dette medlemmet?\n\n${label}\n\nMedlemsnummer vil bli renummerert uten hull. Handlingen er uomgjørlig.`
-      )
-      if (!ok) return
+      if (!aktiv) {
+        const ok = confirm(
+          `Melde ut dette medlemmet?\n\n${label}\n\nMedlemsnummer blir bevart, og medlemmet kan aktiveres igjen senere.`
+        )
+        if (!ok) return
+      }
 
-      setDeletingId(m.id)
+      setChangingId(m.id)
       try {
         const res = await fetch("/api/admin/medlemmer", {
-          method: "DELETE",
+          method: aktiv ? "PATCH" : "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ medlemId: m.id }),
+          body: JSON.stringify({ medlemId: m.id, aktiv }),
         })
         const data = (await res.json()) as { ok?: boolean; feil?: string }
         if (!res.ok || !data.ok) {
-          alert(data.feil ?? `Kunne ikke slette medlem. (HTTP ${res.status})`)
+          alert(data.feil ?? `Kunne ikke oppdatere medlem. (HTTP ${res.status})`)
           return
         }
         await hent()
       } finally {
-        setDeletingId(null)
+        setChangingId(null)
       }
     },
-    [deletingId, hent, state]
+    [changingId, hent, state]
   )
 
   useEffect(() => {
@@ -294,6 +298,9 @@ export default function AdminMedlemmerPage() {
                     E-post
                   </th>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                    Status
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
                     Rolle
                   </th>
                   <th className="hidden whitespace-nowrap px-4 py-3 text-left font-medium lg:table-cell">
@@ -314,7 +321,7 @@ export default function AdminMedlemmerPage() {
                 {filtered.map((m, idx) => (
                   <tr
                     key={m.id ?? `${m.epost ?? "rad"}-${idx}`}
-                    className="border-t"
+                    className={`border-t${m.aktiv === false ? " opacity-60" : ""}`}
                   >
                     <td className="whitespace-nowrap px-4 py-3">
                       {formatDato(m.created_at)}
@@ -335,6 +342,9 @@ export default function AdminMedlemmerPage() {
                     </td>
                     <td className="px-4 py-3">{m.epost ?? ""}</td>
                     <td className="whitespace-nowrap px-4 py-3">
+                      {m.aktiv === false ? "Innaktiv" : "Aktiv"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
                       {m.role === "superadmin" ? (
                         labelForRole(m.role ?? null)
                       ) : (
@@ -345,6 +355,7 @@ export default function AdminMedlemmerPage() {
                             checked={m.role === "admin"}
                             disabled={
                               state.minRolle !== "superadmin" ||
+                              m.aktiv === false ||
                               !m.id ||
                               savingRoleId === m.id
                             }
@@ -370,7 +381,7 @@ export default function AdminMedlemmerPage() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
                       <div className="flex flex-wrap justify-end gap-2">
-                        {m.id ? (
+                        {m.id && m.aktiv !== false ? (
                           m.kontingent_gyldig_til ? (
                             <Button
                               variant="outline"
@@ -392,13 +403,23 @@ export default function AdminMedlemmerPage() {
                         state.minRolle === "superadmin" &&
                         m.id &&
                         m.role !== "superadmin" ? (
-                          <Button
-                            variant="destructive"
-                            onClick={() => void slettMedlem(m)}
-                            disabled={deletingId === m.id}
-                          >
-                            Slett
-                          </Button>
+                          m.aktiv === false ? (
+                            <Button
+                              variant="outline"
+                              onClick={() => void settAktiv(m, true)}
+                              disabled={changingId === m.id}
+                            >
+                              Aktiver
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="destructive"
+                              onClick={() => void settAktiv(m, false)}
+                              disabled={changingId === m.id}
+                            >
+                              Meld ut
+                            </Button>
+                          )
                         ) : null}
                       </div>
                     </td>
@@ -407,7 +428,7 @@ export default function AdminMedlemmerPage() {
                 {filtered.length === 0 ? (
                   <tr className="border-t">
                     <td
-                      colSpan={11}
+                      colSpan={12}
                       className="px-4 py-6 text-center text-muted-foreground"
                     >
                       Ingen treff.

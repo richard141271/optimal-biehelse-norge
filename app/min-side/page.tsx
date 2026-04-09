@@ -219,7 +219,7 @@ export default function MinSidePage() {
   }
 
   if (state.type === "error") {
-    const manglerMedlem = state.status === 404
+    const manglerMedlem = state.status === 404 && !/meldt ut/i.test(state.message)
     return (
       <main className="mx-auto w-full max-w-3xl px-4 py-14 sm:py-20">
         <div className="space-y-4">

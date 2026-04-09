@@ -42,7 +42,7 @@ async function getAuth() {
 }
 
 function selectMedlem() {
-  return "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til"
+  return "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til, aktiv"
 }
 
 export async function GET() {
@@ -63,23 +63,53 @@ export async function GET() {
     auth: { persistSession: false },
   })
 
-  const { data: byUserId } = await admin
+  const schemaFeil =
+    "Medlemsregister-tabellen mangler felt for inn-/utmelding. Kjør dette i Supabase (SQL Editor):\n\n" +
+    "alter table public.medlemmer add column if not exists aktiv boolean not null default true;\n" +
+    "alter table public.medlemmer add column if not exists utmeldt_at timestamptz;"
+
+  const { data: byUserId, error: byUserIdError } = await admin
     .from("medlemmer")
     .select(selectMedlem())
     .eq("user_id", userId)
     .maybeSingle()
 
+  if (byUserIdError) {
+    const msg = String((byUserIdError as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /aktiv/i.test(msg)) {
+      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+    }
+    return NextResponse.json({ ok: false, feil: "Kunne ikke hente medlemsdata." }, { status: 400 })
+  }
+
   if (byUserId) {
+    if ((byUserId as { aktiv?: boolean | null } | null)?.aktiv === false) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: "Du er meldt ut. Kontakt oss hvis du ønsker å bli aktivert igjen.",
+        },
+        { status: 404 }
+      )
+    }
     return NextResponse.json({ ok: true, medlem: byUserId })
   }
 
-  const { data: byEmail } = await admin
+  const { data: byEmail, error: byEmailError } = await admin
     .from("medlemmer")
     .select(selectMedlem())
     .eq("epost", email)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
+
+  if (byEmailError) {
+    const msg = String((byEmailError as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /aktiv/i.test(msg)) {
+      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+    }
+    return NextResponse.json({ ok: false, feil: "Kunne ikke hente medlemsdata." }, { status: 400 })
+  }
 
   if (byEmail) {
     const byEmailRow = byEmail as { id?: string; user_id?: string | null }
@@ -89,6 +119,15 @@ export async function GET() {
         .update({ user_id: userId })
         .eq("id", byEmailRow.id)
         .is("user_id", null)
+    }
+    if ((byEmail as { aktiv?: boolean | null } | null)?.aktiv === false) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: "Du er meldt ut. Kontakt oss hvis du ønsker å bli aktivert igjen.",
+        },
+        { status: 404 }
+      )
     }
     return NextResponse.json({ ok: true, medlem: byEmail })
   }
@@ -164,10 +203,23 @@ export async function PATCH(request: Request) {
     .from("medlemmer")
     .update(update)
     .eq("user_id", userId)
+    .eq("aktiv", true)
     .select(selectMedlem())
     .maybeSingle()
 
   if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /aktiv/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet aktiv. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists aktiv boolean not null default true;",
+        },
+        { status: 500 }
+      )
+    }
     return NextResponse.json(
       { ok: false, feil: "Kunne ikke lagre opplysninger." },
       { status: 400 }

@@ -45,12 +45,15 @@ async function getRole() {
 
   const { data, error } = await admin
     .from("medlemmer")
-    .select("role")
+    .select("role, aktiv")
     .eq("epost", email)
     .maybeSingle()
 
   if (error) return { ok: false as const, status: 400 as const }
   const role = (data?.role ?? null) as string | null
+  if (data?.aktiv === false) {
+    return { ok: false as const, status: 403 as const }
+  }
   if (role !== "admin" && role !== "superadmin") {
     return { ok: false as const, status: 403 as const }
   }
@@ -93,8 +96,21 @@ export async function PATCH(request: Request) {
         kontingent_gyldig_til: gyldigTil.toISOString(),
       })
       .eq("id", medlemId)
+      .eq("aktiv", true)
 
     if (error) {
+      const msg = String((error as { message?: string } | null)?.message ?? "")
+      if (/column/i.test(msg) && /aktiv/i.test(msg)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            feil:
+              "Medlemsregister-tabellen mangler feltet aktiv. Kjør dette i Supabase (SQL Editor):\n\n" +
+              "alter table public.medlemmer add column if not exists aktiv boolean not null default true;",
+          },
+          { status: 500 }
+        )
+      }
       return NextResponse.json(
         { ok: false, feil: "Kunne ikke lagre betaling." },
         { status: 400 }
@@ -111,8 +127,21 @@ export async function PATCH(request: Request) {
       kontingent_gyldig_til: null,
     })
     .eq("id", medlemId)
+    .eq("aktiv", true)
 
   if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /aktiv/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet aktiv. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists aktiv boolean not null default true;",
+        },
+        { status: 500 }
+      )
+    }
     return NextResponse.json(
       { ok: false, feil: "Kunne ikke fjerne betaling." },
       { status: 400 }
