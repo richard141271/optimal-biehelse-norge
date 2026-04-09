@@ -279,40 +279,40 @@ export default function AdminMedlemmerPage() {
               <table className="w-full text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
                     Dato
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
                     Medlemsnr.
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
                     Type
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
                     Navn
                   </th>
-                  <th className="hidden whitespace-nowrap px-4 py-3 text-left font-medium lg:table-cell">
+                  <th className="hidden whitespace-nowrap px-3 py-2 text-left font-medium xl:table-cell">
                     Adresse
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="px-3 py-2 text-left font-medium">
                     E-post
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
                     Status
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-medium">
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
                     Rolle
                   </th>
-                  <th className="hidden whitespace-nowrap px-4 py-3 text-left font-medium lg:table-cell">
+                  <th className="hidden whitespace-nowrap px-3 py-2 text-left font-medium xl:table-cell">
                     Telefon
                   </th>
-                  <th className="hidden whitespace-nowrap px-4 py-3 text-left font-medium xl:table-cell">
+                  <th className="hidden whitespace-nowrap px-3 py-2 text-left font-medium xl:table-cell">
                     Kontingent
                   </th>
-                  <th className="hidden whitespace-nowrap px-4 py-3 text-left font-medium xl:table-cell">
+                  <th className="hidden whitespace-nowrap px-3 py-2 text-left font-medium xl:table-cell">
                     Gyldig til
                   </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right font-medium">
+                  <th className="whitespace-nowrap px-3 py-2 text-right font-medium">
                     Handling
                   </th>
                 </tr>
@@ -323,28 +323,28 @@ export default function AdminMedlemmerPage() {
                     key={m.id ?? `${m.epost ?? "rad"}-${idx}`}
                     className={`border-t${m.aktiv === false ? " opacity-60" : ""}`}
                   >
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="whitespace-nowrap px-3 py-2">
                       {formatDato(m.created_at)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="whitespace-nowrap px-3 py-2">
                       {m.medlemsnummer ?? "—"}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="whitespace-nowrap px-3 py-2">
                       {labelForType(m.medlemskap_type ?? null)}
                     </td>
-                    <td className="px-4 py-3">{m.navn ?? ""}</td>
-                    <td className="hidden px-4 py-3 lg:table-cell">
+                    <td className="px-3 py-2">{m.navn ?? ""}</td>
+                    <td className="hidden px-3 py-2 xl:table-cell">
                       {[m.adresse ?? null, [m.postnr ?? null, m.sted ?? null]
                         .filter(Boolean)
                         .join(" ")]
                         .filter(Boolean)
                         .join(", ") || "—"}
                     </td>
-                    <td className="px-4 py-3">{m.epost ?? ""}</td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="px-3 py-2 break-all">{m.epost ?? ""}</td>
+                    <td className="whitespace-nowrap px-3 py-2">
                       {m.aktiv === false ? "Innaktiv" : "Aktiv"}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="whitespace-nowrap px-3 py-2">
                       {m.role === "superadmin" ? (
                         labelForRole(m.role ?? null)
                       ) : (
@@ -368,19 +368,19 @@ export default function AdminMedlemmerPage() {
                         </label>
                       )}
                     </td>
-                    <td className="hidden whitespace-nowrap px-4 py-3 lg:table-cell">
+                    <td className="hidden whitespace-nowrap px-3 py-2 xl:table-cell">
                       {m.telefon ?? ""}
                     </td>
-                    <td className="hidden whitespace-nowrap px-4 py-3 xl:table-cell">
+                    <td className="hidden whitespace-nowrap px-3 py-2 xl:table-cell">
                       {prisForType(m.medlemskap_type ?? null)} kr / år
                     </td>
-                    <td className="hidden whitespace-nowrap px-4 py-3 xl:table-cell">
+                    <td className="hidden whitespace-nowrap px-3 py-2 xl:table-cell">
                       {m.kontingent_gyldig_til
                         ? formatDato(m.kontingent_gyldig_til)
                         : "—"}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      <div className="flex flex-wrap justify-end gap-1.5">
                         {m.id && m.aktiv !== false ? (
                           m.kontingent_gyldig_til ? (
                             <Button
@@ -429,7 +429,7 @@ export default function AdminMedlemmerPage() {
                   <tr className="border-t">
                     <td
                       colSpan={12}
-                      className="px-4 py-6 text-center text-muted-foreground"
+                      className="px-3 py-5 text-center text-muted-foreground"
                     >
                       Ingen treff.
                     </td>

@@ -116,10 +116,7 @@ export async function GET() {
     .eq("epost", email)
     .maybeSingle()
   if (roleRow?.role !== "superadmin") {
-    return NextResponse.json(
-      { ok: false, feil: "Kun superbruker kan slette regnskapsposter." },
-      { status: 403 }
-    )
+    return NextResponse.json({ ok: false, feil: "Kun superbruker kan slette regnskapsposter." }, { status: 403 })
   }
 
   const { data, error } = await admin
