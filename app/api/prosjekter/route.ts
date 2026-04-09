@@ -59,8 +59,10 @@ async function getLoggedInEmail() {
   const {
     data: { user },
   } = await supabase.auth.getUser()
+  const userId = user?.id ?? null
   const email = (user?.email ?? "").trim().toLowerCase()
-  return email || null
+  if (!userId || !email) return null
+  return { userId, email, supabaseUrl }
 }
 
 export async function GET() {
@@ -78,8 +80,8 @@ export async function GET() {
     )
   }
 
-  const email = await getLoggedInEmail()
-  if (!email) {
+  const auth = await getLoggedInEmail()
+  if (!auth) {
     return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
   }
 
@@ -121,7 +123,7 @@ export async function GET() {
   const { data: roleRow } = await admin
     .from("medlemmer")
     .select("role")
-    .eq("epost", email)
+    .eq("epost", auth.email)
     .maybeSingle()
   if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
     return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
@@ -196,6 +198,20 @@ export async function POST(request: Request) {
     )
   }
 
+  const auth = await getLoggedInEmail()
+  if (!auth) {
+    return NextResponse.json(
+      { ok: false, feil: "Kun innloggede medlemmer kan sende inn prosjektforslag." },
+      { status: 401 }
+    )
+  }
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { ok: false, feil: "Prosjekter krever SUPABASE_SERVICE_ROLE_KEY i miljøvariabler." },
+      { status: 500 }
+    )
+  }
+
   let payload: Payload = {}
   let vedlegg: File[] = []
   const contentType = request.headers.get("content-type") ?? ""
@@ -233,13 +249,93 @@ export async function POST(request: Request) {
       .filter((v): v is File => v instanceof File && v.size > 0)
   }
 
-  const navn = (payload.navn ?? "").trim()
-  const epost = (payload.epost ?? "").trim()
-  const telefon = digitsOnly((payload.telefon ?? "").trim())
+  const admin = createClient(auth.supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  })
+
+  const { data: byUserId, error: byUserIdError } = await admin
+    .from("medlemmer")
+    .select("id, user_id, medlemsnummer, navn, epost, telefon, aktiv")
+    .eq("user_id", auth.userId)
+    .maybeSingle()
+
+  if (byUserIdError) {
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke verifisere medlemskap." },
+      { status: 400 }
+    )
+  }
+
+  let medlem =
+    (byUserId as
+      | {
+          id?: string
+          user_id?: string | null
+          medlemsnummer?: number | null
+          navn?: string | null
+          epost?: string | null
+          telefon?: string | null
+          aktiv?: boolean | null
+        }
+      | null) ?? null
+
+  if (!medlem) {
+    const { data: byEmail, error: byEmailError } = await admin
+      .from("medlemmer")
+      .select("id, user_id, medlemsnummer, navn, epost, telefon, aktiv")
+      .eq("epost", auth.email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (byEmailError) {
+      return NextResponse.json(
+        { ok: false, feil: "Kunne ikke verifisere medlemskap." },
+        { status: 400 }
+      )
+    }
+
+    medlem =
+      (byEmail as
+        | {
+            id?: string
+            user_id?: string | null
+            medlemsnummer?: number | null
+            navn?: string | null
+            epost?: string | null
+            telefon?: string | null
+            aktiv?: boolean | null
+          }
+        | null) ?? null
+
+    if (medlem?.id && !medlem.user_id) {
+      await admin.from("medlemmer").update({ user_id: auth.userId }).eq("id", medlem.id).is("user_id", null)
+    }
+  }
+
+  if (!medlem) {
+    return NextResponse.json(
+      {
+        ok: false,
+        feil: "Du er innlogget, men ikke registrert som medlem ennå. Registrer medlemskap først.",
+      },
+      { status: 403 }
+    )
+  }
+
+  if (medlem.aktiv === false) {
+    return NextResponse.json(
+      { ok: false, feil: "Du er meldt ut. Kontakt oss hvis du ønsker å bli aktivert igjen." },
+      { status: 403 }
+    )
+  }
+
+  const navn = String(medlem.navn ?? payload.navn ?? "").trim()
+  const epost = auth.email
+  const telefon = digitsOnly(String(medlem.telefon ?? payload.telefon ?? "").trim())
   const tittel = (payload.tittel ?? "").trim()
   const sted = (payload.sted ?? "").trim()
   const beskrivelse = (payload.beskrivelse ?? "").trim()
-  const medlemsnummer = (payload.medlemsnummer ?? "").trim()
   const budsjettTall = parseMoney(payload.budsjett ?? "")
 
   if (navn.length < 2 || navn.length > 80) {
@@ -285,8 +381,8 @@ export async function POST(request: Request) {
   }
 
   const medlemsnummerTall =
-    medlemsnummer && /^\d{3,10}$/.test(medlemsnummer)
-      ? Number(medlemsnummer)
+    typeof medlem.medlemsnummer === "number" && Number.isFinite(medlem.medlemsnummer)
+      ? medlem.medlemsnummer
       : null
 
   const schemaFeil =
@@ -307,16 +403,6 @@ export async function POST(request: Request) {
     ");\n"
 
   const bucket = "prosjekt-vedlegg"
-  const admin = createClient(supabaseUrl, serviceRoleKey ?? supabaseAnonKey, {
-    auth: { persistSession: false },
-  })
-
-  if (vedlegg.length && !serviceRoleKey) {
-    return NextResponse.json(
-      { ok: false, feil: "Vedlegg krever SUPABASE_SERVICE_ROLE_KEY i miljøvariabler." },
-      { status: 500 }
-    )
-  }
 
   if (vedlegg.length) {
     const { error: createBucketError } = await admin.storage.createBucket(bucket, {

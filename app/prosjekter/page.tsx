@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,7 +13,22 @@ type Status =
   | { type: "success" }
   | { type: "error"; message: string }
 
+type Gate =
+  | { type: "loading" }
+  | { type: "anon" }
+  | { type: "not_member"; message: string }
+  | {
+      type: "ready"
+      medlem: {
+        medlemsnummer?: number | null
+        navn?: string | null
+        epost?: string | null
+        telefon?: string | null
+      }
+    }
+
 export default function ProsjekterPage() {
+  const [gate, setGate] = useState<Gate>({ type: "loading" })
   const [medlemsnummer, setMedlemsnummer] = useState("")
   const [navn, setNavn] = useState("")
   const [epost, setEpost] = useState("")
@@ -25,8 +40,50 @@ export default function ProsjekterPage() {
   const [vedlegg, setVedlegg] = useState<File[]>([])
   const [status, setStatus] = useState<Status>({ type: "idle" })
 
+  useEffect(() => {
+    let active = true
+    fetch(`/api/min-side/me?ts=${Date.now()}`, { cache: "no-store" })
+      .then(async (res) => {
+        const payload = (await res.json()) as {
+          ok?: boolean
+          feil?: string
+          medlem?: {
+            medlemsnummer?: number | null
+            navn?: string | null
+            epost?: string | null
+            telefon?: string | null
+          }
+        }
+        if (!active) return
+        if (!res.ok || !payload.ok || !payload.medlem) {
+          if (res.status === 401) {
+            setGate({ type: "anon" })
+            return
+          }
+          setGate({ type: "not_member", message: payload.feil ?? "Ingen tilgang." })
+          return
+        }
+        setGate({ type: "ready", medlem: payload.medlem })
+        setMedlemsnummer(payload.medlem.medlemsnummer ? String(payload.medlem.medlemsnummer) : "")
+        setNavn(String(payload.medlem.navn ?? ""))
+        setEpost(String(payload.medlem.epost ?? ""))
+        if (payload.medlem.telefon) setTelefon(String(payload.medlem.telefon))
+      })
+      .catch(() => {
+        if (!active) return
+        setGate({ type: "anon" })
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (gate.type !== "ready") {
+      setStatus({ type: "error", message: "Du må være innlogget som medlem for å sende inn prosjekt." })
+      return
+    }
     setStatus({ type: "sending" })
     try {
       const formData = new FormData()
@@ -56,9 +113,6 @@ export default function ProsjekterPage() {
       }
 
       setStatus({ type: "success" })
-      setMedlemsnummer("")
-      setNavn("")
-      setEpost("")
       setTelefon("")
       setTittel("")
       setSted("")
@@ -99,16 +153,43 @@ export default function ProsjekterPage() {
             </p>
           </div>
 
+          {gate.type !== "ready" ? (
+            <div className="mt-6 rounded-xl border bg-muted/30 p-4 text-sm">
+              {gate.type === "loading"
+                ? "Sjekker innlogging…"
+                : gate.type === "anon"
+                  ? "Kun innloggede medlemmer kan sende inn prosjektforslag."
+                  : gate.message}
+              {gate.type === "anon" ? (
+                <div className="mt-3">
+                  <Link
+                    href={`/min-side/login?next=${encodeURIComponent("/prosjekter")}`}
+                    className="underline underline-offset-4"
+                  >
+                    Gå til innlogging
+                  </Link>
+                </div>
+              ) : gate.type === "not_member" ? (
+                <div className="mt-3">
+                  <Link href="/#medlemskap" className="underline underline-offset-4">
+                    Registrer medlemskap
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="medlemsnummer">Medlemsnummer (valgfritt)</Label>
+                <Label htmlFor="medlemsnummer">Medlemsnummer</Label>
                 <Input
                   id="medlemsnummer"
                   value={medlemsnummer}
                   onChange={(e) => setMedlemsnummer(e.target.value)}
                   inputMode="numeric"
                   placeholder="1000"
+                  disabled={gate.type !== "ready"}
                 />
               </div>
               <div className="space-y-2">
@@ -120,6 +201,7 @@ export default function ProsjekterPage() {
                   autoComplete="name"
                   placeholder="Fullt navn"
                   required
+                  disabled={gate.type !== "ready"}
                 />
               </div>
             </div>
@@ -135,6 +217,7 @@ export default function ProsjekterPage() {
                   autoComplete="email"
                   placeholder="navn@eksempel.no"
                   required
+                  disabled={gate.type !== "ready"}
                 />
               </div>
               <div className="space-y-2">
@@ -147,6 +230,7 @@ export default function ProsjekterPage() {
                   autoComplete="tel"
                   inputMode="tel"
                   placeholder="8–12 sifre"
+                  disabled={gate.type !== "ready"}
                 />
               </div>
             </div>
@@ -159,6 +243,7 @@ export default function ProsjekterPage() {
                 onChange={(e) => setTittel(e.target.value)}
                 placeholder="F.eks. pollinatorbed i skolegård"
                 required
+                disabled={gate.type !== "ready"}
               />
             </div>
 
@@ -171,6 +256,7 @@ export default function ProsjekterPage() {
                   onChange={(e) => setSted(e.target.value)}
                   placeholder="Kommune / område"
                   required
+                  disabled={gate.type !== "ready"}
                 />
               </div>
               <div className="space-y-2">
@@ -181,6 +267,7 @@ export default function ProsjekterPage() {
                   onChange={(e) => setBudsjett(e.target.value)}
                   inputMode="decimal"
                   placeholder="0,00"
+                  disabled={gate.type !== "ready"}
                 />
               </div>
             </div>
@@ -193,6 +280,7 @@ export default function ProsjekterPage() {
                 onChange={(e) => setBeskrivelse(e.target.value)}
                 placeholder="Hva er målet, hva skal gjøres, og hvordan kan OBNO bidra?"
                 required
+                disabled={gate.type !== "ready"}
               />
             </div>
 
@@ -207,6 +295,7 @@ export default function ProsjekterPage() {
                   const files = Array.from(e.target.files ?? [])
                   setVedlegg(files)
                 }}
+                disabled={gate.type !== "ready"}
               />
               {vedlegg.length ? (
                 <div className="text-xs text-muted-foreground">
@@ -216,7 +305,7 @@ export default function ProsjekterPage() {
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Button type="submit" disabled={status.type === "sending"}>
+              <Button type="submit" disabled={status.type === "sending" || gate.type !== "ready"}>
                 {status.type === "sending" ? "Sender…" : "Send inn"}
               </Button>
               {status.type === "success" ? (
