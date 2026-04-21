@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 type Medlem = {
   id?: string
   created_at?: string
+  user_id?: string | null
   medlemsnummer?: number | null
   medlemskap_type?: string | null
   navn?: string
@@ -37,6 +38,23 @@ function formatDato(value?: string) {
     month: "2-digit",
     day: "2-digit",
   }).format(d)
+}
+
+function formatDatoKort(value?: string) {
+  if (!value) return { top: "", bottom: "" }
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return { top: "", bottom: "" }
+  const top = new Intl.DateTimeFormat("nb-NO", { day: "2-digit", month: "2-digit" }).format(d)
+  const bottom = new Intl.DateTimeFormat("nb-NO", { year: "numeric" }).format(d)
+  return { top, bottom }
+}
+
+function telefonVisning(value?: string | null) {
+  const t = String(value ?? "").trim()
+  if (!t) return ""
+  if (t.startsWith("+47")) return t.slice(3).trim()
+  if (t.startsWith("0047")) return t.slice(4).trim()
+  return t
 }
 
 function prisForType(type: string | null | undefined) {
@@ -87,6 +105,18 @@ export default function AdminMedlemmerPage() {
   const [selected, setSelected] = useState<Record<string, true>>({})
   const [emailSubject, setEmailSubject] = useState("OBNO – viktig info")
   const [emailBody, setEmailBody] = useState("")
+  const [openMember, setOpenMember] = useState<Medlem | null>(null)
+  const [editNavn, setEditNavn] = useState("")
+  const [editEpost, setEditEpost] = useState("")
+  const [editTelefon, setEditTelefon] = useState("")
+  const [editAdresse, setEditAdresse] = useState("")
+  const [editPostnr, setEditPostnr] = useState("")
+  const [editSted, setEditSted] = useState("")
+  const [editMedlemsnummer, setEditMedlemsnummer] = useState("")
+  const [editType, setEditType] = useState("")
+  const [editAuthEmail, setEditAuthEmail] = useState("")
+  const [editAuthPassword, setEditAuthPassword] = useState("")
+  const [savingMember, setSavingMember] = useState(false)
 
   const hent = useCallback(async () => {
     setState({ type: "loading" })
@@ -318,6 +348,75 @@ export default function AdminMedlemmerPage() {
     window.location.href = url
   }, [emailBody, emailSubject, selectedEmails])
 
+  useEffect(() => {
+    if (!openMember) return
+    setEditNavn(String(openMember.navn ?? ""))
+    setEditEpost(String(openMember.epost ?? ""))
+    setEditTelefon(String(openMember.telefon ?? ""))
+    setEditAdresse(String(openMember.adresse ?? ""))
+    setEditPostnr(String(openMember.postnr ?? ""))
+    setEditSted(String(openMember.sted ?? ""))
+    setEditMedlemsnummer(openMember.medlemsnummer == null ? "" : String(openMember.medlemsnummer))
+    setEditType(String(openMember.medlemskap_type ?? ""))
+    setEditAuthEmail(String(openMember.epost ?? ""))
+    setEditAuthPassword("")
+  }, [openMember])
+
+  const lagreMedlem = useCallback(async () => {
+    if (!openMember?.id) return
+    if (savingMember) return
+    setSavingMember(true)
+    try {
+      const isSuper = state.type === "ready" && state.minRolle === "superadmin"
+      const payload: Record<string, unknown> = {
+        medlemId: String(openMember.id),
+        navn: editNavn,
+        epost: editEpost,
+        telefon: editTelefon,
+        adresse: editAdresse,
+        postnr: editPostnr,
+        sted: editSted,
+        medlemsnummer: editMedlemsnummer,
+        medlemskap_type: editType,
+      }
+      if (isSuper && openMember.user_id) {
+        payload.authEmail = editAuthEmail
+        if (editAuthPassword.trim()) payload.authPassword = editAuthPassword
+      }
+      const res = await fetch("/api/admin/medlemmer", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      if (!res.ok || !data.ok) {
+        alert(data.feil ?? "Kunne ikke lagre medlem.")
+        return
+      }
+      await hent()
+      setOpenMember(null)
+    } catch {
+      alert("Kunne ikke lagre medlem. Sjekk nett og prøv igjen.")
+    } finally {
+      setSavingMember(false)
+    }
+  }, [
+    editAdresse,
+    editAuthEmail,
+    editAuthPassword,
+    editEpost,
+    editMedlemsnummer,
+    editNavn,
+    editPostnr,
+    editSted,
+    editTelefon,
+    editType,
+    hent,
+    openMember,
+    savingMember,
+    state,
+  ])
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -445,19 +544,19 @@ export default function AdminMedlemmerPage() {
                       aria-label="Velg alle"
                     />
                   </th>
-                  <th className="w-20 whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-14 whitespace-nowrap px-2 py-2 text-left font-medium">
                     Dato
                   </th>
-                  <th className="w-20 whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-[72px] whitespace-nowrap px-2 py-2 text-left font-medium">
                     Medlemsnr.
                   </th>
-                  <th className="w-28 whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-24 whitespace-nowrap px-2 py-2 text-left font-medium">
                     Type
                   </th>
                   <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
                     Navn
                   </th>
-                  <th className="hidden whitespace-nowrap px-2 py-2 text-left font-medium xl:table-cell">
+                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
                     Adresse
                   </th>
                   <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
@@ -469,13 +568,13 @@ export default function AdminMedlemmerPage() {
                   <th className="w-28 whitespace-nowrap px-2 py-2 text-left font-medium">
                     Rolle
                   </th>
-                  <th className="hidden whitespace-nowrap px-2 py-2 text-left font-medium xl:table-cell">
+                  <th className="w-[88px] whitespace-nowrap px-2 py-2 text-left font-medium">
                     Telefon
                   </th>
-                  <th className="hidden whitespace-nowrap px-2 py-2 text-left font-medium xl:table-cell">
+                  <th className="w-[76px] whitespace-nowrap px-2 py-2 text-left font-medium">
                     Kontingent
                   </th>
-                  <th className="hidden whitespace-nowrap px-2 py-2 text-left font-medium xl:table-cell">
+                  <th className="w-16 whitespace-nowrap px-2 py-2 text-left font-medium">
                     Gyldig til
                   </th>
                   <th className="w-[180px] whitespace-nowrap px-2 py-2 text-right font-medium">
@@ -487,13 +586,15 @@ export default function AdminMedlemmerPage() {
                 {sorted.map((m, idx) => (
                   <tr
                     key={rowKey(m, idx)}
-                    className={`border-t${m.aktiv === false ? " opacity-60" : ""}`}
+                    className={`cursor-pointer border-t hover:bg-muted/20${m.aktiv === false ? " opacity-60" : ""}`}
+                    onClick={() => setOpenMember(m)}
                   >
                     <td className="whitespace-nowrap px-2 py-2">
                       <input
                         type="checkbox"
                         className="h-4 w-4 accent-foreground"
                         checked={!!selected[rowKey(m, idx)]}
+                        onClick={(e) => e.stopPropagation()}
                         onChange={() => {
                           const key = rowKey(m, idx)
                           setSelected((prev) => {
@@ -507,7 +608,15 @@ export default function AdminMedlemmerPage() {
                       />
                     </td>
                     <td className="whitespace-nowrap px-2 py-2">
-                      {formatDato(m.created_at)}
+                      {(() => {
+                        const v = formatDatoKort(m.created_at)
+                        return (
+                          <div className="leading-tight">
+                            <div>{v.top || "—"}</div>
+                            <div className="text-muted-foreground">{v.bottom || ""}</div>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2">
                       {m.medlemsnummer ?? "—"}
@@ -520,7 +629,7 @@ export default function AdminMedlemmerPage() {
                         {m.navn ?? ""}
                       </div>
                     </td>
-                    <td className="hidden px-2 py-2 xl:table-cell">
+                    <td className="px-2 py-2">
                       <div
                         className="truncate"
                         title={
@@ -557,6 +666,7 @@ export default function AdminMedlemmerPage() {
                               !m.id ||
                               savingRoleId === m.id
                             }
+                            onClick={(e) => e.stopPropagation()}
                             onChange={(e) => {
                               if (!m.id) return
                               void settAdmin(m.id, e.target.checked)
@@ -566,36 +676,50 @@ export default function AdminMedlemmerPage() {
                         </label>
                       )}
                     </td>
-                    <td className="hidden whitespace-nowrap px-2 py-2 xl:table-cell">
-                      {m.telefon ?? ""}
+                    <td className="whitespace-nowrap px-2 py-2">
+                      {telefonVisning(m.telefon ?? null)}
                     </td>
-                    <td className="hidden whitespace-nowrap px-2 py-2 xl:table-cell">
-                      {prisForType(m.medlemskap_type ?? null)} kr / år
+                    <td className="whitespace-nowrap px-2 py-2">
+                      {prisForType(m.medlemskap_type ?? null)} kr/år
                     </td>
-                    <td className="hidden whitespace-nowrap px-2 py-2 xl:table-cell">
-                      {m.kontingent_gyldig_til
-                        ? formatDato(m.kontingent_gyldig_til)
-                        : "—"}
+                    <td className="whitespace-nowrap px-2 py-2">
+                      {(() => {
+                        const v = formatDatoKort(m.kontingent_gyldig_til ?? "")
+                        if (!v.top) return "—"
+                        return (
+                          <div className="leading-tight">
+                            <div>{v.top}</div>
+                            <div className="text-muted-foreground">{v.bottom}</div>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 text-right">
                       <div className="flex flex-wrap justify-end gap-1">
                         {m.id && m.aktiv !== false ? (
                           m.kontingent_gyldig_til ? (
                             <Button
-                              variant="outline"
                               size="sm"
-                              onClick={() => markerKontingent(String(m.id), false)}
+                              className="bg-emerald-600 text-white hover:bg-emerald-600/90"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                markerKontingent(String(m.id), false).catch(() => {})
+                              }}
                               disabled={savingId === String(m.id)}
                             >
-                              Marker ikke betalt
+                              Betalt
                             </Button>
                           ) : (
                             <Button
+                              variant="destructive"
                               size="sm"
-                              onClick={() => markerKontingent(String(m.id), true)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                markerKontingent(String(m.id), true).catch(() => {})
+                              }}
                               disabled={savingId === String(m.id)}
                             >
-                              Marker betalt
+                              Ubetalt
                             </Button>
                           )
                         ) : null}
@@ -607,7 +731,10 @@ export default function AdminMedlemmerPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => void settAktiv(m, true)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void settAktiv(m, true)
+                              }}
                               disabled={changingId === m.id}
                             >
                               Aktiver
@@ -616,7 +743,10 @@ export default function AdminMedlemmerPage() {
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => void settAktiv(m, false)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void settAktiv(m, false)
+                              }}
                               disabled={changingId === m.id}
                             >
                               Meld ut
@@ -648,7 +778,11 @@ export default function AdminMedlemmerPage() {
                     .filter(Boolean)
                     .join(", ")
                   return (
-                    <div key={key} className={`p-4${m.aktiv === false ? " opacity-60" : ""}`}>
+                    <div
+                      key={key}
+                      className={`cursor-pointer p-4 hover:bg-muted/20${m.aktiv === false ? " opacity-60" : ""}`}
+                      onClick={() => setOpenMember(m)}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
@@ -656,6 +790,7 @@ export default function AdminMedlemmerPage() {
                               type="checkbox"
                               className="h-4 w-4 accent-foreground"
                               checked={!!selected[key]}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={() => {
                                 setSelected((prev) => {
                                   const next = { ...prev }
@@ -687,7 +822,7 @@ export default function AdminMedlemmerPage() {
                         </div>
                         <div className="rounded-lg border bg-background/70 p-3">
                           <div className="text-muted-foreground">Telefon</div>
-                          <div className="truncate">{m.telefon ?? "—"}</div>
+                          <div className="truncate">{telefonVisning(m.telefon ?? null) || "—"}</div>
                         </div>
                         <div className="rounded-lg border bg-background/70 p-3 sm:col-span-2">
                           <div className="text-muted-foreground">Adresse</div>
@@ -716,6 +851,7 @@ export default function AdminMedlemmerPage() {
                                 !m.id ||
                                 savingRoleId === m.id
                               }
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => {
                                 if (!m.id) return
                                 void settAdmin(m.id, e.target.checked)
@@ -732,18 +868,25 @@ export default function AdminMedlemmerPage() {
                         {m.id && m.aktiv !== false ? (
                           m.kontingent_gyldig_til ? (
                             <Button
-                              variant="outline"
-                              onClick={() => markerKontingent(String(m.id), false)}
+                              className="bg-emerald-600 text-white hover:bg-emerald-600/90"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                markerKontingent(String(m.id), false).catch(() => {})
+                              }}
                               disabled={savingId === String(m.id)}
                             >
-                              Marker ikke betalt
+                              Betalt
                             </Button>
                           ) : (
                             <Button
-                              onClick={() => markerKontingent(String(m.id), true)}
+                              variant="destructive"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                markerKontingent(String(m.id), true).catch(() => {})
+                              }}
                               disabled={savingId === String(m.id)}
                             >
-                              Marker betalt
+                              Ubetalt
                             </Button>
                           )
                         ) : null}
@@ -755,7 +898,10 @@ export default function AdminMedlemmerPage() {
                           m.aktiv === false ? (
                             <Button
                               variant="outline"
-                              onClick={() => void settAktiv(m, true)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void settAktiv(m, true)
+                              }}
                               disabled={changingId === m.id}
                             >
                               Aktiver
@@ -763,7 +909,10 @@ export default function AdminMedlemmerPage() {
                           ) : (
                             <Button
                               variant="destructive"
-                              onClick={() => void settAktiv(m, false)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void settAktiv(m, false)
+                              }}
                               disabled={changingId === m.id}
                             >
                               Meld ut
@@ -778,6 +927,104 @@ export default function AdminMedlemmerPage() {
                   <div className="p-5 text-center text-sm text-muted-foreground">Ingen treff.</div>
                 ) : null}
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {state.type === "ready" && openMember ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setOpenMember(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl border bg-card p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold">Medlem</div>
+                <div className="text-sm text-muted-foreground">
+                  #{openMember.medlemsnummer ?? "—"} · {labelForType(openMember.medlemskap_type ?? null)}
+                </div>
+              </div>
+              <Button variant="outline" onClick={() => setOpenMember(null)}>
+                Lukk
+              </Button>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Navn</div>
+                <Input value={editNavn} onChange={(e) => setEditNavn(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Medlemsnr.</div>
+                <Input value={editMedlemsnummer} onChange={(e) => setEditMedlemsnummer(e.target.value)} />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <div className="text-xs text-muted-foreground">E-post</div>
+                <Input value={editEpost} onChange={(e) => setEditEpost(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Telefon</div>
+                <Input value={editTelefon} onChange={(e) => setEditTelefon(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Type</div>
+                <Input value={editType} onChange={(e) => setEditType(e.target.value)} placeholder="medlem / stotte / bedrift" />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <div className="text-xs text-muted-foreground">Adresse</div>
+                <Input value={editAdresse} onChange={(e) => setEditAdresse(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Postnr</div>
+                <Input value={editPostnr} onChange={(e) => setEditPostnr(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Sted</div>
+                <Input value={editSted} onChange={(e) => setEditSted(e.target.value)} />
+              </div>
+            </div>
+
+            {state.minRolle === "superadmin" ? (
+              <div className="mt-5 rounded-xl border bg-muted/30 p-4">
+                <div className="text-sm font-medium">Innlogging</div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1 sm:col-span-2">
+                    <div className="text-xs text-muted-foreground">E-post (innlogging)</div>
+                    <Input
+                      value={editAuthEmail}
+                      onChange={(e) => setEditAuthEmail(e.target.value)}
+                      disabled={!openMember.user_id}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <div className="text-xs text-muted-foreground">Nytt passord</div>
+                    <Input
+                      value={editAuthPassword}
+                      onChange={(e) => setEditAuthPassword(e.target.value)}
+                      placeholder="Minst 8 tegn"
+                      disabled={!openMember.user_id}
+                    />
+                  </div>
+                  {!openMember.user_id ? (
+                    <div className="text-xs text-muted-foreground sm:col-span-2">
+                      Medlemmet er ikke koblet til en innloggingsbruker (user_id mangler).
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <Button variant="outline" onClick={() => setOpenMember(null)} disabled={savingMember}>
+                Avbryt
+              </Button>
+              <Button onClick={() => void lagreMedlem()} disabled={savingMember}>
+                Lagre
+              </Button>
             </div>
           </div>
         </div>
