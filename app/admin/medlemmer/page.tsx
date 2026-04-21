@@ -431,12 +431,12 @@ export default function AdminMedlemmerPage() {
               </div>
             </div>
           </div>
-          <div className="rounded-xl border bg-card">
+          <div className="overflow-hidden rounded-xl border bg-card">
             <div className="hidden lg:block">
-              <table className="w-full text-xs">
+              <table className="w-full table-fixed text-xs">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-8 whitespace-nowrap px-2 py-2 text-left font-medium">
                     <input
                       type="checkbox"
                       className="h-4 w-4 accent-foreground"
@@ -445,13 +445,13 @@ export default function AdminMedlemmerPage() {
                       aria-label="Velg alle"
                     />
                   </th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-20 whitespace-nowrap px-2 py-2 text-left font-medium">
                     Dato
                   </th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-20 whitespace-nowrap px-2 py-2 text-left font-medium">
                     Medlemsnr.
                   </th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-28 whitespace-nowrap px-2 py-2 text-left font-medium">
                     Type
                   </th>
                   <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
@@ -463,10 +463,10 @@ export default function AdminMedlemmerPage() {
                   <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
                     E-post
                   </th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-16 whitespace-nowrap px-2 py-2 text-left font-medium">
                     Status
                   </th>
-                  <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-28 whitespace-nowrap px-2 py-2 text-left font-medium">
                     Rolle
                   </th>
                   <th className="hidden whitespace-nowrap px-2 py-2 text-left font-medium xl:table-cell">
@@ -478,7 +478,7 @@ export default function AdminMedlemmerPage() {
                   <th className="hidden whitespace-nowrap px-2 py-2 text-left font-medium xl:table-cell">
                     Gyldig til
                   </th>
-                  <th className="whitespace-nowrap px-2 py-2 text-right font-medium">
+                  <th className="w-[180px] whitespace-nowrap px-2 py-2 text-right font-medium">
                     Handling
                   </th>
                 </tr>
@@ -515,13 +515,26 @@ export default function AdminMedlemmerPage() {
                     <td className="whitespace-nowrap px-2 py-2">
                       {labelForType(m.medlemskap_type ?? null)}
                     </td>
-                    <td className="px-2 py-2">{m.navn ?? ""}</td>
+                    <td className="px-2 py-2">
+                      <div className="truncate" title={m.navn ?? ""}>
+                        {m.navn ?? ""}
+                      </div>
+                    </td>
                     <td className="hidden px-2 py-2 xl:table-cell">
-                      {[m.adresse ?? null, [m.postnr ?? null, m.sted ?? null]
-                        .filter(Boolean)
-                        .join(" ")]
-                        .filter(Boolean)
-                        .join(", ") || "—"}
+                      <div
+                        className="truncate"
+                        title={
+                          [m.adresse ?? null, [m.postnr ?? null, m.sted ?? null].filter(Boolean).join(" ")]
+                            .filter(Boolean)
+                            .join(", ") || "—"
+                        }
+                      >
+                        {[m.adresse ?? null, [m.postnr ?? null, m.sted ?? null]
+                          .filter(Boolean)
+                          .join(" ")]
+                          .filter(Boolean)
+                          .join(", ") || "—"}
+                      </div>
                     </td>
                     <td className="px-2 py-2 max-w-[200px] truncate sm:max-w-[260px]" title={m.epost ?? ""}>
                       {m.epost ?? ""}
@@ -565,11 +578,12 @@ export default function AdminMedlemmerPage() {
                         : "—"}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 text-right">
-                      <div className="flex flex-wrap justify-end gap-1.5">
+                      <div className="flex flex-wrap justify-end gap-1">
                         {m.id && m.aktiv !== false ? (
                           m.kontingent_gyldig_til ? (
                             <Button
                               variant="outline"
+                              size="sm"
                               onClick={() => markerKontingent(String(m.id), false)}
                               disabled={savingId === String(m.id)}
                             >
@@ -577,6 +591,7 @@ export default function AdminMedlemmerPage() {
                             </Button>
                           ) : (
                             <Button
+                              size="sm"
                               onClick={() => markerKontingent(String(m.id), true)}
                               disabled={savingId === String(m.id)}
                             >
@@ -591,6 +606,7 @@ export default function AdminMedlemmerPage() {
                           m.aktiv === false ? (
                             <Button
                               variant="outline"
+                              size="sm"
                               onClick={() => void settAktiv(m, true)}
                               disabled={changingId === m.id}
                             >
@@ -599,6 +615,7 @@ export default function AdminMedlemmerPage() {
                           ) : (
                             <Button
                               variant="destructive"
+                              size="sm"
                               onClick={() => void settAktiv(m, false)}
                               disabled={changingId === m.id}
                             >
