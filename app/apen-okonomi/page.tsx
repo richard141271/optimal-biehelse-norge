@@ -113,7 +113,7 @@ export default async function ApenOkonomiPage() {
           <p className="max-w-3xl text-muted-foreground">
             Full åpenhet: Alle midler tilhører OBNO og dokumenteres løpende. I en
             overgangsperiode kan innbetalinger gå til en midlertidig løsning frem til
-            organisasjonsnummer og kontonummer er på plass.
+            kontonummer er på plass.
           </p>
           <p className="max-w-3xl text-sm text-muted-foreground">
             Viser regnskapsposter fra og med {startDatoLabel}. Eldre historikk vises ikke her.
@@ -126,11 +126,13 @@ export default async function ApenOkonomiPage() {
             <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
               <div>
                 <div className="font-medium text-foreground">Organisasjon</div>
-                <div>OBNO (under etablering)</div>
+                <div>Optimal Biehelse Norge (OBNO)</div>
+                <div className="text-xs text-muted-foreground">Org.nr. 937 528 191</div>
               </div>
               <div>
                 <div className="font-medium text-foreground">Konto</div>
-                <div>Midlertidig løsning (privat forvalter)</div>
+                <div>Kontonummer under søknadsprosess i lokalbank</div>
+                <div className="text-xs text-muted-foreground">Midlertidig løsning brukes i mellomtiden</div>
               </div>
               <div>
                 <div className="font-medium text-foreground">Sist oppdatert</div>
@@ -223,9 +225,9 @@ export default async function ApenOkonomiPage() {
           <div className="space-y-2">
             <div className="font-medium text-foreground">Midlertidig løsning</div>
             <p>
-              Frem til OBNO har eget organisasjonsnummer og bankkonto, kan innbetalinger
-              gå til en midlertidig forvaltning. Alle innbetalinger og utbetalinger
-              dokumenteres her.
+              OBNO har nå organisasjonsnummer (937 528 191). Vi venter på kontonummer som er
+              under søknadsprosess i lokalbank. I mellomtiden kan innbetalinger gå til en
+              midlertidig forvaltning. Alle innbetalinger og utbetalinger dokumenteres her.
             </p>
           </div>
         </section>

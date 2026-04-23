@@ -119,8 +119,79 @@ export default function OmOssPage() {
             </div>
           </div>
         </section>
+
+        <section className="rounded-2xl border bg-card p-6 sm:p-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <h2 className="text-xl font-semibold tracking-tight">Virksomhetsinformasjon</h2>
+              <p className="text-sm text-muted-foreground">
+                Offisielle opplysninger fra Brønnøysundregistrene.
+              </p>
+            </div>
+            <a
+              href="https://w2.brreg.no/enhet/sok/detalj.jsp?orgnr=937528191"
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm underline underline-offset-4"
+            >
+              Se i Brønnøysundregistrene
+            </a>
+          </div>
+
+          <div className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
+            <div className="rounded-xl border bg-background/70 p-4">
+              <div className="text-xs text-muted-foreground">Organisasjonsnummer</div>
+              <div className="font-medium">937 528 191</div>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-4">
+              <div className="text-xs text-muted-foreground">Organisasjonsform</div>
+              <div className="font-medium">Forening/lag/innretning</div>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-4 sm:col-span-2">
+              <div className="text-xs text-muted-foreground">Forretningsadresse</div>
+              <div className="font-medium">
+                Fredriksrydveien 2, 1792 Tistedal
+              </div>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-4">
+              <div className="text-xs text-muted-foreground">Kommune / land</div>
+              <div className="font-medium">3101 Halden, Norge</div>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-4">
+              <div className="text-xs text-muted-foreground">Næringskode</div>
+              <div className="font-medium">94.992 – Aktiviteter i andre medlemsorganisasjoner ellers</div>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-4">
+              <div className="text-xs text-muted-foreground">Stiftelsesdato</div>
+              <div className="font-medium">5. april 2026</div>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-4">
+              <div className="text-xs text-muted-foreground">Registrert i Enhetsregisteret</div>
+              <div className="font-medium">21. april 2026</div>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-4">
+              <div className="text-xs text-muted-foreground">Institusjonell sektorkode</div>
+              <div className="font-medium">7000 – Ideelle organisasjoner</div>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-4">
+              <div className="text-xs text-muted-foreground">Målform</div>
+              <div className="font-medium">Bokmål</div>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-4 sm:col-span-2">
+              <div className="text-xs text-muted-foreground">Aktivitet</div>
+              <div className="font-medium">
+                Foreningen arbeider for å forbedre helse og levevilkår for honningbier og ville pollinatorer.
+                Dette gjøres gjennom informasjonsarbeid, kunnskapsdeling, støtte til tiltak og samarbeid med fagmiljøer.
+                Arbeidet er ideelt og uten økonomisk formål.
+              </div>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-4 sm:col-span-2">
+              <div className="text-xs text-muted-foreground">Antall ansatte</div>
+              <div className="font-medium">Ingen registrerte ansatte</div>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   )
 }
-
