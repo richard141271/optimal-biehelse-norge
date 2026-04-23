@@ -11,9 +11,9 @@ export default function Home() {
             <Image
               src="/logo.png"
               alt="Optimal Biehelse Norge (OBNO)"
-              width={220}
-              height={64}
-              className="h-8 w-auto"
+              width={128}
+              height={128}
+              className="h-10 w-auto"
               priority
             />
           </Link>

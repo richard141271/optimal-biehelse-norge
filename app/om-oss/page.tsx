@@ -35,9 +35,9 @@ export default function OmOssPage() {
               <Image
                 src="/logo.png"
                 alt="OBNO-logo"
-                width={960}
-                height={360}
-                className="h-auto w-full"
+                width={512}
+                height={512}
+                className="mx-auto h-auto w-full max-w-sm"
                 priority
               />
             </div>

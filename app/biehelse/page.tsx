@@ -1,15 +1,49 @@
 import Link from "next/link"
+import Image from "next/image"
 
 export default function BiehelsePage() {
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
-      <div className="space-y-8">
-        <header className="space-y-3">
-          <div className="text-sm text-muted-foreground">
-            <Link href="/" className="hover:text-foreground">
-              Til forsiden
+    <div className="flex flex-1 flex-col">
+      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+          <Link href="/" className="flex items-center gap-2 font-semibold">
+            <Image
+              src="/logo.png"
+              alt="Optimal Biehelse Norge (OBNO)"
+              width={128}
+              height={128}
+              className="h-10 w-auto"
+              priority
+            />
+          </Link>
+          <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
+            <Link href="/om-oss" className="hover:text-foreground">
+              Om oss
+            </Link>
+            <Link href="/biehelse" className="hover:text-foreground">
+              Biehelse
+            </Link>
+            <Link href="/#medlemskap" className="hover:text-foreground">
+              Bli medlem
+            </Link>
+            <Link href="/#stott-oss" className="hover:text-foreground">
+              Støtt oss
+            </Link>
+          </nav>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/min-side"
+              className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+            >
+              Min side
             </Link>
           </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
+        <div className="space-y-8">
+          <header className="space-y-3">
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
             Bier og biehelse
           </h1>
@@ -18,7 +52,7 @@ export default function BiehelsePage() {
             forebygging og praktiske tiltak. Her finner du en kort oversikt over
             det vi mener er viktigst.
           </p>
-        </header>
+          </header>
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-xl border bg-card p-5">
@@ -85,5 +119,6 @@ export default function BiehelsePage() {
         </section>
       </div>
     </main>
+    </div>
   )
 }
