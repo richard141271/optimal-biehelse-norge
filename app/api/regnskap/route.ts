@@ -67,7 +67,12 @@ const schemaFeil =
   "  notat text,\n" +
   "  bilag_path text,\n" +
   "  bilag_ocr_text text,\n" +
-  "  kilde text\n" +
+  "  kilde text,\n" +
+  "  utlegg_medlem_id text,\n" +
+  "  utlegg_medlem_navn text,\n" +
+  "  utlegg_medlem_epost text,\n" +
+  "  utlegg_status text,\n" +
+  "  utlegg_utbetalt_at timestamptz\n" +
   ");\n"
 
 const bucket = "bilag"
@@ -222,7 +227,9 @@ export async function GET() {
 
   const { data, error } = await admin
     .from("regnskap_poster")
-    .select("id, created_at, dato, type, belop, motpart, vare, notat, bilag_path, kilde")
+    .select(
+      "id, created_at, dato, type, belop, motpart, vare, notat, bilag_path, kilde, utlegg_medlem_id, utlegg_medlem_navn, utlegg_medlem_epost, utlegg_status, utlegg_utbetalt_at"
+    )
     .order("dato", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(500)
@@ -331,6 +338,10 @@ export async function POST(request: Request) {
   const vare = String(form.get("vare") ?? "").trim()
   const notat = String(form.get("notat") ?? "").trim()
   const bilagTekst = String(form.get("bilagTekst") ?? "").trim()
+  const utleggMedlemId = String(form.get("utleggMedlemId") ?? "").trim()
+  const utleggMedlemNavn = String(form.get("utleggMedlemNavn") ?? "").trim()
+  const utleggMedlemEpost = String(form.get("utleggMedlemEpost") ?? "").trim()
+  const utleggStatus = String(form.get("utleggStatus") ?? "").trim()
   const bilag = form.get("bilag")
 
   if (type !== "utgift" && type !== "inntekt") {
@@ -388,7 +399,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const { error } = await admin.from("regnskap_poster").insert({
+  const insert: Record<string, unknown> = {
     type,
     dato,
     belop,
@@ -398,7 +409,14 @@ export async function POST(request: Request) {
     bilag_path: bilagPath,
     bilag_ocr_text: bilagTekst || null,
     kilde: "manuelt",
-  })
+  }
+
+  if (utleggMedlemId) insert.utlegg_medlem_id = utleggMedlemId
+  if (utleggMedlemNavn) insert.utlegg_medlem_navn = utleggMedlemNavn
+  if (utleggMedlemEpost) insert.utlegg_medlem_epost = utleggMedlemEpost
+  if (utleggStatus) insert.utlegg_status = utleggStatus
+
+  const { error } = await admin.from("regnskap_poster").insert(insert)
 
   if (error) {
     const msg = String((error as { message?: string } | null)?.message ?? "")
@@ -476,26 +494,27 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: false, feil: "Mangler id for regnskapspost." }, { status: 400 })
   }
 
-  const type = String(form.get("type") ?? "").trim()
-  const dato = String(form.get("dato") ?? "").trim() || todayIso()
-  const belop = parseMoney(String(form.get("belop") ?? ""))
-  const motpart = String(form.get("motpart") ?? "").trim()
-  const vare = String(form.get("vare") ?? "").trim()
-  const notat = String(form.get("notat") ?? "").trim()
-  const bilagTekst = String(form.get("bilagTekst") ?? "").trim()
+  const typeInput = form.has("type") ? String(form.get("type") ?? "").trim() : ""
+  const datoInput = form.has("dato") ? String(form.get("dato") ?? "").trim() : ""
+  const belopRaw = form.has("belop") ? String(form.get("belop") ?? "").trim() : ""
+  const belopInput = belopRaw ? parseMoney(belopRaw) : null
+  const motpartInput = form.has("motpart") ? String(form.get("motpart") ?? "").trim() : null
+  const vareInput = form.has("vare") ? String(form.get("vare") ?? "").trim() : null
+  const notatInput = form.has("notat") ? String(form.get("notat") ?? "").trim() : null
+  const hasBilagTekst = form.has("bilagTekst")
+  const bilagTekstInput = hasBilagTekst ? String(form.get("bilagTekst") ?? "").trim() : null
+  const utleggMedlemId = form.has("utleggMedlemId") ? String(form.get("utleggMedlemId") ?? "").trim() : null
+  const utleggMedlemNavn = form.has("utleggMedlemNavn") ? String(form.get("utleggMedlemNavn") ?? "").trim() : null
+  const utleggMedlemEpost = form.has("utleggMedlemEpost") ? String(form.get("utleggMedlemEpost") ?? "").trim() : null
+  const utleggStatus = form.has("utleggStatus") ? String(form.get("utleggStatus") ?? "").trim() : null
+  const utleggUtbetaltAt = form.has("utleggUtbetaltAt") ? String(form.get("utleggUtbetaltAt") ?? "").trim() : null
   const bilag = form.get("bilag")
-
-  if (type !== "utgift" && type !== "inntekt") {
-    return NextResponse.json({ ok: false, feil: "Velg type (utgift/inntekt)." }, { status: 400 })
-  }
-
-  if (!belop && belop !== 0) {
-    return NextResponse.json({ ok: false, feil: "Skriv inn et gyldig beløp." }, { status: 400 })
-  }
 
   const { data: existingRow, error: existingError } = await admin
     .from("regnskap_poster")
-    .select("bilag_path, type, belop")
+    .select(
+      "bilag_path, type, dato, belop, motpart, vare, notat, bilag_ocr_text, utlegg_medlem_id, utlegg_medlem_navn, utlegg_medlem_epost, utlegg_status, utlegg_utbetalt_at"
+    )
     .eq("id", id)
     .maybeSingle()
 
@@ -507,6 +526,29 @@ export async function PATCH(request: Request) {
   }
 
   const oldBilagPath = typeof existingRow.bilag_path === "string" ? existingRow.bilag_path : null
+  const existingType = String((existingRow as { type?: unknown } | null)?.type ?? "").trim()
+  const existingDato = String((existingRow as { dato?: unknown } | null)?.dato ?? "").trim() || todayIso()
+  const existingBelop = toNumber((existingRow as { belop?: unknown } | null)?.belop)
+  const existingMotpart = String((existingRow as { motpart?: unknown } | null)?.motpart ?? "").trim()
+  const existingVare = String((existingRow as { vare?: unknown } | null)?.vare ?? "").trim()
+  const existingNotat = String((existingRow as { notat?: unknown } | null)?.notat ?? "").trim()
+  const existingBilagTekst = String((existingRow as { bilag_ocr_text?: unknown } | null)?.bilag_ocr_text ?? "").trim()
+
+  const type = (typeInput || existingType).trim()
+  const dato = (datoInput || existingDato).trim() || todayIso()
+  const belop = belopInput ?? existingBelop
+  const motpart = motpartInput === null ? existingMotpart : motpartInput
+  const vare = vareInput === null ? existingVare : vareInput
+  const notat = notatInput === null ? existingNotat : notatInput
+  const bilagTekst = bilagTekstInput === null ? existingBilagTekst : bilagTekstInput
+
+  if (type !== "utgift" && type !== "inntekt") {
+    return NextResponse.json({ ok: false, feil: "Velg type (utgift/inntekt)." }, { status: 400 })
+  }
+
+  if (belop === null) {
+    return NextResponse.json({ ok: false, feil: "Skriv inn et gyldig beløp." }, { status: 400 })
+  }
 
   let newBilagPath: string | null = null
   if (bilag instanceof File && bilag.size > 0) {
@@ -562,10 +604,15 @@ export async function PATCH(request: Request) {
     motpart: motpart || null,
     vare: vare || null,
     notat: notat || null,
-    bilag_ocr_text: bilagTekst || null,
     kilde: "manuelt",
   }
+  if (hasBilagTekst) update.bilag_ocr_text = bilagTekst || null
   if (newBilagPath) update.bilag_path = newBilagPath
+  if (utleggMedlemId !== null) update.utlegg_medlem_id = utleggMedlemId || null
+  if (utleggMedlemNavn !== null) update.utlegg_medlem_navn = utleggMedlemNavn || null
+  if (utleggMedlemEpost !== null) update.utlegg_medlem_epost = utleggMedlemEpost || null
+  if (utleggStatus !== null) update.utlegg_status = utleggStatus || null
+  if (utleggUtbetaltAt !== null) update.utlegg_utbetalt_at = utleggUtbetaltAt ? utleggUtbetaltAt : null
 
   const { error: updateError } = await admin.from("regnskap_poster").update(update).eq("id", id)
 

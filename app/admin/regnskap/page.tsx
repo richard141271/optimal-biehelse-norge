@@ -20,6 +20,11 @@ type RegnskapPost = {
   bilag_path?: string | null
   bilag_url?: string | null
   kilde?: string | null
+  utlegg_medlem_id?: string | null
+  utlegg_medlem_navn?: string | null
+  utlegg_medlem_epost?: string | null
+  utlegg_status?: string | null
+  utlegg_utbetalt_at?: string | null
 }
 
 type State =
@@ -29,6 +34,28 @@ type State =
 
 type FormState = {
   type: "utgift" | "inntekt"
+  dato: string
+  belop: string
+  motpart: string
+  vare: string
+  notat: string
+  bilag: File | null
+  bilagPreviewUrl: string | null
+  bilagTekst: string | null
+}
+
+type UtleggMedlem = {
+  id?: string
+  medlemsnummer?: number | null
+  medlemskap_type?: string | null
+  navn?: string | null
+  epost?: string | null
+  aktiv?: boolean | null
+  kontingent_gyldig_til?: string | null
+}
+
+type UtleggFormState = {
+  medlemId: string
   dato: string
   belop: string
   motpart: string
@@ -69,6 +96,13 @@ function todayIso() {
   const mm = String(d.getMonth() + 1).padStart(2, "0")
   const dd = String(d.getDate()).padStart(2, "0")
   return `${yyyy}-${mm}-${dd}`
+}
+
+function isAktivKontingent(gyldigTil?: string | null) {
+  if (!gyldigTil) return false
+  const d = new Date(gyldigTil)
+  if (Number.isNaN(d.getTime())) return false
+  return d.getTime() > Date.now()
 }
 
 function normalizeOcrText(text: string) {
@@ -199,6 +233,23 @@ export default function AdminRegnskapPage() {
   )
   const [form, setForm] = useState<FormState>({
     type: "utgift",
+    dato: todayIso(),
+    belop: "",
+    motpart: "",
+    vare: "",
+    notat: "",
+    bilag: null,
+    bilagPreviewUrl: null,
+    bilagTekst: null,
+  })
+  const [showUtlegg, setShowUtlegg] = useState(false)
+  const [utleggTab, setUtleggTab] = useState<"ny" | "skyldig">("ny")
+  const [utleggMedlemmer, setUtleggMedlemmer] = useState<UtleggMedlem[]>([])
+  const [utleggMedlemmerFeil, setUtleggMedlemmerFeil] = useState<string | null>(null)
+  const [utleggSaving, setUtleggSaving] = useState(false)
+  const [utleggOcrLoading, setUtleggOcrLoading] = useState(false)
+  const [utleggForm, setUtleggForm] = useState<UtleggFormState>({
+    medlemId: "",
     dato: todayIso(),
     belop: "",
     motpart: "",
@@ -415,6 +466,16 @@ export default function AdminRegnskapPage() {
         })
       : []
 
+  const skyldigeUtlegg =
+    state.type === "ready"
+      ? state.poster.filter((p) => String(p.utlegg_status ?? "").toLowerCase() === "skyldig")
+      : []
+
+  const skyldigSum = skyldigeUtlegg.reduce((sum, p) => {
+    const bel = typeof p.belop === "number" ? p.belop : Number(String(p.belop ?? "").replace(",", "."))
+    return Number.isFinite(bel) ? sum + bel : sum
+  }, 0)
+
   function resetFilter() {
     setFilterQuery("")
     setFilterType("alle")
@@ -589,6 +650,161 @@ export default function AdminRegnskapPage() {
     }
   }
 
+  const hentUtleggMedlemmer = useCallback(async () => {
+    setUtleggMedlemmerFeil(null)
+    try {
+      const res = await fetch(`/api/admin/medlemmer?ts=${Date.now()}`, { cache: "no-store" })
+      const data = (await res.json()) as { ok?: boolean; feil?: string; medlemmer?: UtleggMedlem[] }
+      if (!res.ok || !data.ok) {
+        setUtleggMedlemmerFeil(data.feil ?? "Kunne ikke hente medlemmer.")
+        return
+      }
+      const alle = (data.medlemmer ?? []) as UtleggMedlem[]
+      const betalt = alle.filter((m) => m.aktiv !== false && isAktivKontingent(m.kontingent_gyldig_til ?? null))
+      betalt.sort((a, b) => String(a.navn ?? "").localeCompare(String(b.navn ?? ""), "nb-NO", { sensitivity: "base" }))
+      setUtleggMedlemmer(betalt)
+    } catch {
+      setUtleggMedlemmerFeil("Kunne ikke hente medlemmer.")
+    }
+  }, [])
+
+  async function velgUtleggBilag(file: File | null) {
+    setUtleggForm((prev) => {
+      if (prev.bilagPreviewUrl) URL.revokeObjectURL(prev.bilagPreviewUrl)
+      return {
+        ...prev,
+        bilag: file,
+        bilagPreviewUrl: file ? URL.createObjectURL(file) : null,
+        bilagTekst: null,
+      }
+    })
+  }
+
+  async function analyserUtleggBilag() {
+    if (!utleggForm.bilag) return
+    setUtleggOcrLoading(true)
+    try {
+      type TesseractModule = {
+        recognize: (
+          image: File | Blob,
+          lang: string
+        ) => Promise<{ data?: { text?: string } }>
+      }
+
+      const { recognize } = (await import(
+        "tesseract.js"
+      )) as unknown as TesseractModule
+
+      const result = await recognize(utleggForm.bilag, "eng")
+      const rawText = String(result?.data?.text ?? "")
+      const normalized = normalizeOcrText(rawText)
+      const belop = extractAmount(rawText)
+      const motpart = extractVendor(rawText)
+      const vare = extractItem(rawText)
+
+      setUtleggForm((prev) => ({
+        ...prev,
+        belop: prev.belop || belop,
+        motpart: prev.motpart || motpart,
+        vare: prev.vare || vare,
+        bilagTekst: normalized || null,
+      }))
+    } finally {
+      setUtleggOcrLoading(false)
+    }
+  }
+
+  async function lagreUtlegg() {
+    if (utleggSaving) return
+    if (!utleggForm.medlemId) {
+      alert("Velg et medlem.")
+      return
+    }
+    const medlem = utleggMedlemmer.find((m) => String(m.id ?? "") === utleggForm.medlemId) ?? null
+    if (!medlem?.id) {
+      alert("Velg et medlem.")
+      return
+    }
+    if (!isAktivKontingent(medlem.kontingent_gyldig_til ?? null)) {
+      alert("Medlemmet må ha betalt kontingent (aktivt medlemskap).")
+      return
+    }
+
+    const belop = utleggForm.belop.trim().replace(",", ".")
+    const belopTall = belop ? Number(belop) : NaN
+    if (!Number.isFinite(belopTall)) {
+      alert("Skriv inn et gyldig beløp.")
+      return
+    }
+    if (utleggForm.bilag && utleggForm.bilag.size > 4 * 1024 * 1024) {
+      alert("Bilag er for stort. Maks 4 MB.")
+      return
+    }
+
+    setUtleggSaving(true)
+    try {
+      const fd = new FormData()
+      fd.set("type", "utgift")
+      fd.set("dato", utleggForm.dato)
+      fd.set("belop", String(belopTall))
+      fd.set("motpart", utleggForm.motpart)
+      fd.set("vare", utleggForm.vare)
+      fd.set("notat", utleggForm.notat)
+      if (utleggForm.bilagTekst) fd.set("bilagTekst", utleggForm.bilagTekst)
+      if (utleggForm.bilag) fd.set("bilag", utleggForm.bilag)
+
+      fd.set("utleggMedlemId", String(medlem.id))
+      fd.set("utleggMedlemNavn", String(medlem.navn ?? ""))
+      fd.set("utleggMedlemEpost", String(medlem.epost ?? ""))
+      fd.set("utleggStatus", "skyldig")
+
+      const res = await fetch("/api/regnskap", { method: "POST", body: fd })
+      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      if (!res.ok || !data.ok) {
+        alert(data.feil ?? `Kunne ikke lagre utlegg. (HTTP ${res.status})`)
+        return
+      }
+
+      setUtleggForm({
+        medlemId: "",
+        dato: todayIso(),
+        belop: "",
+        motpart: "",
+        vare: "",
+        notat: "",
+        bilag: null,
+        bilagPreviewUrl: null,
+        bilagTekst: null,
+      })
+      setUtleggTab("skyldig")
+      await hent()
+    } finally {
+      setUtleggSaving(false)
+    }
+  }
+
+  async function markerUtleggUtbetalt(post: RegnskapPost, utbetalt: boolean) {
+    const id = String(post.id ?? "").trim()
+    if (!id) return
+    if (utleggSaving) return
+    setUtleggSaving(true)
+    try {
+      const fd = new FormData()
+      fd.set("id", id)
+      fd.set("utleggStatus", utbetalt ? "utbetalt" : "skyldig")
+      fd.set("utleggUtbetaltAt", utbetalt ? new Date().toISOString() : "")
+      const res = await fetch("/api/regnskap", { method: "PATCH", body: fd })
+      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      if (!res.ok || !data.ok) {
+        alert(data.feil ?? `Kunne ikke oppdatere utlegg. (HTTP ${res.status})`)
+        return
+      }
+      await hent()
+    } finally {
+      setUtleggSaving(false)
+    }
+  }
+
   async function apneBilag(url: string) {
     window.open(url, "_blank", "noopener,noreferrer")
   }
@@ -752,6 +968,16 @@ export default function AdminRegnskapPage() {
           ) : null}
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowUtlegg(true)
+              setUtleggTab("ny")
+              void hentUtleggMedlemmer()
+            }}
+          >
+            Utlegg
+          </Button>
           <Button variant="outline" onClick={hent}>
             Oppdater
           </Button>
@@ -1170,6 +1396,238 @@ export default function AdminRegnskapPage() {
                 ) : null}
               </tbody>
             </table>
+          </div>
+        </div>
+      ) : null}
+
+      {showUtlegg ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowUtlegg(false)}
+        >
+          <div
+            className="w-full max-w-4xl rounded-2xl border bg-card p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold">Utlegg</div>
+                <div className="text-sm text-muted-foreground">
+                  Knytt en utgift til et medlem, og hold oversikt over det som er skyldig.
+                </div>
+              </div>
+              <Button variant="outline" onClick={() => setShowUtlegg(false)}>
+                Lukk
+              </Button>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={utleggTab === "ny" ? "default" : "outline"}
+                onClick={() => {
+                  setUtleggTab("ny")
+                  void hentUtleggMedlemmer()
+                }}
+              >
+                Nytt utlegg
+              </Button>
+              <Button
+                type="button"
+                variant={utleggTab === "skyldig" ? "default" : "outline"}
+                onClick={() => setUtleggTab("skyldig")}
+              >
+                Skyldig ({skyldigeUtlegg.length})
+              </Button>
+            </div>
+
+            {utleggMedlemmerFeil ? (
+              <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive whitespace-pre-wrap">
+                {utleggMedlemmerFeil}
+              </div>
+            ) : null}
+
+            {utleggTab === "ny" ? (
+              <div className="mt-5 space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Medlem (betalt kontingent)</Label>
+                    <select
+                      value={utleggForm.medlemId}
+                      onChange={(e) => setUtleggForm((p) => ({ ...p, medlemId: e.target.value }))}
+                      className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
+                    >
+                      <option value="">Velg medlem…</option>
+                      {utleggMedlemmer.map((m) => (
+                        <option key={String(m.id ?? "")} value={String(m.id ?? "")}>
+                          {String(m.navn ?? "").trim() || "Ukjent"}{m.medlemsnummer ? ` (#${m.medlemsnummer})` : ""}{m.epost ? ` · ${m.epost}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Dato</Label>
+                    <Input
+                      type="date"
+                      value={utleggForm.dato}
+                      onChange={(e) => setUtleggForm((p) => ({ ...p, dato: e.target.value }))}
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Beløp (NOK)</Label>
+                    <Input
+                      inputMode="decimal"
+                      value={utleggForm.belop}
+                      onChange={(e) => setUtleggForm((p) => ({ ...p, belop: e.target.value }))}
+                      placeholder="0,00"
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Butikk / firma</Label>
+                    <Input
+                      value={utleggForm.motpart}
+                      onChange={(e) => setUtleggForm((p) => ({ ...p, motpart: e.target.value }))}
+                      placeholder="F.eks. Biltema, Coop, Posten"
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Vare / tjeneste</Label>
+                  <Input
+                    value={utleggForm.vare}
+                    onChange={(e) => setUtleggForm((p) => ({ ...p, vare: e.target.value }))}
+                    placeholder="F.eks. utstyr, fôr, kjøring"
+                    className="h-10"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Notat</Label>
+                  <Textarea
+                    value={utleggForm.notat}
+                    onChange={(e) => setUtleggForm((p) => ({ ...p, notat: e.target.value }))}
+                    placeholder="Kort forklaring"
+                    className="min-h-24"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Kvittering (foto)</Label>
+                  <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => void velgUtleggBilag(e.target.files?.[0] ?? null)}
+                      className="h-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!utleggForm.bilag || utleggOcrLoading}
+                      onClick={() => void analyserUtleggBilag()}
+                    >
+                      {utleggOcrLoading ? "Analyserer…" : "Les kvittering"}
+                    </Button>
+                  </div>
+                  {utleggForm.bilagPreviewUrl ? (
+                    <div className="mt-3 overflow-hidden rounded-xl border bg-background">
+                      <Image
+                        src={utleggForm.bilagPreviewUrl}
+                        alt="Forhåndsvisning av kvittering"
+                        width={1200}
+                        height={1200}
+                        className="h-auto w-full"
+                        unoptimized
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowUtlegg(false)} disabled={utleggSaving}>
+                    Avbryt
+                  </Button>
+                  <Button onClick={() => void lagreUtlegg()} disabled={utleggSaving}>
+                    {utleggSaving ? "Lagrer…" : "Lagre utlegg"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5 space-y-3">
+                <div className="rounded-xl border bg-background p-4 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-muted-foreground">Sum skyldig</div>
+                    <div className="font-semibold">{formatBelop(skyldigSum)}</div>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-xl border bg-background">
+                  <table className="w-full text-sm">
+                    <thead className="border-b bg-muted/30 text-left text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Dato</th>
+                        <th className="px-4 py-3 font-medium">Medlem</th>
+                        <th className="px-4 py-3 font-medium">Hva</th>
+                        <th className="px-4 py-3 font-medium">Beløp</th>
+                        <th className="px-4 py-3 font-medium">Bilag</th>
+                        <th className="px-4 py-3 font-medium text-right">Handling</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {skyldigeUtlegg.length === 0 ? (
+                        <tr className="border-b">
+                          <td className="px-4 py-6 text-muted-foreground" colSpan={6}>
+                            Ingen skyldige utlegg.
+                          </td>
+                        </tr>
+                      ) : (
+                        skyldigeUtlegg.map((p) => (
+                          <tr key={p.id} className="border-b">
+                            <td className="whitespace-nowrap px-4 py-3">{formatDato(p.dato ?? p.created_at)}</td>
+                            <td className="px-4 py-3">
+                              {String(p.utlegg_medlem_navn ?? "").trim() ||
+                                String(p.utlegg_medlem_epost ?? "").trim() ||
+                                "—"}
+                            </td>
+                            <td className="px-4 py-3">
+                              {[String(p.vare ?? "").trim(), String(p.motpart ?? "").trim()].filter(Boolean).join(" · ") || "—"}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">{formatBelop(p.belop)}</td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              {p.bilag_url ? (
+                                <Button size="sm" variant="outline" onClick={() => apneBilag(p.bilag_url as string)}>
+                                  Åpne
+                                </Button>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-right">
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 text-white hover:bg-emerald-600/90"
+                                disabled={utleggSaving}
+                                onClick={() => void markerUtleggUtbetalt(p, true)}
+                              >
+                                Marker utbetalt
+                              </Button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : null}
