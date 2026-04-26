@@ -73,7 +73,14 @@ const schemaFeil =
   "  utlegg_medlem_epost text,\n" +
   "  utlegg_status text,\n" +
   "  utlegg_utbetalt_at timestamptz\n" +
-  ");\n"
+  ");\n" +
+  "alter table public.regnskap_poster add column if not exists bilag_ocr_text text;\n" +
+  "alter table public.regnskap_poster add column if not exists kilde text;\n" +
+  "alter table public.regnskap_poster add column if not exists utlegg_medlem_id text;\n" +
+  "alter table public.regnskap_poster add column if not exists utlegg_medlem_navn text;\n" +
+  "alter table public.regnskap_poster add column if not exists utlegg_medlem_epost text;\n" +
+  "alter table public.regnskap_poster add column if not exists utlegg_status text;\n" +
+  "alter table public.regnskap_poster add column if not exists utlegg_utbetalt_at timestamptz;\n"
 
 const bucket = "bilag"
 
