@@ -366,6 +366,9 @@ export async function POST(request: Request) {
 
   let bilagPath: string | null = null
   if (bilag instanceof File && bilag.size > 0) {
+    if (String(bilag.type || "").startsWith("video/")) {
+      return NextResponse.json({ ok: false, feil: "Bilag må være et bilde (ikke video)." }, { status: 400 })
+    }
     if (bilag.size > 4 * 1024 * 1024) {
       return NextResponse.json(
         { ok: false, feil: "Bilag er for stort (maks 4 MB)." },
@@ -564,6 +567,9 @@ export async function PATCH(request: Request) {
 
   let newBilagPath: string | null = null
   if (bilag instanceof File && bilag.size > 0) {
+    if (String(bilag.type || "").startsWith("video/")) {
+      return NextResponse.json({ ok: false, feil: "Bilag må være et bilde (ikke video)." }, { status: 400 })
+    }
     if (bilag.size > 4 * 1024 * 1024) {
       return NextResponse.json(
         { ok: false, feil: "Bilag er for stort (maks 4 MB)." },

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -248,10 +248,7 @@ export default function AdminRegnskapPage() {
   const [utleggMedlemmerFeil, setUtleggMedlemmerFeil] = useState<string | null>(null)
   const [utleggSaving, setUtleggSaving] = useState(false)
   const [utleggOcrLoading, setUtleggOcrLoading] = useState(false)
-  const [utleggKameraOpen, setUtleggKameraOpen] = useState(false)
-  const [utleggKameraFeil, setUtleggKameraFeil] = useState<string | null>(null)
-  const utleggVideoRef = useRef<HTMLVideoElement | null>(null)
-  const utleggStreamRef = useRef<MediaStream | null>(null)
+  const [utleggMedlemQuery, setUtleggMedlemQuery] = useState("")
   const [utleggForm, setUtleggForm] = useState<UtleggFormState>({
     medlemId: "",
     dato: todayIso(),
@@ -480,6 +477,21 @@ export default function AdminRegnskapPage() {
     return Number.isFinite(bel) ? sum + bel : sum
   }, 0)
 
+  const utleggMedlemmerFiltrert = utleggMedlemmer
+    .filter((m) => {
+      const q = utleggMedlemQuery.trim().toLowerCase()
+      if (!q) return true
+      const hay = [
+        String(m.navn ?? ""),
+        String(m.epost ?? ""),
+        m.medlemsnummer == null ? "" : String(m.medlemsnummer),
+      ]
+        .join(" ")
+        .toLowerCase()
+      return hay.includes(q)
+    })
+    .slice(0, 200)
+
   function resetFilter() {
     setFilterQuery("")
     setFilterType("alle")
@@ -609,6 +621,10 @@ export default function AdminRegnskapPage() {
   }
 
   async function velgBilag(file: File | null) {
+    if (file && String(file.type || "").startsWith("video/")) {
+      alert("Velg et bilde av bilaget (ikke video).")
+      return
+    }
     setForm((prev) => {
       if (prev.bilagPreviewUrl) URL.revokeObjectURL(prev.bilagPreviewUrl)
       return {
@@ -620,8 +636,7 @@ export default function AdminRegnskapPage() {
     })
   }
 
-  async function analyserBilag() {
-    if (!form.bilag) return
+  async function analyserBilagFile(file: File) {
     setOcrLoading(true)
     try {
       type TesseractModule = {
@@ -635,7 +650,7 @@ export default function AdminRegnskapPage() {
         "tesseract.js"
       )) as unknown as TesseractModule
 
-      const result = await recognize(form.bilag, "eng")
+      const result = await recognize(file, "eng")
       const rawText = String(result?.data?.text ?? "")
       const normalized = normalizeOcrText(rawText)
       const belop = extractAmount(rawText)
@@ -652,6 +667,11 @@ export default function AdminRegnskapPage() {
     } finally {
       setOcrLoading(false)
     }
+  }
+
+  async function analyserBilag() {
+    if (!form.bilag) return
+    await analyserBilagFile(form.bilag)
   }
 
   const hentUtleggMedlemmer = useCallback(async () => {
@@ -673,6 +693,10 @@ export default function AdminRegnskapPage() {
   }, [])
 
   async function velgUtleggBilag(file: File | null) {
+    if (file && String(file.type || "").startsWith("video/")) {
+      alert("Velg et bilde av kvitteringen (ikke video).")
+      return
+    }
     setUtleggForm((prev) => {
       if (prev.bilagPreviewUrl) URL.revokeObjectURL(prev.bilagPreviewUrl)
       return {
@@ -682,62 +706,6 @@ export default function AdminRegnskapPage() {
         bilagTekst: null,
       }
     })
-  }
-
-  async function åpneUtleggKamera() {
-    setUtleggKameraFeil(null)
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setUtleggKameraFeil("Kamera støttes ikke i denne nettleseren.")
-      return
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      })
-      utleggStreamRef.current = stream
-      setUtleggKameraOpen(true)
-      const v = utleggVideoRef.current
-      if (v) {
-        v.srcObject = stream
-        await v.play().catch(() => {})
-      }
-    } catch {
-      setUtleggKameraFeil("Kunne ikke åpne kamera. Sjekk tillatelser og prøv igjen.")
-      setUtleggKameraOpen(false)
-    }
-  }
-
-  function lukkUtleggKamera() {
-    const stream = utleggStreamRef.current
-    if (stream) {
-      for (const t of stream.getTracks()) t.stop()
-    }
-    utleggStreamRef.current = null
-    const v = utleggVideoRef.current
-    if (v) v.srcObject = null
-    setUtleggKameraOpen(false)
-  }
-
-  async function taUtleggBilde() {
-    const v = utleggVideoRef.current
-    if (!v) return
-    const w = v.videoWidth || 1280
-    const h = v.videoHeight || 720
-    if (!w || !h) return
-
-    const canvas = document.createElement("canvas")
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    ctx.drawImage(v, 0, 0, w, h)
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", 0.9))
-    if (!blob) return
-    const file = new File([blob], `kvittering-${Date.now()}.jpg`, { type: "image/jpeg" })
-    await velgUtleggBilag(file)
-    await analyserUtleggFile(file)
-    lukkUtleggKamera()
   }
 
   async function analyserUtleggFile(file: File) {
@@ -777,18 +745,6 @@ export default function AdminRegnskapPage() {
     if (!utleggForm.bilag) return
     await analyserUtleggFile(utleggForm.bilag)
   }
-
-  useEffect(() => {
-    if (showUtlegg) return
-    const stream = utleggStreamRef.current
-    if (stream) {
-      for (const t of stream.getTracks()) t.stop()
-    }
-    utleggStreamRef.current = null
-    const v = utleggVideoRef.current
-    if (v) v.srcObject = null
-    setUtleggKameraOpen(false)
-  }, [showUtlegg])
 
   async function lagreUtlegg() {
     if (utleggSaving) return
@@ -1294,7 +1250,13 @@ export default function AdminRegnskapPage() {
                     type="file"
                     accept="image/*"
                     capture="environment"
-                    onChange={(e) => velgBilag(e.target.files?.[0] ?? null)}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null
+                      void (async () => {
+                        await velgBilag(f)
+                        if (f) await analyserBilagFile(f)
+                      })()
+                    }}
                     className="h-10"
                   />
                   <div className="flex gap-2">
@@ -1528,13 +1490,19 @@ export default function AdminRegnskapPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Medlem (betalt kontingent)</Label>
+                    <Input
+                      value={utleggMedlemQuery}
+                      onChange={(e) => setUtleggMedlemQuery(e.target.value)}
+                      placeholder="Søk (navn, e-post, medlemsnr.)"
+                      className="h-10"
+                    />
                     <select
                       value={utleggForm.medlemId}
                       onChange={(e) => setUtleggForm((p) => ({ ...p, medlemId: e.target.value }))}
                       className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
                     >
                       <option value="">Velg medlem…</option>
-                      {utleggMedlemmer.map((m) => (
+                      {utleggMedlemmerFiltrert.map((m) => (
                         <option key={String(m.id ?? "")} value={String(m.id ?? "")}>
                           {String(m.navn ?? "").trim() || "Ukjent"}{m.medlemsnummer ? ` (#${m.medlemsnummer})` : ""}{m.epost ? ` · ${m.epost}` : ""}
                         </option>
@@ -1596,21 +1564,20 @@ export default function AdminRegnskapPage() {
 
                 <div className="space-y-2">
                   <Label>Kvittering (foto)</Label>
-                  <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-start">
+                  <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
                     <Input
                       type="file"
                       accept="image/*"
                       capture="environment"
-                      onChange={(e) => void velgUtleggBilag(e.target.files?.[0] ?? null)}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null
+                        void (async () => {
+                          await velgUtleggBilag(f)
+                          if (f) await analyserUtleggFile(f)
+                        })()
+                      }}
                       className="h-10"
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void åpneUtleggKamera()}
-                    >
-                      Ta bilde
-                    </Button>
                     <Button
                       type="button"
                       variant="outline"
@@ -1620,11 +1587,6 @@ export default function AdminRegnskapPage() {
                       {utleggOcrLoading ? "Analyserer…" : "Les kvittering"}
                     </Button>
                   </div>
-                  {utleggKameraFeil ? (
-                    <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      {utleggKameraFeil}
-                    </div>
-                  ) : null}
                   {utleggForm.bilagPreviewUrl ? (
                     <div className="mt-3 overflow-hidden rounded-xl border bg-background">
                       <Image
@@ -1716,28 +1678,6 @@ export default function AdminRegnskapPage() {
                 </div>
               </div>
             )}
-
-            {utleggKameraOpen ? (
-              <div className="mt-4 overflow-hidden rounded-2xl border bg-background">
-                <div className="flex items-center justify-between gap-2 border-b p-3">
-                  <div className="text-sm font-medium">Kamera</div>
-                  <Button variant="outline" size="sm" onClick={() => lukkUtleggKamera()}>
-                    Lukk kamera
-                  </Button>
-                </div>
-                <div className="p-3">
-                  <div className="overflow-hidden rounded-xl border">
-                    <video ref={utleggVideoRef} className="h-auto w-full" playsInline />
-                  </div>
-                  <div className="mt-3 flex flex-wrap justify-end gap-2">
-                    <Button variant="outline" onClick={() => lukkUtleggKamera()}>
-                      Avbryt
-                    </Button>
-                    <Button onClick={() => void taUtleggBilde()}>Ta bilde</Button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
           </div>
         </div>
       ) : null}
