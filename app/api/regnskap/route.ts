@@ -243,7 +243,12 @@ export async function GET() {
 
   if (error) {
     const msg = String((error as { message?: string } | null)?.message ?? "")
-    if ((/relation/i.test(msg) && /regnskap_poster/i.test(msg)) || /42p01/i.test(msg)) {
+    if (
+      (/relation/i.test(msg) && /regnskap_poster/i.test(msg)) ||
+      /42p01/i.test(msg) ||
+      /column/i.test(msg) ||
+      /schema cache/i.test(msg)
+    ) {
       return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
     }
     return NextResponse.json({ ok: false, feil: "Kunne ikke hente regnskap." }, { status: 400 })
