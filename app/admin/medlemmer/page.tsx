@@ -934,11 +934,11 @@ export default function AdminMedlemmerPage() {
 
       {state.type === "ready" && openMember ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4"
           onClick={() => setOpenMember(null)}
         >
           <div
-            className="w-full max-w-2xl rounded-2xl border bg-card p-5 shadow-lg"
+            className="mx-auto my-4 w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border bg-card p-5 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
