@@ -172,3 +172,36 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({ ok: true })
 }
+
+export async function DELETE(request: Request) {
+  const gate = await requireAdmin()
+  if (!gate.ok) return NextResponse.json({ ok: false, feil: gate.feil }, { status: gate.status })
+  if (gate.role !== "superadmin") {
+    return NextResponse.json({ ok: false, feil: "Kun superbruker kan slette logg." }, { status: 403 })
+  }
+
+  let payload: { id?: string }
+  try {
+    payload = (await request.json()) as { id?: string }
+  } catch {
+    return NextResponse.json({ ok: false, feil: "Ugyldig JSON." }, { status: 400 })
+  }
+
+  const id = String(payload.id ?? "").trim()
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+  if (!id || !isUuid) {
+    return NextResponse.json({ ok: false, feil: "Ugyldig id." }, { status: 400 })
+  }
+
+  const { error } = await gate.admin.from("regnskap_logg").delete().eq("id", id)
+  if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (isLoggSchemaError(msg)) {
+      return NextResponse.json({ ok: false, feil: loggSchemaFeil }, { status: 500 })
+    }
+    return NextResponse.json({ ok: false, feil: "Kunne ikke slette logg." }, { status: 400 })
+  }
+
+  return NextResponse.json({ ok: true })
+}

@@ -549,6 +549,37 @@ export default function AdminRegnskapPage() {
     [hentLogg, loggSavingId, minRolle]
   )
 
+  const slettLoggEntry = useCallback(
+    async (entry: RegnskapLoggEntry) => {
+      if (minRolle !== "superadmin") return
+      if (loggSavingId) return
+      const hvem = String(entry.actor_epost ?? "").trim()
+      const hva = String(entry.action ?? "").trim()
+      const tid = formatDatoTid(entry.created_at)
+      const label = [hva || null, hvem || null, tid || null].filter(Boolean).join(" · ")
+      const ok = confirm(`Slette denne loggposten?\n\n${label || "Loggpost"}\n\nHandlingen er uomgjørlig.`)
+      if (!ok) return
+
+      setLoggSavingId(entry.id)
+      try {
+        const res = await fetch("/api/admin/regnskap-logg", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: entry.id }),
+        })
+        const data = (await res.json()) as { ok?: boolean; feil?: string }
+        if (!res.ok || !data.ok) {
+          alert(data.feil ?? "Kunne ikke slette logg.")
+          return
+        }
+        await hentLogg()
+      } finally {
+        setLoggSavingId(null)
+      }
+    },
+    [hentLogg, loggSavingId, minRolle]
+  )
+
   useEffect(() => {
     try {
       const m = localStorage.getItem("obno.regnskap.inntektMaler")
@@ -2329,14 +2360,24 @@ export default function AdminRegnskapPage() {
                               <td className="px-4 py-3">{korrInfo}</td>
                               <td className="whitespace-nowrap px-4 py-3 text-right">
                                 {minRolle === "superadmin" ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={loggSavingId === l.id}
-                                    onClick={() => void korrigerLogg(l)}
-                                  >
-                                    Korriger
-                                  </Button>
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={loggSavingId === l.id}
+                                      onClick={() => void korrigerLogg(l)}
+                                    >
+                                      Korriger
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      disabled={loggSavingId === l.id}
+                                      onClick={() => void slettLoggEntry(l)}
+                                    >
+                                      Slett
+                                    </Button>
+                                  </div>
                                 ) : (
                                   <span className="text-muted-foreground">—</span>
                                 )}
