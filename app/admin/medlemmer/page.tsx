@@ -22,6 +22,7 @@ type Medlem = {
   role?: string | null
   aktiv?: boolean | null
   utmeldt_at?: string | null
+  utbetaling_kontonummer?: string | null
 }
 
 type State =
@@ -114,6 +115,7 @@ export default function AdminMedlemmerPage() {
   const [editSted, setEditSted] = useState("")
   const [editMedlemsnummer, setEditMedlemsnummer] = useState("")
   const [editType, setEditType] = useState("")
+  const [editUtbetalingKontonummer, setEditUtbetalingKontonummer] = useState("")
   const [editAuthEmail, setEditAuthEmail] = useState("")
   const [editAuthPassword, setEditAuthPassword] = useState("")
   const [savingMember, setSavingMember] = useState(false)
@@ -348,6 +350,17 @@ export default function AdminMedlemmerPage() {
     window.location.href = url
   }, [emailBody, emailSubject, selectedEmails])
 
+  const kopierKontonummer = useCallback(async () => {
+    const digits = String(editUtbetalingKontonummer ?? "").replace(/\D+/g, "")
+    if (!digits) return
+    try {
+      await navigator.clipboard.writeText(digits)
+      alert("Kontonummer kopiert.")
+    } catch {
+      prompt("Kopier kontonummer:", digits)
+    }
+  }, [editUtbetalingKontonummer])
+
   useEffect(() => {
     if (!openMember) return
     setEditNavn(String(openMember.navn ?? ""))
@@ -358,6 +371,7 @@ export default function AdminMedlemmerPage() {
     setEditSted(String(openMember.sted ?? ""))
     setEditMedlemsnummer(openMember.medlemsnummer == null ? "" : String(openMember.medlemsnummer))
     setEditType(String(openMember.medlemskap_type ?? ""))
+    setEditUtbetalingKontonummer(String(openMember.utbetaling_kontonummer ?? ""))
     setEditAuthEmail(String(openMember.epost ?? ""))
     setEditAuthPassword("")
   }, [openMember])
@@ -378,6 +392,7 @@ export default function AdminMedlemmerPage() {
         sted: editSted,
         medlemsnummer: editMedlemsnummer,
         medlemskap_type: editType,
+        utbetalingKontonummer: editUtbetalingKontonummer,
       }
       if (isSuper && openMember.user_id) {
         payload.authEmail = editAuthEmail
@@ -411,6 +426,7 @@ export default function AdminMedlemmerPage() {
     editSted,
     editTelefon,
     editType,
+    editUtbetalingKontonummer,
     hent,
     openMember,
     savingMember,
@@ -977,6 +993,28 @@ export default function AdminMedlemmerPage() {
               <div className="space-y-1 sm:col-span-2">
                 <div className="text-xs text-muted-foreground">Adresse</div>
                 <Input value={editAdresse} onChange={(e) => setEditAdresse(e.target.value)} />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <div className="text-xs text-muted-foreground">
+                  Kontonummer (til tilbakebetaling)
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={editUtbetalingKontonummer}
+                    onChange={(e) => setEditUtbetalingKontonummer(e.target.value)}
+                    placeholder="11 siffer"
+                    inputMode="numeric"
+                    autoComplete="off"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void kopierKontonummer()}
+                    disabled={!String(editUtbetalingKontonummer ?? "").replace(/\D+/g, "")}
+                  >
+                    Kopier
+                  </Button>
+                </div>
               </div>
               <div className="space-y-1">
                 <div className="text-xs text-muted-foreground">Postnr</div>

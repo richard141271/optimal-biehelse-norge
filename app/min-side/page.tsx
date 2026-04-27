@@ -19,6 +19,7 @@ type Medlem = {
   sted?: string | null
   epost?: string | null
   telefon?: string | null
+  utbetaling_kontonummer?: string | null
   kontingent_betalt_at?: string | null
   kontingent_gyldig_til?: string | null
 }
@@ -101,6 +102,7 @@ export default function MinSidePage() {
   const [redigerAdresse, setRedigerAdresse] = useState("")
   const [redigerPostnr, setRedigerPostnr] = useState("")
   const [redigerSted, setRedigerSted] = useState("")
+  const [redigerUtbetalingKontonummer, setRedigerUtbetalingKontonummer] = useState("")
   const [nyttPassord, setNyttPassord] = useState("")
   const [nyttPassord2, setNyttPassord2] = useState("")
   const [redigerStatus, setRedigerStatus] = useState<
@@ -265,6 +267,7 @@ export default function MinSidePage() {
     setRedigerAdresse(String(medlem.adresse ?? ""))
     setRedigerPostnr(String(medlem.postnr ?? ""))
     setRedigerSted(String(medlem.sted ?? ""))
+    setRedigerUtbetalingKontonummer(String(medlem.utbetaling_kontonummer ?? ""))
     setNyttPassord("")
     setNyttPassord2("")
     setRedigerStatus({ type: "idle" })
@@ -302,6 +305,7 @@ export default function MinSidePage() {
           adresse: redigerAdresse.trim() || null,
           postnr: redigerPostnr.trim() || null,
           sted: redigerSted.trim() || null,
+          utbetalingKontonummer: redigerUtbetalingKontonummer.trim() || null,
         }),
       })
       const data = (await res.json()) as { ok?: boolean; feil?: string; medlem?: Medlem }
@@ -471,6 +475,19 @@ export default function MinSidePage() {
                   />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="rediger_utbetaling_kontonummer">
+                  Kontonummer (til tilbakebetaling)
+                </Label>
+                <Input
+                  id="rediger_utbetaling_kontonummer"
+                  value={redigerUtbetalingKontonummer}
+                  onChange={(e) => setRedigerUtbetalingKontonummer(e.target.value)}
+                  placeholder="11 siffer"
+                  inputMode="numeric"
+                  autoComplete="off"
+                />
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="nytt_passord">Nytt passord</Label>
@@ -551,6 +568,12 @@ export default function MinSidePage() {
                           .join(" ")}`
                       : "—"}
                   </dd>
+                </div>
+                <div className="flex items-start justify-between gap-4 border-b pb-3">
+                  <dt className="text-muted-foreground">
+                    Kontonummer (til tilbakebetaling)
+                  </dt>
+                  <dd className="text-right">{medlem.utbetaling_kontonummer || "—"}</dd>
                 </div>
                 <div className="flex items-start justify-between gap-4">
                   <dt className="text-muted-foreground">Medlemskap</dt>

@@ -42,7 +42,7 @@ async function getAuth() {
 }
 
 function selectMedlem() {
-  return "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til, aktiv"
+  return "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til, aktiv, utbetaling_kontonummer"
 }
 
 export async function GET() {
@@ -79,6 +79,17 @@ export async function GET() {
     if (/column/i.test(msg) && /aktiv/i.test(msg)) {
       return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
     }
+    if (/column/i.test(msg) && /utbetaling_kontonummer/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet utbetaling_kontonummer. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists utbetaling_kontonummer text;",
+        },
+        { status: 500 }
+      )
+    }
     return NextResponse.json({ ok: false, feil: "Kunne ikke hente medlemsdata." }, { status: 400 })
   }
 
@@ -107,6 +118,17 @@ export async function GET() {
     const msg = String((byEmailError as { message?: string } | null)?.message ?? "")
     if (/column/i.test(msg) && /aktiv/i.test(msg)) {
       return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+    }
+    if (/column/i.test(msg) && /utbetaling_kontonummer/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet utbetaling_kontonummer. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists utbetaling_kontonummer text;",
+        },
+        { status: 500 }
+      )
     }
     return NextResponse.json({ ok: false, feil: "Kunne ikke hente medlemsdata." }, { status: 400 })
   }
@@ -160,6 +182,7 @@ export async function PATCH(request: Request) {
     adresse?: string | null
     postnr?: string | null
     sted?: string | null
+    utbetalingKontonummer?: string | null
   }
   try {
     payload = (await request.json()) as {
@@ -168,6 +191,7 @@ export async function PATCH(request: Request) {
       adresse?: string | null
       postnr?: string | null
       sted?: string | null
+      utbetalingKontonummer?: string | null
     }
   } catch {
     return NextResponse.json({ ok: false, feil: "Ugyldig JSON." }, { status: 400 })
@@ -187,12 +211,29 @@ export async function PATCH(request: Request) {
     return s ? s : null
   }
 
+  const normalizeKontonummer = (v: unknown) => {
+    if (v === null || v === undefined) return null
+    const digits = String(v).replace(/\D+/g, "")
+    if (!digits) return null
+    if (digits.length !== 11) return "__invalid__"
+    return digits
+  }
+
+  const konto = normalizeKontonummer(payload.utbetalingKontonummer)
+  if (konto === "__invalid__") {
+    return NextResponse.json(
+      { ok: false, feil: "Kontonummer må være 11 siffer (kun tall)." },
+      { status: 400 }
+    )
+  }
+
   const update = {
     navn,
     telefon: normalize(payload.telefon),
     adresse: normalize(payload.adresse),
     postnr: normalize(payload.postnr),
     sted: normalize(payload.sted),
+    utbetaling_kontonummer: konto,
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
@@ -216,6 +257,17 @@ export async function PATCH(request: Request) {
           feil:
             "Medlemsregister-tabellen mangler feltet aktiv. Kjør dette i Supabase (SQL Editor):\n\n" +
             "alter table public.medlemmer add column if not exists aktiv boolean not null default true;",
+        },
+        { status: 500 }
+      )
+    }
+    if (/column/i.test(msg) && /utbetaling_kontonummer/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet utbetaling_kontonummer. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists utbetaling_kontonummer text;",
         },
         { status: 500 }
       )

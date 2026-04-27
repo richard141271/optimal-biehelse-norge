@@ -109,7 +109,7 @@ export async function GET() {
   const { data, error, count } = await gate.admin
     .from("medlemmer")
     .select(
-      "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til, role, aktiv, utmeldt_at",
+      "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til, role, aktiv, utmeldt_at, utbetaling_kontonummer",
       { count: "exact" }
     )
     .order("created_at", { ascending: false })
@@ -125,6 +125,17 @@ export async function GET() {
             "Medlemsregister-tabellen mangler felt for inn-/utmelding. Kjør dette i Supabase (SQL Editor):\n\n" +
             "alter table public.medlemmer add column if not exists aktiv boolean not null default true;\n" +
             "alter table public.medlemmer add column if not exists utmeldt_at timestamptz;",
+        },
+        { status: 500 }
+      )
+    }
+    if (/column/i.test(msg) && /utbetaling_kontonummer/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet utbetaling_kontonummer. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists utbetaling_kontonummer text;",
         },
         { status: 500 }
       )
@@ -431,6 +442,7 @@ export async function PUT(request: Request) {
     telefon?: string | null
     medlemsnummer?: number | string | null
     medlemskap_type?: string | null
+    utbetalingKontonummer?: string | null
     authEmail?: string | null
     authPassword?: string | null
   }
@@ -445,6 +457,7 @@ export async function PUT(request: Request) {
       telefon?: string | null
       medlemsnummer?: number | string | null
       medlemskap_type?: string | null
+      utbetalingKontonummer?: string | null
       authEmail?: string | null
       authPassword?: string | null
     }
@@ -492,6 +505,16 @@ export async function PUT(request: Request) {
     update.epost = e
   }
   if ("telefon" in payload) update.telefon = payload.telefon ? String(payload.telefon).trim() : null
+  if ("utbetalingKontonummer" in payload) {
+    const digits = payload.utbetalingKontonummer == null ? "" : String(payload.utbetalingKontonummer).replace(/\D+/g, "")
+    if (digits && digits.length !== 11) {
+      return NextResponse.json(
+        { ok: false, feil: "Kontonummer må være 11 siffer (kun tall)." },
+        { status: 400 }
+      )
+    }
+    update.utbetaling_kontonummer = digits ? digits : null
+  }
   if ("medlemskap_type" in payload) update.medlemskap_type = payload.medlemskap_type ? String(payload.medlemskap_type).trim() : null
   if ("medlemsnummer" in payload) {
     const raw = payload.medlemsnummer
@@ -560,6 +583,18 @@ export async function PUT(request: Request) {
     .eq("id", medlemIdValue)
 
   if (updateError) {
+    const msg = String((updateError as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /utbetaling_kontonummer/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet utbetaling_kontonummer. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists utbetaling_kontonummer text;",
+        },
+        { status: 500 }
+      )
+    }
     return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere medlem." }, { status: 400 })
   }
 
