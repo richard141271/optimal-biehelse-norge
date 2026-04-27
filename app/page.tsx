@@ -193,6 +193,14 @@ export default function Home() {
                       <span className="font-medium">Støttemedlem:</span> 300 kr / år
                     </div>
                   </div>
+                  <div className="mt-4 rounded-xl border bg-muted/30 p-4 text-sm">
+                    <div className="font-medium">Hva er forskjellen?</div>
+                    <div className="mt-2 text-muted-foreground">
+                      <span className="font-medium text-foreground">Medlem</span> er vanlig kontingent og gir aktivt medlemskap.
+                      <span className="ml-1 font-medium text-foreground">Støttemedlem</span> er samme medlemskap, men med høyere
+                      kontingent for deg som vil støtte arbeidet vårt ekstra.
+                    </div>
+                  </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     Åpne Vipps-appen og betal til 47372406.
                   </p>
