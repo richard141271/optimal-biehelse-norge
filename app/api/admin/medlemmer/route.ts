@@ -478,7 +478,7 @@ export async function PUT(request: Request) {
 
   const { data: target, error: targetError } = await gate.admin
     .from("medlemmer")
-    .select("id, role, user_id")
+    .select("id, role, user_id, epost")
     .eq("id", medlemIdValue)
     .maybeSingle()
 
@@ -490,7 +490,12 @@ export async function PUT(request: Request) {
   }
   if (target.role === "superadmin") {
     const targetUserId = String(target.user_id ?? "").trim()
-    const isSelf = !!targetUserId && targetUserId === gate.userId
+    const targetEmail = String((target as { epost?: string | null } | null)?.epost ?? "")
+      .trim()
+      .toLowerCase()
+    const isSelf =
+      (!!targetUserId && targetUserId === gate.userId) ||
+      (!!targetEmail && targetEmail === gate.email)
     if (!isSelf || gate.role !== "superadmin") {
       return NextResponse.json(
         { ok: false, feil: "Superbruker kan ikke endres her." },
