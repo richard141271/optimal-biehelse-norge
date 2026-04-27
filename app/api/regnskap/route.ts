@@ -99,6 +99,25 @@ const innstillingerSchemaFeil =
   "values ('main', null, 0)\n" +
   "on conflict (id) do nothing;\n"
 
+const loggSchemaFeil =
+  "Regnskap mangler logg/arkiv i Supabase. Kjør denne SQL-en i Supabase (SQL Editor), og prøv igjen:\n\n" +
+  "create table if not exists public.regnskap_logg (\n" +
+  "  id uuid primary key default gen_random_uuid(),\n" +
+  "  created_at timestamptz not null default now(),\n" +
+  "  actor_epost text,\n" +
+  "  actor_role text,\n" +
+  "  action text not null,\n" +
+  "  entity_type text not null,\n" +
+  "  entity_id text,\n" +
+  "  before jsonb,\n" +
+  "  after jsonb,\n" +
+  "  korreksjon_notat text,\n" +
+  "  korreksjon_at timestamptz,\n" +
+  "  korreksjon_av_epost text\n" +
+  ");\n" +
+  "create index if not exists regnskap_logg_created_at_idx on public.regnskap_logg (created_at desc);\n" +
+  "create index if not exists regnskap_logg_entity_idx on public.regnskap_logg (entity_type, entity_id);\n"
+
 function isMissingTable(message: string, table: string) {
   const m = message.toLowerCase()
   if (m.includes("42p01")) return true
@@ -119,6 +138,47 @@ function isSchemaError(message: string, table: string) {
     return true
   }
   return false
+}
+
+function isLoggSchemaError(message: string) {
+  const m = message.toLowerCase()
+  if (isMissingTable(m, "regnskap_logg")) return true
+  if (m.includes("column") && m.includes("regnskap_logg")) return true
+  if (m.includes("schema cache") && m.includes("regnskap_logg")) return true
+  return false
+}
+
+async function loggHendelse(
+  admin: SupabaseClient,
+  entry: {
+    actor_epost: string
+    actor_role: string
+    action: string
+    entity_type: string
+    entity_id?: string | null
+    before?: unknown
+    after?: unknown
+  }
+) {
+  try {
+    const { error } = await admin.from("regnskap_logg").insert({
+      actor_epost: entry.actor_epost,
+      actor_role: entry.actor_role,
+      action: entry.action,
+      entity_type: entry.entity_type,
+      entity_id: entry.entity_id ?? null,
+      before: entry.before ?? null,
+      after: entry.after ?? null,
+    })
+    if (error) {
+      const msg = String((error as { message?: string } | null)?.message ?? "")
+      if (isLoggSchemaError(msg)) return { ok: false as const, schemaFeil: true as const }
+      return { ok: false as const, schemaFeil: false as const }
+    }
+    return { ok: true as const }
+  } catch {
+    return { ok: false as const, schemaFeil: false as const }
+  }
 }
 
 async function hentInnstillinger(admin: SupabaseClient) {
@@ -228,7 +288,8 @@ export async function GET() {
     .select("role")
     .eq("epost", email)
     .maybeSingle()
-  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
+  const role = String(roleRow?.role ?? "")
+  if (role !== "admin" && role !== "superadmin") {
     return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
   }
 
@@ -326,7 +387,8 @@ export async function POST(request: Request) {
     .select("role")
     .eq("epost", email)
     .maybeSingle()
-  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
+  const role = String(roleRow?.role ?? "")
+  if (role !== "admin" && role !== "superadmin") {
     return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
   }
 
@@ -431,7 +493,11 @@ export async function POST(request: Request) {
   if (utleggMedlemEpost) insert.utlegg_medlem_epost = utleggMedlemEpost
   if (utleggStatus) insert.utlegg_status = utleggStatus
 
-  const { error } = await admin.from("regnskap_poster").insert(insert)
+  const { data: insertedRow, error } = await admin
+    .from("regnskap_poster")
+    .insert(insert)
+    .select("id")
+    .maybeSingle()
 
   if (error) {
     const msg = String((error as { message?: string } | null)?.message ?? "")
@@ -451,7 +517,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, feil: "Kunne ikke lagre regnskapspost." }, { status: 400 })
   }
 
-  return NextResponse.json({ ok: true })
+  const logg = await loggHendelse(admin, {
+    actor_epost: email,
+    actor_role: role,
+    action: "poster:create",
+    entity_type: "regnskap_poster",
+    entity_id: String((insertedRow as { id?: string } | null)?.id ?? "") || null,
+    before: null,
+    after: insert,
+  })
+
+  return NextResponse.json({ ok: true, loggFeil: !logg.ok && logg.schemaFeil ? loggSchemaFeil : undefined })
 }
 
 export async function PATCH(request: Request) {
@@ -487,7 +563,8 @@ export async function PATCH(request: Request) {
     .select("role")
     .eq("epost", email)
     .maybeSingle()
-  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
+  const role = String(roleRow?.role ?? "")
+  if (role !== "admin" && role !== "superadmin") {
     return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
   }
 
@@ -656,7 +733,17 @@ export async function PATCH(request: Request) {
     await admin.storage.from(bucket).remove([oldBilagPath])
   }
 
-  return NextResponse.json({ ok: true })
+  const logg = await loggHendelse(admin, {
+    actor_epost: email,
+    actor_role: role,
+    action: "poster:update",
+    entity_type: "regnskap_poster",
+    entity_id: id,
+    before: existingRow,
+    after: { ...(existingRow as Record<string, unknown>), ...update },
+  })
+
+  return NextResponse.json({ ok: true, loggFeil: !logg.ok && logg.schemaFeil ? loggSchemaFeil : undefined })
 }
 
 export async function PUT(request: Request) {
@@ -738,6 +825,7 @@ export async function PUT(request: Request) {
   }
 
   if (!hasSaldoUpdate) {
+    const before = { kontonummer: innstillinger.kontonummer || null, saldo_justering: innstillinger.saldo }
     const { error } = await admin
       .from("regnskap_innstillinger")
       .update({
@@ -754,7 +842,21 @@ export async function PUT(request: Request) {
       return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere innstillinger." }, { status: 400 })
     }
 
-    return NextResponse.json({ ok: true, innstillinger: { kontonummer } })
+    const logg = await loggHendelse(admin, {
+      actor_epost: email,
+      actor_role: role,
+      action: "innstillinger:update",
+      entity_type: "regnskap_innstillinger",
+      entity_id: innstillingerId,
+      before,
+      after: { kontonummer: kontonummer || null, saldo_justering: innstillinger.saldo },
+    })
+
+    return NextResponse.json({
+      ok: true,
+      innstillinger: { kontonummer },
+      loggFeil: !logg.ok && logg.schemaFeil ? loggSchemaFeil : undefined,
+    })
   }
 
   const { data: poster, error: posterError } = await admin
@@ -794,7 +896,26 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere innstillinger." }, { status: 400 })
   }
 
-  return NextResponse.json({ ok: true, innstillinger: { kontonummer, saldo: saldoParsed } })
+  const logg = await loggHendelse(admin, {
+    actor_epost: email,
+    actor_role: role,
+    action: "innstillinger:update",
+    entity_type: "regnskap_innstillinger",
+    entity_id: innstillingerId,
+    before: { kontonummer: innstillinger.kontonummer || null, saldo_justering: innstillinger.saldo },
+    after: {
+      kontonummer: kontonummer || null,
+      saldo: saldoParsed,
+      saldo_justering: saldoJustering,
+      resultat,
+    },
+  })
+
+  return NextResponse.json({
+    ok: true,
+    innstillinger: { kontonummer, saldo: saldoParsed },
+    loggFeil: !logg.ok && logg.schemaFeil ? loggSchemaFeil : undefined,
+  })
 }
 
 export async function DELETE(request: Request) {
@@ -869,11 +990,21 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: false, feil: "Kunne ikke slette regnskapspost." }, { status: 400 })
   }
 
+  const logg = await loggHendelse(admin, {
+    actor_epost: email,
+    actor_role: "superadmin",
+    action: "poster:delete",
+    entity_type: "regnskap_poster",
+    entity_id: id,
+    before: existingRow,
+    after: null,
+  })
+
   if (bilagPath) {
     try {
       await admin.storage.from(bucket).remove([bilagPath])
     } catch {}
   }
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, loggFeil: !logg.ok && logg.schemaFeil ? loggSchemaFeil : undefined })
 }

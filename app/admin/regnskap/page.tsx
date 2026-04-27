@@ -27,10 +27,31 @@ type RegnskapPost = {
   utlegg_utbetalt_at?: string | null
 }
 
+type RegnskapLoggEntry = {
+  id: string
+  created_at?: string | null
+  actor_epost?: string | null
+  actor_role?: string | null
+  action?: string | null
+  entity_type?: string | null
+  entity_id?: string | null
+  before?: unknown
+  after?: unknown
+  korreksjon_notat?: string | null
+  korreksjon_at?: string | null
+  korreksjon_av_epost?: string | null
+}
+
 type State =
   | { type: "loading" }
   | { type: "error"; message: string; status?: number }
   | { type: "ready"; poster: RegnskapPost[] }
+
+type LoggState =
+  | { type: "idle" }
+  | { type: "loading" }
+  | { type: "error"; message: string }
+  | { type: "ready"; entries: RegnskapLoggEntry[] }
 
 type FormState = {
   type: "utgift" | "inntekt"
@@ -90,6 +111,19 @@ function formatDato(value?: string) {
     month: "2-digit",
     day: "2-digit",
   }).format(d)
+}
+
+function formatDatoTid(value?: string | null) {
+  if (!value) return ""
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ""
+  return d.toLocaleString("nb-NO", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 }
 
 function todayIso() {
@@ -439,6 +473,9 @@ export default function AdminRegnskapPage() {
     bilagPreviewUrl: null,
     bilagTekst: null,
   })
+  const [showLogg, setShowLogg] = useState(false)
+  const [loggState, setLoggState] = useState<LoggState>({ type: "idle" })
+  const [loggSavingId, setLoggSavingId] = useState<string | null>(null)
 
   const hent = useCallback(async () => {
     setState({ type: "loading" })
@@ -470,6 +507,47 @@ export default function AdminRegnskapPage() {
     setInnstillingerLagret({ kontonummer, saldo: saldoText })
     setInnstillingerFeil(payload.innstillingerFeil ? String(payload.innstillingerFeil) : null)
   }, [])
+
+  const hentLogg = useCallback(async () => {
+    setLoggState({ type: "loading" })
+    try {
+      const res = await fetch(`/api/admin/regnskap-logg?ts=${Date.now()}`, { cache: "no-store" })
+      const data = (await res.json()) as { ok?: boolean; feil?: string; logg?: RegnskapLoggEntry[] }
+      if (!res.ok || !data.ok) {
+        setLoggState({ type: "error", message: data.feil ?? "Kunne ikke hente regnskapslogg." })
+        return
+      }
+      setLoggState({ type: "ready", entries: data.logg ?? [] })
+    } catch {
+      setLoggState({ type: "error", message: "Kunne ikke hente regnskapslogg. Sjekk nett og prøv igjen." })
+    }
+  }, [])
+
+  const korrigerLogg = useCallback(
+    async (entry: RegnskapLoggEntry) => {
+      if (minRolle !== "superadmin") return
+      if (loggSavingId) return
+      const next = prompt("Korreksjon/notat (kun superbruker):", entry.korreksjon_notat ?? "")
+      if (next === null) return
+      setLoggSavingId(entry.id)
+      try {
+        const res = await fetch("/api/admin/regnskap-logg", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: entry.id, notat: next.trim() || null }),
+        })
+        const data = (await res.json()) as { ok?: boolean; feil?: string }
+        if (!res.ok || !data.ok) {
+          alert(data.feil ?? "Kunne ikke oppdatere logg.")
+          return
+        }
+        await hentLogg()
+      } finally {
+        setLoggSavingId(null)
+      }
+    },
+    [hentLogg, loggSavingId, minRolle]
+  )
 
   useEffect(() => {
     try {
@@ -1361,6 +1439,15 @@ export default function AdminRegnskapPage() {
           >
             Utlegg
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowLogg(true)
+              void hentLogg()
+            }}
+          >
+            Logg
+          </Button>
           <Button variant="outline" onClick={hent}>
             Oppdater
           </Button>
@@ -2132,6 +2219,141 @@ export default function AdminRegnskapPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {showLogg ? (
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4"
+          onClick={() => setShowLogg(false)}
+        >
+          <div
+            className="mx-auto my-4 w-full max-w-5xl max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border bg-card p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold">Regnskapslogg</div>
+                <div className="text-sm text-muted-foreground">
+                  Hvem gjorde hva, og når.
+                </div>
+              </div>
+              <Button variant="outline" onClick={() => setShowLogg(false)}>
+                Lukk
+              </Button>
+            </div>
+
+            {loggState.type === "loading" ? (
+              <div className="mt-4 rounded-xl border bg-background p-4 text-sm text-muted-foreground">
+                Laster logg…
+              </div>
+            ) : null}
+
+            {loggState.type === "error" ? (
+              <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive whitespace-pre-wrap">
+                {loggState.message}
+              </div>
+            ) : null}
+
+            {loggState.type === "ready" ? (
+              loggState.entries.length ? (
+                <div className="mt-4 overflow-hidden rounded-xl border bg-background">
+                  <div className="overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b bg-muted/30 text-left text-muted-foreground">
+                        <tr>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium">Tid</th>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium">Hvem</th>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium">Handling</th>
+                          <th className="px-4 py-3 font-medium">Detalj</th>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium">Korreksjon</th>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium text-right"> </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {loggState.entries.map((l) => {
+                          const base = (l.after ?? l.before) as Record<string, unknown> | null
+                          const actionLabel =
+                            l.action === "poster:create"
+                              ? "Ny post"
+                              : l.action === "poster:update"
+                                ? "Oppdatert post"
+                                : l.action === "poster:delete"
+                                  ? "Slettet post"
+                                  : l.action === "innstillinger:update"
+                                    ? "Innstillinger"
+                                    : String(l.action ?? "—")
+
+                          let detalj = "—"
+                          if (l.entity_type === "regnskap_poster" && base) {
+                            const belop = base.belop as number | string | undefined
+                            const motpart = String(base.motpart ?? "").trim()
+                            const vare = String(base.vare ?? "").trim()
+                            const type = String(base.type ?? "").trim()
+                            detalj = [
+                              type || null,
+                              belop != null && String(belop).trim() ? formatBelop(belop) : null,
+                              vare || null,
+                              motpart || null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") || "—"
+                          } else if (l.entity_type === "regnskap_innstillinger" && base) {
+                            const kontonummer = String(base.kontonummer ?? "").trim()
+                            const saldo = base.saldo as number | string | null | undefined
+                            detalj = [
+                              kontonummer ? `Konto: ${kontonummer}` : null,
+                              saldo != null && String(saldo).trim() ? `Saldo: ${String(saldo)}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") || "—"
+                          }
+
+                          const korr = String(l.korreksjon_notat ?? "").trim()
+                          const korrInfo =
+                            korr && (l.korreksjon_av_epost || l.korreksjon_at)
+                              ? `${korr}${l.korreksjon_av_epost ? ` · ${l.korreksjon_av_epost}` : ""}${l.korreksjon_at ? ` · ${formatDatoTid(l.korreksjon_at)}` : ""}`
+                              : korr || "—"
+
+                          return (
+                            <tr key={l.id} className="border-b">
+                              <td className="whitespace-nowrap px-4 py-3">
+                                {formatDatoTid(l.created_at) || "—"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3">
+                                {String(l.actor_epost ?? "").trim() || "—"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3">{actionLabel}</td>
+                              <td className="px-4 py-3">{detalj}</td>
+                              <td className="px-4 py-3">{korrInfo}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right">
+                                {minRolle === "superadmin" ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={loggSavingId === l.id}
+                                    onClick={() => void korrigerLogg(l)}
+                                  >
+                                    Korriger
+                                  </Button>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-xl border bg-background p-4 text-sm text-muted-foreground">
+                  Ingen loggposter ennå.
+                </div>
+              )
+            ) : null}
           </div>
         </div>
       ) : null}
