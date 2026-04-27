@@ -395,7 +395,11 @@ export default function AdminMedlemmerPage() {
         utbetalingKontonummer: editUtbetalingKontonummer,
       }
       if (isSuper && openMember.user_id) {
-        payload.authEmail = editAuthEmail
+        const originalAuthEmail = String(openMember.epost ?? "").trim().toLowerCase()
+        const nextAuthEmail = editAuthEmail.trim().toLowerCase()
+        if (nextAuthEmail && nextAuthEmail !== originalAuthEmail) {
+          payload.authEmail = nextAuthEmail
+        }
         if (editAuthPassword.trim()) payload.authPassword = editAuthPassword
       }
       const res = await fetch("/api/admin/medlemmer", {
