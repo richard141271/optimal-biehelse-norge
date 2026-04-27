@@ -122,6 +122,12 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
                 Se Åpen økonomi
               </Link>
             </div>
+            <div className="mt-4 text-sm text-muted-foreground">
+              Spørsmål?{" "}
+              <a href="mailto:post@obno.no" className="underline underline-offset-4 hover:text-foreground">
+                post@obno.no
+              </a>
+            </div>
           </div>
         </section>
       </div>

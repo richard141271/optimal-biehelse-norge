@@ -157,10 +157,18 @@ export default function MinSideLoginPage() {
             </Button>
           </form>
 
-          <div className="text-center text-sm text-muted-foreground">
-            <Link href="/" className="hover:text-foreground">
-              Til forsiden
-            </Link>
+          <div className="space-y-1 text-center text-sm text-muted-foreground">
+            <div>
+              <Link href="/" className="hover:text-foreground">
+                Til forsiden
+              </Link>
+            </div>
+            <div>
+              Trenger du hjelp?{" "}
+              <a href="mailto:post@obno.no" className="underline underline-offset-4 hover:text-foreground">
+                post@obno.no
+              </a>
+            </div>
           </div>
         </CardContent>
       </Card>

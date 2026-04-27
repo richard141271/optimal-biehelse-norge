@@ -138,6 +138,12 @@ export default async function ApenOkonomiPage() {
                 <div className="font-medium text-foreground">Sist oppdatert</div>
                 <div>{sistOppdatert}</div>
               </div>
+              <div>
+                <div className="font-medium text-foreground">Kontakt</div>
+                <a href="mailto:post@obno.no" className="underline underline-offset-4 hover:text-foreground">
+                  post@obno.no
+                </a>
+              </div>
             </div>
             {feil ? (
               <div className="mt-4 text-sm text-muted-foreground">{feil}</div>

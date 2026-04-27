@@ -127,6 +127,12 @@ export default function OmOssPage() {
               <p className="text-sm text-muted-foreground">
                 Offisielle opplysninger fra Brønnøysundregistrene.
               </p>
+              <p className="text-sm text-muted-foreground">
+                Kontakt:{" "}
+                <a href="mailto:post@obno.no" className="underline underline-offset-4 hover:text-foreground">
+                  post@obno.no
+                </a>
+              </p>
             </div>
             <a
               href="https://w2.brreg.no/enhet/sok/detalj.jsp?orgnr=937528191"

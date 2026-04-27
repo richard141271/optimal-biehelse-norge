@@ -298,6 +298,12 @@ export default function Home() {
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-10 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} Optimal Biehelse Norge (OBNO)</p>
           <p>Frivillig organisasjon for bier og pollinatorer</p>
+          <p>
+            Kontakt:{" "}
+            <a href="mailto:post@obno.no" className="underline underline-offset-4 hover:text-foreground">
+              post@obno.no
+            </a>
+          </p>
         </div>
       </footer>
     </div>
