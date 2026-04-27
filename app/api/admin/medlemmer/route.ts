@@ -489,7 +489,14 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: false, feil: "Fant ikke medlem." }, { status: 404 })
   }
   if (target.role === "superadmin") {
-    return NextResponse.json({ ok: false, feil: "Superbruker kan ikke endres her." }, { status: 400 })
+    const targetUserId = String(target.user_id ?? "").trim()
+    const isSelf = !!targetUserId && targetUserId === gate.userId
+    if (!isSelf || gate.role !== "superadmin") {
+      return NextResponse.json(
+        { ok: false, feil: "Superbruker kan ikke endres her." },
+        { status: 400 }
+      )
+    }
   }
 
   const update: Record<string, unknown> = {}
