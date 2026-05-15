@@ -1,7 +1,7 @@
 import Link from "next/link"
+import Image from "next/image"
 
-const vippsNummer = "47372406"
-const vippsNavn = "Jørn Richard Thoresen"
+const vippsNummer = "52387"
 
 function normalizeType(type: string | undefined) {
   const raw = String(type ?? "").trim().toLowerCase()
@@ -45,10 +45,6 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
             Denne lenken fungerer i alle nettlesere. På mobil kan du åpne Vipps-appen
             direkte. På PC/Mac viser vi informasjonen du trenger for å betale i Vipps.
           </p>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            Vippskasse er bestilt (kommer). Inntil videre kan du betale med bankoverføring til{" "}
-            <span className="font-medium text-foreground">3626 75 74418</span>.
-          </p>
         </header>
 
         <section className="grid gap-4 lg:grid-cols-2">
@@ -57,7 +53,7 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
             <div className="mt-3 space-y-2 text-sm text-muted-foreground">
               <div>
                 <span className="font-medium text-foreground">Vipps-nummer:</span>{" "}
-                {vippsNummer} ({vippsNavn})
+                #{vippsNummer}
               </div>
               <div>
                 <span className="font-medium text-foreground">Beløp:</span>{" "}
@@ -66,6 +62,23 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
               <div>
                 <span className="font-medium text-foreground">Melding:</span>{" "}
                 {forslagMelding}
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <div className="text-sm font-medium">QR-kode</div>
+              <div className="mt-2 inline-flex rounded-xl border bg-background p-3">
+                <Image
+                  src="/qr.png"
+                  alt="Vipps QR-kode"
+                  width={220}
+                  height={220}
+                  className="h-auto w-[180px] sm:w-[220px]"
+                  priority
+                />
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                Skann QR-koden for å åpne Vipps.
               </div>
             </div>
 
@@ -87,7 +100,7 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
             <div className="mt-6 space-y-2 text-sm text-muted-foreground">
               <div className="font-medium text-foreground">Slik betaler du:</div>
               <ol className="list-decimal space-y-1 pl-5">
-                <li>Åpne Vipps og søk opp {vippsNummer}.</li>
+                <li>Åpne Vipps og søk opp #{vippsNummer}.</li>
                 <li>Velg beløp ({belop ? `${belop} kr` : "100 kr eller 300 kr"}).</li>
                 <li>Skriv gjerne meldingen “{forslagMelding}”.</li>
               </ol>
@@ -98,7 +111,7 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
             <div className="text-sm font-medium">Hvis Vipps ikke åpner</div>
             <p className="mt-2 text-sm text-muted-foreground">
               Noen nettlesere/innstillinger kan blokkere app-åpning. Da kan du åpne
-              Vipps manuelt og bruke {vippsNummer} ({vippsNavn}).
+              Vipps manuelt og bruke #{vippsNummer}.
             </p>
             <div className="mt-4 space-y-2 text-sm">
               <a

@@ -169,7 +169,7 @@ export default function Home() {
                 <div className="rounded-xl border bg-card p-5">
                   <div className="text-sm font-medium">Betal kontingent med Vipps</div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Vipps til 47372406 (Jørn Richard Thoresen):
+                    Vipps til #52387:
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link
@@ -202,13 +202,22 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                    <p>Vippskasse er bestilt (kommer).</p>
+                    <p>Skann QR-koden eller søk opp #52387 i Vipps.</p>
                     <p>
                       Bankoverføring:{" "}
                       <span className="font-medium text-foreground">
                         3626 75 74418
                       </span>
                     </p>
+                  </div>
+                  <div className="mt-3 inline-flex rounded-xl border bg-background p-3">
+                    <Image
+                      src="/qr.png"
+                      alt="Vipps QR-kode"
+                      width={220}
+                      height={220}
+                      className="h-auto w-[160px] sm:w-[200px]"
+                    />
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     <Link href="/apen-okonomi" className="underline underline-offset-4">
@@ -233,7 +242,7 @@ export default function Home() {
                 </h2>
                 <p className="text-muted-foreground">
                   Bidrag går til kunnskapsarbeid, utstyr og aktiviteter som styrker
-                  biehelse og pollinatorer. Vippskasse er bestilt, og i mellomtiden kan du støtte oss med bankoverføring.
+                  biehelse og pollinatorer. Du kan støtte oss med Vipps eller bankoverføring.
                 </p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -242,7 +251,7 @@ export default function Home() {
                   <p className="mt-1 text-sm text-muted-foreground">
                     Vipps-nummer:{" "}
                     <span className="font-medium text-foreground">
-                      47372406 (Jørn Richard Thoresen)
+                      #52387
                     </span>
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -267,9 +276,15 @@ export default function Home() {
                       <span className="font-medium">Støttemedlem:</span> 300 kr / år
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Vippskasse er bestilt (kommer).
-                  </p>
+                  <div className="mt-3 inline-flex rounded-xl border bg-background p-3">
+                    <Image
+                      src="/qr.png"
+                      alt="Vipps QR-kode"
+                      width={220}
+                      height={220}
+                      className="h-auto w-[160px] sm:w-[200px]"
+                    />
+                  </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     <Link href="/apen-okonomi" className="underline underline-offset-4">
                       Se Åpen økonomi
