@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1067" viewBox="0 0 1600 1067" role="img" aria-label="Dugnad og samarbeid">
+  <defs>
+    <linearGradient id="bg2" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff7ed"/>
+      <stop offset="0.6" stop-color="#ecfccb"/>
+      <stop offset="1" stop-color="#e0f2fe"/>
+    </linearGradient>
+    <linearGradient id="grass" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#15803d"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="1067" fill="url(#bg2)"/>
+
+  <path d="M0 770 C260 700, 520 710, 800 770 C1100 835, 1300 860, 1600 800 L1600 1067 L0 1067 Z" fill="url(#grass)"/>
+
+  <g opacity="0.92">
+    <circle cx="410" cy="620" r="62" fill="#1f2937"/>
+    <rect x="350" y="680" width="120" height="210" rx="58" fill="#111827" opacity="0.9"/>
+    <circle cx="790" cy="610" r="62" fill="#1f2937"/>
+    <rect x="730" y="670" width="120" height="230" rx="58" fill="#111827" opacity="0.9"/>
+    <circle cx="1170" cy="630" r="62" fill="#1f2937"/>
+    <rect x="1110" y="690" width="120" height="220" rx="58" fill="#111827" opacity="0.9"/>
+
+    <path d="M430 760 C560 660, 690 612, 790 612 C900 612, 1020 668, 1160 770" fill="none" stroke="#f59e0b" stroke-width="26" stroke-linecap="round"/>
+    <path d="M420 790 C560 700, 680 658, 790 658 C900 658, 1010 706, 1150 800" fill="none" stroke="#fbbf24" stroke-width="20" stroke-linecap="round" opacity="0.9"/>
+  </g>
+
+  <g opacity="0.95">
+    <g transform="translate(260 850)">
+      <path d="M20 160 C36 120, 58 90, 88 62 C116 36, 150 16, 190 6" fill="none" stroke="#14532d" stroke-width="12" stroke-linecap="round"/>
+      <circle cx="190" cy="6" r="10" fill="#14532d"/>
+      <g transform="translate(186 -12)">
+        <circle cx="0" cy="0" r="18" fill="#fb7185"/>
+        <circle cx="-22" cy="8" r="18" fill="#fb7185"/>
+        <circle cx="-6" cy="24" r="18" fill="#fb7185"/>
+        <circle cx="18" cy="20" r="18" fill="#fb7185"/>
+        <circle cx="22" cy="-2" r="18" fill="#fb7185"/>
+        <circle cx="0" cy="10" r="14" fill="#fbbf24"/>
+      </g>
+    </g>
+    <g transform="translate(1320 870) scale(0.95)">
+      <path d="M20 160 C34 124, 56 98, 82 72 C110 44, 142 24, 182 8" fill="none" stroke="#14532d" stroke-width="12" stroke-linecap="round"/>
+      <circle cx="182" cy="8" r="10" fill="#14532d"/>
+      <g transform="translate(178 -10)">
+        <circle cx="0" cy="0" r="18" fill="#60a5fa"/>
+        <circle cx="-22" cy="8" r="18" fill="#60a5fa"/>
+        <circle cx="-6" cy="24" r="18" fill="#60a5fa"/>
+        <circle cx="18" cy="20" r="18" fill="#60a5fa"/>
+        <circle cx="22" cy="-2" r="18" fill="#60a5fa"/>
+        <circle cx="0" cy="10" r="14" fill="#fbbf24"/>
+      </g>
+    </g>
+  </g>
+
+  <g font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+    <text x="80" y="140" font-size="54" font-weight="700" fill="#0f172a">Dugnad og samarbeid</text>
+    <text x="80" y="190" font-size="26" fill="#334155">Lokale krefter gjør prosjektet mulig</text>
+  </g>
+</svg>

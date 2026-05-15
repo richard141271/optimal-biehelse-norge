@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1067" viewBox="0 0 1600 1067" role="img" aria-label="Pollinatorbed">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#fef3c7"/>
+      <stop offset="0.55" stop-color="#dcfce7"/>
+      <stop offset="1" stop-color="#dbeafe"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="72%" cy="22%" r="50%">
+      <stop offset="0" stop-color="#fde68a" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#fde68a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hill" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#16a34a"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+    <linearGradient id="path" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="1067" fill="url(#bg)"/>
+  <rect width="1600" height="1067" fill="url(#sun)"/>
+
+  <path d="M0 740 C260 620, 520 640, 820 720 C1090 792, 1300 840, 1600 780 L1600 1067 L0 1067 Z" fill="url(#hill)"/>
+  <path d="M260 1067 C340 990, 460 930, 610 892 C760 854, 910 850, 1100 888 C1280 924, 1420 990, 1540 1067 Z" fill="#15803d" opacity="0.9"/>
+
+  <path d="M760 1067 C760 965, 800 905, 860 860 C930 808, 1020 782, 1110 770 C1042 832, 1010 900, 1015 980 C1020 1028, 1035 1052, 1060 1067 Z" fill="url(#path)" opacity="0.85"/>
+
+  <g opacity="0.95">
+    <g transform="translate(220 820)">
+      <path d="M35 120 C38 92, 44 70, 54 52 C64 33, 78 18, 96 8" fill="none" stroke="#14532d" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="96" cy="8" r="10" fill="#14532d"/>
+      <g transform="translate(92 -8)">
+        <circle cx="0" cy="0" r="18" fill="#fb7185"/>
+        <circle cx="-22" cy="8" r="18" fill="#fb7185"/>
+        <circle cx="-6" cy="24" r="18" fill="#fb7185"/>
+        <circle cx="18" cy="20" r="18" fill="#fb7185"/>
+        <circle cx="22" cy="-2" r="18" fill="#fb7185"/>
+        <circle cx="0" cy="10" r="14" fill="#fbbf24"/>
+      </g>
+    </g>
+    <g transform="translate(380 860) scale(0.9)">
+      <path d="M35 120 C40 86, 54 62, 72 44 C88 27, 110 14, 130 10" fill="none" stroke="#14532d" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="130" cy="10" r="10" fill="#14532d"/>
+      <g transform="translate(126 -8)">
+        <circle cx="0" cy="0" r="18" fill="#a78bfa"/>
+        <circle cx="-22" cy="8" r="18" fill="#a78bfa"/>
+        <circle cx="-6" cy="24" r="18" fill="#a78bfa"/>
+        <circle cx="18" cy="20" r="18" fill="#a78bfa"/>
+        <circle cx="22" cy="-2" r="18" fill="#a78bfa"/>
+        <circle cx="0" cy="10" r="14" fill="#fbbf24"/>
+      </g>
+    </g>
+    <g transform="translate(1320 830) scale(1.05)">
+      <path d="M35 120 C44 86, 60 60, 84 42 C104 27, 128 14, 154 8" fill="none" stroke="#14532d" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="154" cy="8" r="10" fill="#14532d"/>
+      <g transform="translate(150 -10)">
+        <circle cx="0" cy="0" r="18" fill="#60a5fa"/>
+        <circle cx="-22" cy="8" r="18" fill="#60a5fa"/>
+        <circle cx="-6" cy="24" r="18" fill="#60a5fa"/>
+        <circle cx="18" cy="20" r="18" fill="#60a5fa"/>
+        <circle cx="22" cy="-2" r="18" fill="#60a5fa"/>
+        <circle cx="0" cy="10" r="14" fill="#fbbf24"/>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(980 300) rotate(-10)">
+    <ellipse cx="0" cy="0" rx="52" ry="34" fill="#111827" opacity="0.9"/>
+    <ellipse cx="0" cy="0" rx="44" ry="28" fill="#fbbf24"/>
+    <path d="M-36 -4 H36" stroke="#111827" stroke-width="10" stroke-linecap="round"/>
+    <path d="M-24 12 H24" stroke="#111827" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="-44" cy="-6" r="12" fill="#111827"/>
+    <path d="M-56 -16 C-74 -30, -92 -30, -104 -18" fill="none" stroke="#111827" stroke-width="6" stroke-linecap="round"/>
+    <path d="M-56 -10 C-74 -24, -92 -24, -104 -12" fill="none" stroke="#111827" stroke-width="6" stroke-linecap="round"/>
+    <path d="M30 -22 C64 -44, 90 -38, 112 -14 C90 -10, 68 -2, 46 14 C36 8, 30 -6, 30 -22 Z" fill="#e5e7eb" opacity="0.9"/>
+    <path d="M24 -14 C54 -30, 76 -28, 94 -10 C76 -6, 58 0, 40 12 C32 8, 26 -2, 24 -14 Z" fill="#e5e7eb" opacity="0.85"/>
+  </g>
+
+  <g font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+    <text x="80" y="140" font-size="54" font-weight="700" fill="#0f172a">Pollinatorbed</text>
+    <text x="80" y="190" font-size="26" fill="#334155">For bier, humler og naturen</text>
+  </g>
+</svg>
