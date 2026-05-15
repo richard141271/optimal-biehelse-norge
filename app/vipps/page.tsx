@@ -45,6 +45,10 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
             Denne lenken fungerer i alle nettlesere. På mobil kan du åpne Vipps-appen
             direkte. På PC/Mac viser vi informasjonen du trenger for å betale i Vipps.
           </p>
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Vippskasse er bestilt (kommer). Inntil videre kan du betale med bankoverføring til{" "}
+            <span className="font-medium text-foreground">3626 75 74418</span>.
+          </p>
         </header>
 
         <section className="grid gap-4 lg:grid-cols-2">

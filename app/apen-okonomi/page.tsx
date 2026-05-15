@@ -131,8 +131,7 @@ export default async function ApenOkonomiPage() {
               </div>
               <div>
                 <div className="font-medium text-foreground">Konto</div>
-                <div>Kontonummer under søknadsprosess i lokalbank</div>
-                <div className="text-xs text-muted-foreground">Midlertidig løsning brukes i mellomtiden</div>
+                <div>Kontonummer: 3626 75 74418</div>
               </div>
               <div>
                 <div className="font-medium text-foreground">Sist oppdatert</div>
@@ -229,11 +228,10 @@ export default async function ApenOkonomiPage() {
 
         <section className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground sm:p-8">
           <div className="space-y-2">
-            <div className="font-medium text-foreground">Midlertidig løsning</div>
+            <div className="font-medium text-foreground">Innbetalinger</div>
             <p>
-              OBNO har nå organisasjonsnummer (937 528 191). Vi venter på kontonummer som er
-              under søknadsprosess i lokalbank. I mellomtiden kan innbetalinger gå til en
-              midlertidig forvaltning. Alle innbetalinger og utbetalinger dokumenteres her.
+              OBNO har organisasjonsnummer (937 528 191) og kontonummer 3626 75 74418.
+              Alle innbetalinger og utbetalinger dokumenteres her.
             </p>
           </div>
         </section>

@@ -201,9 +201,15 @@ export default function Home() {
                       kontingent for deg som vil støtte arbeidet vårt ekstra.
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Åpne Vipps-appen og betal til 47372406.
-                  </p>
+                  <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                    <p>Vippskasse er bestilt (kommer).</p>
+                    <p>
+                      Bankoverføring:{" "}
+                      <span className="font-medium text-foreground">
+                        3626 75 74418
+                      </span>
+                    </p>
+                  </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     <Link href="/apen-okonomi" className="underline underline-offset-4">
                       Se Åpen økonomi
@@ -227,7 +233,7 @@ export default function Home() {
                 </h2>
                 <p className="text-muted-foreground">
                   Bidrag går til kunnskapsarbeid, utstyr og aktiviteter som styrker
-                  biehelse og pollinatorer. Du kan støtte oss med Vipps.
+                  biehelse og pollinatorer. Vippskasse er bestilt, og i mellomtiden kan du støtte oss med bankoverføring.
                 </p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -262,7 +268,7 @@ export default function Home() {
                     </div>
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Åpne Vipps-appen og betal til 47372406.
+                    Vippskasse er bestilt (kommer).
                   </p>
                   <p className="mt-2 text-xs text-muted-foreground">
                     <Link href="/apen-okonomi" className="underline underline-offset-4">
@@ -273,7 +279,10 @@ export default function Home() {
                 <div className="rounded-xl border bg-card p-5">
                   <div className="text-sm font-medium">Bankoverføring</div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Plassholder for kontonummer/IBAN.
+                    Kontonummer:{" "}
+                    <span className="font-medium text-foreground">
+                      3626 75 74418
+                    </span>
                   </p>
                 </div>
                 <div className="rounded-xl border bg-card p-5">
