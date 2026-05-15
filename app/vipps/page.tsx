@@ -133,10 +133,10 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
             </div>
             <div className="mt-6">
               <Link
-                href="/apen-okonomi"
+                href="/#stott-oss"
                 className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
               >
-                Se Åpen økonomi
+                Tilbake
               </Link>
             </div>
             <div className="mt-4 text-sm text-muted-foreground">

@@ -219,11 +219,6 @@ export default function Home() {
                       className="h-auto w-[160px] sm:w-[200px]"
                     />
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    <Link href="/apen-okonomi" className="underline underline-offset-4">
-                      Se Åpen økonomi
-                    </Link>
-                  </p>
                 </div>
               </div>
               <div className="rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
@@ -285,11 +280,6 @@ export default function Home() {
                       className="h-auto w-[160px] sm:w-[200px]"
                     />
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    <Link href="/apen-okonomi" className="underline underline-offset-4">
-                      Se Åpen økonomi
-                    </Link>
-                  </p>
                 </div>
                 <div className="rounded-xl border bg-card p-5">
                   <div className="text-sm font-medium">Bankoverføring</div>
