@@ -111,9 +111,8 @@ export default async function ApenOkonomiPage() {
             OBNO – Åpen økonomi
           </h1>
           <p className="max-w-3xl text-muted-foreground">
-            Full åpenhet: Alle midler tilhører OBNO og dokumenteres løpende. I en
-            overgangsperiode kan innbetalinger gå til en midlertidig løsning frem til
-            kontonummer er på plass.
+            Full åpenhet: Alle midler tilhører OBNO og dokumenteres løpende. Dette er en
+            midlertidig løsning frem til vi er 100% over på fast løsning med egen Vipps-innbetaling.
           </p>
           <p className="max-w-3xl text-sm text-muted-foreground">
             Viser regnskapsposter fra og med {startDatoLabel}. Eldre historikk vises ikke her.
@@ -228,10 +227,13 @@ export default async function ApenOkonomiPage() {
 
         <section className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground sm:p-8">
           <div className="space-y-2">
-            <div className="font-medium text-foreground">Innbetalinger</div>
+            <div className="font-medium text-foreground">Midlertidig løsning</div>
             <p>
               OBNO har organisasjonsnummer (937 528 191) og kontonummer 3626 75 74418.
               Alle innbetalinger og utbetalinger dokumenteres her.
+            </p>
+            <p>
+              Når vi er 100% over på fast løsning med egen Vipps-innbetaling, vil denne siden bli fjernet.
             </p>
           </div>
         </section>
