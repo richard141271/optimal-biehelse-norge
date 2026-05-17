@@ -30,7 +30,16 @@ type VippsPaymentResponse = {
 
 function vippsMode() {
   const mode = String(process.env.VIPPS_MODE ?? "").trim().toLowerCase()
-  return mode === "stub" || mode === "teststub" ? "stub" : "vipps"
+  if (mode === "vipps") return "vipps"
+  if (mode === "stub" || mode === "teststub") return "stub"
+  return (
+    !!process.env.VIPPS_CLIENT_ID &&
+    !!process.env.VIPPS_CLIENT_SECRET &&
+    !!process.env.VIPPS_SUBSCRIPTION_KEY &&
+    !!process.env.VIPPS_MSN
+  )
+    ? "vipps"
+    : "stub"
 }
 
 function vippsBaseUrl() {
