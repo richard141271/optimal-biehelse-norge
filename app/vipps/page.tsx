@@ -5,6 +5,8 @@ const vippsNummer = "52387"
 
 function normalizeType(type: string | undefined) {
   const raw = String(type ?? "").trim().toLowerCase()
+  if (raw === "lodd" || raw === "loddsalg") return "lodd"
+  if (raw === "donasjon" || raw === "donere" || raw === "donate") return "donasjon"
   if (raw === "stottemedlem" || raw === "støttemedlem" || raw === "stotte") {
     return "stottemedlem"
   }
@@ -22,12 +24,30 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
   const rawType = getFirst(searchParams?.type)
   const type = normalizeType(rawType)
   const rawBelop = (getFirst(searchParams?.belop) ?? "").trim()
+  const ref = (getFirst(searchParams?.ref) ?? "").trim()
   const parsedBelop = Number(rawBelop)
   const belop =
     Number.isFinite(parsedBelop) && parsedBelop > 0 ? Math.round(parsedBelop) : null
 
-  const forslagMelding = type === "stottemedlem" ? "OBNO Støttemedlem" : "OBNO Medlemskap"
-  const tittel = type === "stottemedlem" ? "Støttemedlem" : "Medlemskap"
+  const forslagMelding =
+    type === "lodd"
+      ? `OBNO Lodd ${ref || ""}`.trim()
+      : type === "donasjon"
+        ? "OBNO Donasjon"
+        : type === "stottemedlem"
+          ? "OBNO Støttemedlem"
+          : "OBNO Medlemskap"
+
+  const tittel =
+    type === "lodd"
+      ? "Loddsalg"
+      : type === "donasjon"
+        ? "Donasjon"
+        : type === "stottemedlem"
+          ? "Støttemedlem"
+          : "Medlemskap"
+
+  const tilbakeHref = type === "lodd" ? "/lodd" : type === "donasjon" ? "/#stott-oss" : "/#medlemskap"
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
@@ -90,7 +110,7 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
                 Åpne Vipps
               </a>
               <Link
-                href="/#medlemskap"
+                href={tilbakeHref}
                 className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
               >
                 Tilbake
@@ -101,7 +121,15 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
               <div className="font-medium text-foreground">Slik betaler du:</div>
               <ol className="list-decimal space-y-1 pl-5">
                 <li>Åpne Vipps og søk opp #{vippsNummer}.</li>
-                <li>Velg beløp ({belop ? `${belop} kr` : "100 kr eller 300 kr"}).</li>
+                <li>
+                  Velg beløp (
+                  {belop
+                    ? `${belop} kr`
+                    : type === "lodd"
+                      ? "20 kr per lodd (velg antall)"
+                      : "100 kr eller 300 kr"}
+                  ).
+                </li>
                 <li>Skriv gjerne meldingen “{forslagMelding}”.</li>
               </ol>
             </div>

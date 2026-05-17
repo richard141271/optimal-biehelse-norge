@@ -405,6 +405,9 @@ export default function MinSidePage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => router.push("/min-side/sponset-premie")}>
+            Sponset premie
+          </Button>
           <Button variant="outline" onClick={() => router.push("/")}>
             Til forsiden
           </Button>
