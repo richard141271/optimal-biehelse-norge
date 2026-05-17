@@ -7,6 +7,12 @@ function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  )
+}
+
 async function getCurrentUser() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -443,6 +449,7 @@ export async function PUT(request: Request) {
     medlemsnummer?: number | string | null
     medlemskap_type?: string | null
     utbetalingKontonummer?: string | null
+    userId?: string | null
     authEmail?: string | null
     authPassword?: string | null
   }
@@ -458,6 +465,7 @@ export async function PUT(request: Request) {
       medlemsnummer?: number | string | null
       medlemskap_type?: string | null
       utbetalingKontonummer?: string | null
+      userId?: string | null
       authEmail?: string | null
       authPassword?: string | null
     }
@@ -466,12 +474,8 @@ export async function PUT(request: Request) {
   }
 
   const medlemId = String(payload.medlemId ?? "").trim()
-  const isUuid =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      medlemId
-    )
   const isNumericId = /^\d+$/.test(medlemId)
-  if (!medlemId || (!isUuid && !isNumericId)) {
+  if (!medlemId || (!isUuid(medlemId) && !isNumericId)) {
     return NextResponse.json({ ok: false, feil: "Ugyldig medlem-id." }, { status: 400 })
   }
   const medlemIdValue = isNumericId ? Number(medlemId) : medlemId
@@ -537,6 +541,20 @@ export async function PUT(request: Request) {
     update.medlemsnummer = n
   }
 
+  if ("userId" in payload) {
+    if (gate.role !== "superadmin") {
+      return NextResponse.json(
+        { ok: false, feil: "Kun superbruker kan endre user_id." },
+        { status: 403 }
+      )
+    }
+    const raw = payload.userId == null ? "" : String(payload.userId).trim()
+    if (raw && !isUuid(raw)) {
+      return NextResponse.json({ ok: false, feil: "Ugyldig user_id." }, { status: 400 })
+    }
+    update.user_id = raw ? raw : null
+  }
+
   const authEmail =
     payload.authEmail == null ? null : String(payload.authEmail).trim().toLowerCase()
   const authPassword = payload.authPassword == null ? null : String(payload.authPassword)
@@ -596,6 +614,17 @@ export async function PUT(request: Request) {
 
   if (updateError) {
     const msg = String((updateError as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /user_id/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet user_id. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists user_id uuid;",
+        },
+        { status: 500 }
+      )
+    }
     if (/column/i.test(msg) && /utbetaling_kontonummer/i.test(msg)) {
       return NextResponse.json(
         {

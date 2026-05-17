@@ -116,6 +116,7 @@ export default function AdminMedlemmerPage() {
   const [editMedlemsnummer, setEditMedlemsnummer] = useState("")
   const [editType, setEditType] = useState("")
   const [editUtbetalingKontonummer, setEditUtbetalingKontonummer] = useState("")
+  const [editUserId, setEditUserId] = useState("")
   const [editAuthEmail, setEditAuthEmail] = useState("")
   const [editAuthPassword, setEditAuthPassword] = useState("")
   const [savingMember, setSavingMember] = useState(false)
@@ -372,9 +373,11 @@ export default function AdminMedlemmerPage() {
     setEditMedlemsnummer(openMember.medlemsnummer == null ? "" : String(openMember.medlemsnummer))
     setEditType(String(openMember.medlemskap_type ?? ""))
     setEditUtbetalingKontonummer(String(openMember.utbetaling_kontonummer ?? ""))
+      setEditUserId(String(openMember.user_id ?? ""))
     setEditAuthEmail(String(openMember.epost ?? ""))
     setEditAuthPassword("")
   }, [openMember])
+
 
   const lagreMedlem = useCallback(async () => {
     if (!openMember?.id) return
@@ -394,7 +397,14 @@ export default function AdminMedlemmerPage() {
         medlemskap_type: editType,
         utbetalingKontonummer: editUtbetalingKontonummer,
       }
-      if (isSuper && openMember.user_id) {
+      if (isSuper) {
+        const originalUserId = String(openMember.user_id ?? "").trim()
+        const nextUserId = editUserId.trim()
+        if (nextUserId !== originalUserId) {
+          payload.userId = nextUserId || null
+        }
+      }
+      if (isSuper && openMember.user_id && editUserId.trim() === String(openMember.user_id ?? "").trim()) {
         const originalAuthEmail = String(openMember.epost ?? "").trim().toLowerCase()
         const nextAuthEmail = editAuthEmail.trim().toLowerCase()
         if (nextAuthEmail && nextAuthEmail !== originalAuthEmail) {
@@ -431,6 +441,7 @@ export default function AdminMedlemmerPage() {
     editTelefon,
     editType,
     editUtbetalingKontonummer,
+    editUserId,
     hent,
     openMember,
     savingMember,
@@ -1035,6 +1046,18 @@ export default function AdminMedlemmerPage() {
                 <div className="text-sm font-medium">Innlogging</div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1 sm:col-span-2">
+                    <div className="text-xs text-muted-foreground">user_id (innlogging)</div>
+                    <Input
+                      value={editUserId}
+                      onChange={(e) => setEditUserId(e.target.value)}
+                      placeholder="UUID"
+                      autoComplete="off"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      Medlemskap må være koblet til innlogging via user_id.
+                    </div>
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
                     <div className="text-xs text-muted-foreground">E-post (innlogging)</div>
                     <Input
                       value={editAuthEmail}
@@ -1051,11 +1074,6 @@ export default function AdminMedlemmerPage() {
                       disabled={!openMember.user_id}
                     />
                   </div>
-                  {!openMember.user_id ? (
-                    <div className="text-xs text-muted-foreground sm:col-span-2">
-                      Medlemmet er ikke koblet til en innloggingsbruker (user_id mangler).
-                    </div>
-                  ) : null}
                 </div>
               </div>
             ) : null}
