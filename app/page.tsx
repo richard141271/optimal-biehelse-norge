@@ -55,15 +55,6 @@ export default function Home() {
                 Kjøp lodd og støtt pollinatorprosjekter.
               </div>
             </Link>
-            <Link
-              href="/prosjekter"
-              className="rounded-2xl border bg-card p-6 hover:bg-muted/40"
-            >
-              <div className="text-sm font-medium">Prosjekter</div>
-              <div className="mt-2 text-sm text-muted-foreground">
-                Se og følg prosjekter for bier og pollinatorer.
-              </div>
-            </Link>
             <Link href="/biehelse" className="rounded-2xl border bg-card p-6 hover:bg-muted/40">
               <div className="text-sm font-medium">Biehelse</div>
               <div className="mt-2 text-sm text-muted-foreground">

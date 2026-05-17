@@ -70,9 +70,6 @@ export default function RootLayout({
                 <Link href="/biehelse" className="hover:text-foreground">
                   Biehelse
                 </Link>
-                <Link href="/prosjekter" className="hover:text-foreground">
-                  Prosjekter
-                </Link>
                 <Link href="/lodd" className="hover:text-foreground">
                   Loddsalg
                 </Link>

@@ -106,6 +106,42 @@ export async function GET() {
     return NextResponse.json({ ok: true, medlem: byUserId })
   }
 
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+
+  if (ownerEmail && email === ownerEmail) {
+    const byEmail = await admin
+      .from("medlemmer")
+      .select(selectMedlem())
+      .eq("epost", email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!byEmail.error && byEmail.data) {
+      const row = byEmail.data as { id?: string; user_id?: string | null }
+      const rowId = String(row.id ?? "").trim()
+      const rowUserId = String(row.user_id ?? "").trim()
+
+      if (rowId && rowUserId !== userId) {
+        await admin.from("medlemmer").update({ user_id: userId }).eq("id", rowId)
+
+        const refreshed = await admin
+          .from("medlemmer")
+          .select(selectMedlem())
+          .eq("user_id", userId)
+          .maybeSingle()
+
+        if (!refreshed.error && refreshed.data) {
+          return NextResponse.json({ ok: true, medlem: refreshed.data })
+        }
+      }
+    }
+  }
+
   return NextResponse.json(
     {
       ok: false,
