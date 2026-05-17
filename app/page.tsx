@@ -25,12 +25,6 @@ export default function Home() {
                 >
                   Bli medlem / støtt oss
                 </Link>
-                <Link
-                  href="/lodd"
-                  className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
-                >
-                  Se loddsalg
-                </Link>
               </div>
             </div>
           </div>
@@ -47,21 +41,6 @@ export default function Home() {
               <div className="text-sm font-medium">Bli medlem</div>
               <div className="mt-2 text-sm text-muted-foreground">
                 Registrer medlemskap og finn Vipps/bankinfo.
-              </div>
-            </Link>
-            <Link href="/lodd" className="rounded-2xl border bg-card p-6 hover:bg-muted/40">
-              <div className="text-sm font-medium">Loddsalg</div>
-              <div className="mt-2 text-sm text-muted-foreground">
-                Kjøp lodd og støtt pollinatorprosjekter.
-              </div>
-            </Link>
-            <Link
-              href="/skrapelodd"
-              className="rounded-2xl border bg-card p-6 hover:bg-muted/40"
-            >
-              <div className="text-sm font-medium">Skrapelodd</div>
-              <div className="mt-2 text-sm text-muted-foreground">
-                Kjøp digitale skrapelodd og vinn sponsede premier.
               </div>
             </Link>
             <Link href="/biehelse" className="rounded-2xl border bg-card p-6 hover:bg-muted/40">

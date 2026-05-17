@@ -28,6 +28,11 @@ type VippsPaymentResponse = {
   state?: string
 }
 
+function vippsMode() {
+  const mode = String(process.env.VIPPS_MODE ?? "").trim().toLowerCase()
+  return mode === "stub" || mode === "teststub" ? "stub" : "vipps"
+}
+
 function vippsBaseUrl() {
   const env = String(process.env.VIPPS_ENV ?? "").trim().toLowerCase()
   return env === "prod" || env === "production" ? "https://api.vipps.no" : "https://apitest.vipps.no"
@@ -187,6 +192,13 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ re
   }
 
   if (!row.ticket_id || !row.payment_verified) {
+    if (vippsMode() === "stub") {
+      const assigned = await assignNextTicket(admin, ref)
+      if (assigned.ok) {
+        row.ticket_id = assigned.ticketId
+        row.payment_verified = true
+      }
+    } else {
     const token = await getVippsToken()
     if (token) {
       const checked = await ensureCaptured(token, ref)
@@ -197,6 +209,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ re
           row.payment_verified = true
         }
       }
+    }
     }
   }
 

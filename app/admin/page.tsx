@@ -57,6 +57,14 @@ export default function AdminHomePage() {
           <div className="mt-1 text-sm text-muted-foreground">
             Administrer forhåndsdefinerte skrapelodd og vinnere.
           </div>
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <Link href="/lodd" className="underline underline-offset-4">
+              Åpne loddsalg
+            </Link>
+            <Link href="/skrapelodd" className="underline underline-offset-4">
+              Åpne skrapelodd
+            </Link>
+          </div>
         </Link>
       </div>
     </div>

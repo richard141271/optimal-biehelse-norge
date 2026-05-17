@@ -32,6 +32,11 @@ type VippsCaptureResponse = {
   pspReference?: string
 }
 
+function vippsMode() {
+  const mode = String(process.env.VIPPS_MODE ?? "").trim().toLowerCase()
+  return mode === "stub" || mode === "teststub" ? "stub" : "vipps"
+}
+
 function vippsBaseUrl() {
   const env = String(process.env.VIPPS_ENV ?? "").trim().toLowerCase()
   return env === "prod" || env === "production" ? "https://api.vipps.no" : "https://apitest.vipps.no"
@@ -193,6 +198,14 @@ export async function GET(request: Request) {
   }
 
   if (row.payment_verified && row.ticket_id) {
+    return NextResponse.json({ ok: true, state: "READY", ready: true })
+  }
+
+  if (vippsMode() === "stub") {
+    const assigned = await assignNextTicket(admin, ref)
+    if (!assigned.ok) {
+      return NextResponse.json({ ok: false, feil: assigned.feil }, { status: assigned.status })
+    }
     return NextResponse.json({ ok: true, state: "READY", ready: true })
   }
 

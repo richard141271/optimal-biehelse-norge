@@ -26,6 +26,11 @@ type VippsCreatePaymentResponse = {
   redirectUrl?: string
 }
 
+function vippsMode() {
+  const mode = String(process.env.VIPPS_MODE ?? "").trim().toLowerCase()
+  return mode === "stub" || mode === "teststub" ? "stub" : "vipps"
+}
+
 function isVippsConfigured() {
   return (
     !!process.env.VIPPS_CLIENT_ID &&
@@ -115,6 +120,46 @@ function schemaHint(message: string) {
   )
 }
 
+async function assignNextTicket(admin: ReturnType<typeof createClient<Db>>, ref: string) {
+  for (let i = 0; i < 6; i += 1) {
+    const next = await admin
+      .from("scratch_tickets")
+      .select("id")
+      .eq("used", false)
+      .order("ticket_number", { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    const id = String((next.data as { id?: string } | null)?.id ?? "").trim()
+    if (!id) return { ok: false as const, status: 409 as const, feil: "Ingen ledige skrapelodd tilgjengelig." }
+
+    const updated = await admin
+      .from("scratch_tickets")
+      .update({ used: true, payment_verified: true } as unknown as never)
+      .eq("id", id)
+      .eq("used", false)
+      .select("id")
+      .maybeSingle()
+
+    if (updated.data && !updated.error) {
+      await admin
+        .from("scratch_payments")
+        .update(
+          {
+            status: "ticket_assigned",
+            payment_verified: true,
+            ticket_id: id,
+            updated_at: new Date().toISOString(),
+          } as unknown as never
+        )
+        .eq("id", ref)
+      return { ok: true as const, ticketId: id }
+    }
+  }
+
+  return { ok: false as const, status: 409 as const, feil: "Kunne ikke tildele skrapelodd. Prøv igjen." }
+}
+
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -122,7 +167,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, feil: "Supabase er ikke konfigurert." }, { status: 500 })
   }
 
-  if (!isVippsConfigured()) {
+  const mode = vippsMode()
+  if (mode === "vipps" && !isVippsConfigured()) {
     return NextResponse.json(
       {
         ok: false,
@@ -153,6 +199,14 @@ export async function POST(request: Request) {
       { ok: false, feil: hint ?? "Kunne ikke opprette betaling." },
       { status: hint ? 500 : 400 }
     )
+  }
+
+  if (mode === "stub") {
+    const assigned = await assignNextTicket(admin, ref)
+    if (!assigned.ok) {
+      return NextResponse.json({ ok: false, feil: assigned.feil }, { status: assigned.status })
+    }
+    return NextResponse.json({ ok: true, redirectUrl: `/skrapelodd/bekreft?ref=${encodeURIComponent(ref)}` })
   }
 
   const token = await getVippsToken()
