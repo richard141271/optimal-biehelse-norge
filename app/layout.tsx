@@ -73,6 +73,9 @@ export default function RootLayout({
                 <Link href="/lodd" className="hover:text-foreground">
                   Loddsalg
                 </Link>
+                <Link href="/skrapelodd" className="hover:text-foreground">
+                  Skrapelodd
+                </Link>
                 <Link href="/bli-medlem" className="hover:text-foreground">
                   Bli medlem
                 </Link>

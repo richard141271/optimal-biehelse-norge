@@ -55,6 +55,15 @@ export default function Home() {
                 Kjøp lodd og støtt pollinatorprosjekter.
               </div>
             </Link>
+            <Link
+              href="/skrapelodd"
+              className="rounded-2xl border bg-card p-6 hover:bg-muted/40"
+            >
+              <div className="text-sm font-medium">Skrapelodd</div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                Kjøp digitale skrapelodd og vinn sponsede premier.
+              </div>
+            </Link>
             <Link href="/biehelse" className="rounded-2xl border bg-card p-6 hover:bg-muted/40">
               <div className="text-sm font-medium">Biehelse</div>
               <div className="mt-2 text-sm text-muted-foreground">

@@ -8,7 +8,7 @@ export default function AdminHomePage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Oversikt</h1>
         <p className="text-muted-foreground">
-          Administrer medlemsregister, prosjekter, regnskap og loddsalg.
+          Administrer medlemsregister, prosjekter, regnskap, loddsalg og skrapelodd.
         </p>
       </div>
 
@@ -47,6 +47,15 @@ export default function AdminHomePage() {
           <div className="text-sm font-medium">Loddsalg</div>
           <div className="mt-1 text-sm text-muted-foreground">
             Administrer premiearkiv, lotteri og trekking.
+          </div>
+        </Link>
+        <Link
+          href="/admin/skrapelodd"
+          className="rounded-xl border bg-card p-5 hover:bg-muted/40"
+        >
+          <div className="text-sm font-medium">Skrapelodd</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Administrer forhåndsdefinerte skrapelodd og vinnere.
           </div>
         </Link>
       </div>
