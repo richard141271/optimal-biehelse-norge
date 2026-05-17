@@ -28,7 +28,7 @@ function toNumber(value: unknown) {
   return null
 }
 
-async function getLoggedInEmail() {
+async function getAuth() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!supabaseUrl || !supabaseAnonKey) return null
@@ -50,8 +50,10 @@ async function getLoggedInEmail() {
   const {
     data: { user },
   } = await supabase.auth.getUser()
+  const userId = user?.id ?? null
   const email = (user?.email ?? "").trim().toLowerCase()
-  return email || null
+  if (!userId || !email) return null
+  return { userId, email, supabaseUrl }
 }
 
 const schemaFeil =
@@ -267,8 +269,8 @@ export async function GET() {
     )
   }
 
-  const email = await getLoggedInEmail()
-  if (!email) {
+  const auth = await getAuth()
+  if (!auth) {
     return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
   }
 
@@ -286,11 +288,18 @@ export async function GET() {
   const { data: roleRow } = await admin
     .from("medlemmer")
     .select("role")
-    .eq("epost", email)
+    .eq("user_id", auth.userId)
     .maybeSingle()
   const role = String(roleRow?.role ?? "")
   if (role !== "admin" && role !== "superadmin") {
-    return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+    const ownerEmail = String(
+      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+    )
+      .trim()
+      .toLowerCase()
+    if (!ownerEmail || auth.email !== ownerEmail) {
+      return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+    }
   }
 
   const { data, error } = await admin
@@ -366,8 +375,8 @@ export async function POST(request: Request) {
     )
   }
 
-  const email = await getLoggedInEmail()
-  if (!email) {
+  const auth = await getAuth()
+  if (!auth) {
     return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
   }
 
@@ -385,11 +394,18 @@ export async function POST(request: Request) {
   const { data: roleRow } = await admin
     .from("medlemmer")
     .select("role")
-    .eq("epost", email)
+    .eq("user_id", auth.userId)
     .maybeSingle()
   const role = String(roleRow?.role ?? "")
   if (role !== "admin" && role !== "superadmin") {
-    return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+    const ownerEmail = String(
+      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+    )
+      .trim()
+      .toLowerCase()
+    if (!ownerEmail || auth.email !== ownerEmail) {
+      return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+    }
   }
 
   let form: FormData
@@ -518,7 +534,7 @@ export async function POST(request: Request) {
   }
 
   const logg = await loggHendelse(admin, {
-    actor_epost: email,
+    actor_epost: auth.email,
     actor_role: role,
     action: "poster:create",
     entity_type: "regnskap_poster",
@@ -542,8 +558,8 @@ export async function PATCH(request: Request) {
     )
   }
 
-  const email = await getLoggedInEmail()
-  if (!email) {
+  const auth = await getAuth()
+  if (!auth) {
     return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
   }
 
@@ -561,11 +577,18 @@ export async function PATCH(request: Request) {
   const { data: roleRow } = await admin
     .from("medlemmer")
     .select("role")
-    .eq("epost", email)
+    .eq("user_id", auth.userId)
     .maybeSingle()
   const role = String(roleRow?.role ?? "")
   if (role !== "admin" && role !== "superadmin") {
-    return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+    const ownerEmail = String(
+      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+    )
+      .trim()
+      .toLowerCase()
+    if (!ownerEmail || auth.email !== ownerEmail) {
+      return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+    }
   }
 
   let form: FormData
@@ -734,7 +757,7 @@ export async function PATCH(request: Request) {
   }
 
   const logg = await loggHendelse(admin, {
-    actor_epost: email,
+    actor_epost: auth.email,
     actor_role: role,
     action: "poster:update",
     entity_type: "regnskap_poster",
@@ -758,8 +781,8 @@ export async function PUT(request: Request) {
     )
   }
 
-  const email = await getLoggedInEmail()
-  if (!email) {
+  const auth = await getAuth()
+  if (!auth) {
     return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
   }
 
@@ -777,9 +800,15 @@ export async function PUT(request: Request) {
   const { data: roleRow } = await admin
     .from("medlemmer")
     .select("role")
-    .eq("epost", email)
+    .eq("user_id", auth.userId)
     .maybeSingle()
   const role = String(roleRow?.role ?? "")
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const isBootstrapSuper = ownerEmail && auth.email === ownerEmail
 
   const innstillinger = await hentInnstillinger(admin)
   if (!innstillinger.ok) {
@@ -802,10 +831,10 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: false, feil: "Ugyldig forespørsel." }, { status: 400 })
   }
 
-  if (hasKontoUpdate && role !== "admin" && role !== "superadmin") {
+  if (hasKontoUpdate && role !== "admin" && role !== "superadmin" && !isBootstrapSuper) {
     return NextResponse.json({ ok: false, feil: "Kun admin kan endre kontonummer." }, { status: 403 })
   }
-  if (hasSaldoUpdate && role !== "superadmin") {
+  if (hasSaldoUpdate && role !== "superadmin" && !isBootstrapSuper) {
     return NextResponse.json({ ok: false, feil: "Kun superbruker kan endre saldo." }, { status: 403 })
   }
 
@@ -843,7 +872,7 @@ export async function PUT(request: Request) {
     }
 
     const logg = await loggHendelse(admin, {
-      actor_epost: email,
+      actor_epost: auth.email,
       actor_role: role,
       action: "innstillinger:update",
       entity_type: "regnskap_innstillinger",
@@ -897,7 +926,7 @@ export async function PUT(request: Request) {
   }
 
   const logg = await loggHendelse(admin, {
-    actor_epost: email,
+    actor_epost: auth.email,
     actor_role: role,
     action: "innstillinger:update",
     entity_type: "regnskap_innstillinger",
@@ -930,8 +959,8 @@ export async function DELETE(request: Request) {
     )
   }
 
-  const email = await getLoggedInEmail()
-  if (!email) {
+  const auth = await getAuth()
+  if (!auth) {
     return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
   }
 
@@ -949,9 +978,15 @@ export async function DELETE(request: Request) {
   const { data: roleRow } = await admin
     .from("medlemmer")
     .select("role")
-    .eq("epost", email)
+    .eq("user_id", auth.userId)
     .maybeSingle()
-  if (roleRow?.role !== "superadmin") {
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const isBootstrapSuper = ownerEmail && auth.email === ownerEmail
+  if (roleRow?.role !== "superadmin" && !isBootstrapSuper) {
     return NextResponse.json(
       { ok: false, feil: "Kun superbruker kan slette regnskapsposter." },
       { status: 403 }
@@ -991,7 +1026,7 @@ export async function DELETE(request: Request) {
   }
 
   const logg = await loggHendelse(admin, {
-    actor_epost: email,
+    actor_epost: auth.email,
     actor_role: "superadmin",
     action: "poster:delete",
     entity_type: "regnskap_poster",

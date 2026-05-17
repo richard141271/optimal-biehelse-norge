@@ -234,7 +234,7 @@ export default function MinSidePage() {
           </div>
           <div className="flex gap-2">
             {manglerMedlem ? (
-              <Button variant="outline" onClick={() => router.push("/#medlemskap")}>
+              <Button variant="outline" onClick={() => router.push("/bli-medlem")}>
                 Registrer medlemskap
               </Button>
             ) : (

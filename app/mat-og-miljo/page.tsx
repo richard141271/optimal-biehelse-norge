@@ -3,59 +3,21 @@ import Link from "next/link"
 
 export default function MatOgMiljoPage() {
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <Image
-              src="/logo.png"
-              alt="Optimal Biehelse Norge (OBNO)"
-              width={128}
-              height={128}
-              className="h-10 w-auto"
-              priority
-            />
-          </Link>
-          <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-            <Link href="/om-oss" className="hover:text-foreground">
-              Om oss
-            </Link>
+    <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
+      <div className="space-y-10">
+        <header className="space-y-3">
+          <div className="text-sm text-muted-foreground">
             <Link href="/biehelse" className="hover:text-foreground">
-              Biehelse
-            </Link>
-            <Link href="/#medlemskap" className="hover:text-foreground">
-              Bli medlem
-            </Link>
-            <Link href="/#stott-oss" className="hover:text-foreground">
-              Støtt oss
-            </Link>
-          </nav>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/min-side"
-              className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-            >
-              Min side
+              Tilbake til Biehelse
             </Link>
           </div>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
-        <div className="space-y-10">
-          <header className="space-y-3">
-            <div className="text-sm text-muted-foreground">
-              <Link href="/biehelse" className="hover:text-foreground">
-                Tilbake til Biehelse
-              </Link>
-            </div>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              🌼 Vårt første prosjekt
-            </h1>
-            <p className="max-w-3xl text-muted-foreground">
-              Pollinatorbed for bier, humler og naturen
-            </p>
-          </header>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            🌼 Vårt første prosjekt
+          </h1>
+          <p className="max-w-3xl text-muted-foreground">
+            Pollinatorbed for bier, humler og naturen
+          </p>
+        </header>
 
           <section className="grid gap-4 md:grid-cols-3">
             <div className="rounded-2xl border bg-card p-3">
@@ -176,8 +138,7 @@ export default function MatOgMiljoPage() {
               </div>
             </div>
           </section>
-        </div>
-      </main>
-    </div>
+      </div>
+    </main>
   )
 }

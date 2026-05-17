@@ -106,58 +106,14 @@ export async function GET() {
     return NextResponse.json({ ok: true, medlem: byUserId })
   }
 
-  const { data: byEmail, error: byEmailError } = await admin
-    .from("medlemmer")
-    .select(selectMedlem())
-    .eq("epost", email)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (byEmailError) {
-    const msg = String((byEmailError as { message?: string } | null)?.message ?? "")
-    if (/column/i.test(msg) && /aktiv/i.test(msg)) {
-      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
-    }
-    if (/column/i.test(msg) && /utbetaling_kontonummer/i.test(msg)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          feil:
-            "Medlemsregister-tabellen mangler feltet utbetaling_kontonummer. Kjør dette i Supabase (SQL Editor):\n\n" +
-            "alter table public.medlemmer add column if not exists utbetaling_kontonummer text;",
-        },
-        { status: 500 }
-      )
-    }
-    return NextResponse.json({ ok: false, feil: "Kunne ikke hente medlemsdata." }, { status: 400 })
-  }
-
-  if (byEmail) {
-    const byEmailRow = byEmail as { id?: string; user_id?: string | null }
-    if (!byEmailRow.user_id && byEmailRow.id) {
-      await admin
-        .from("medlemmer")
-        .update({ user_id: userId })
-        .eq("id", byEmailRow.id)
-        .is("user_id", null)
-    }
-    if ((byEmail as { aktiv?: boolean | null } | null)?.aktiv === false) {
-      return NextResponse.json(
-        {
-          ok: false,
-          feil: "Du er meldt ut. Kontakt oss hvis du ønsker å bli aktivert igjen.",
-        },
-        { status: 404 }
-      )
-    }
-    return NextResponse.json({ ok: true, medlem: byEmail })
-  }
-
   return NextResponse.json(
     {
       ok: false,
-      feil: "Du er innlogget, men ikke registrert som medlem ennå. Registrer medlemskap først.",
+      feil:
+        "Fant ikke medlemskap. Medlemskap må være koblet til innlogging (user_id).\n\n" +
+        `Innloggings-ID: ${userId}\n` +
+        `E-post: ${email}\n\n` +
+        "Hvis du nylig har blitt lagt inn manuelt, må en superbruker koble medlemskapet til innloggingen i medlemsregisteret.",
     },
     { status: 404 }
   )

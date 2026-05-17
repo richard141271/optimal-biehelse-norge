@@ -13,7 +13,7 @@ function isUuid(value: string) {
   )
 }
 
-async function getLoggedInEmail() {
+async function getAuth() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!supabaseUrl || !supabaseAnonKey) return null
@@ -35,9 +35,10 @@ async function getLoggedInEmail() {
   const {
     data: { user },
   } = await supabase.auth.getUser()
+  const userId = user?.id ?? null
   const email = String(user?.email ?? "").trim().toLowerCase()
-  if (!email || !isValidEmail(email)) return null
-  return email
+  if (!userId || !email || !isValidEmail(email)) return null
+  return { userId, email }
 }
 
 async function requireAdmin() {
@@ -48,8 +49,8 @@ async function requireAdmin() {
     return { ok: false as const, status: 500 as const }
   }
 
-  const email = await getLoggedInEmail()
-  if (!email) return { ok: false as const, status: 401 as const }
+  const auth = await getAuth()
+  if (!auth) return { ok: false as const, status: 401 as const }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
@@ -58,15 +59,23 @@ async function requireAdmin() {
   const { data, error } = await admin
     .from("medlemmer")
     .select("role")
-    .eq("epost", email)
+    .eq("user_id", auth.userId)
     .maybeSingle()
 
   if (error) return { ok: false as const, status: 400 as const }
   if (data?.role !== "admin" && data?.role !== "superadmin") {
+    const ownerEmail = String(
+      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+    )
+      .trim()
+      .toLowerCase()
+    if (ownerEmail && auth.email === ownerEmail) {
+      return { ok: true as const, admin, email: auth.email, role: "superadmin" as const }
+    }
     return { ok: false as const, status: 403 as const }
   }
 
-  return { ok: true as const, admin, email, role: data.role as "admin" | "superadmin" }
+  return { ok: true as const, admin, email: auth.email, role: data.role as "admin" | "superadmin" }
 }
 
 const bucket = "prosjekt-vedlegg"

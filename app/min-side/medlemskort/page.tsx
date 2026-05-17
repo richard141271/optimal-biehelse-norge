@@ -324,7 +324,7 @@ export default function MedlemskortPage() {
                       <div className="text-sm text-muted-foreground">
                         Medlemskortet blir aktivt når kontingent er registrert som betalt.
                       </div>
-                      <Link href="/#medlemskap" className={buttonVariants({})}>
+                      <Link href="/bli-medlem" className={buttonVariants({})}>
                         Betal / registrer medlemskap
                       </Link>
                     </div>

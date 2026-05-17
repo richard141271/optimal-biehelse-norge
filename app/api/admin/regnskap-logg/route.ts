@@ -53,12 +53,13 @@ async function getAuth() {
     data: { user },
   } = await supabase.auth.getUser()
 
+  const userId = user?.id ?? null
   const email = String(user?.email ?? "").trim().toLowerCase()
-  if (!email || !isValidEmail(email)) {
+  if (!userId || !email || !isValidEmail(email)) {
     return { ok: false as const, status: 401 as const, feil: "Ikke innlogget." }
   }
 
-  return { ok: true as const, email, supabaseUrl }
+  return { ok: true as const, userId, email, supabaseUrl }
 }
 
 async function requireAdmin() {
@@ -77,10 +78,20 @@ async function requireAdmin() {
   const { data, error } = await admin
     .from("medlemmer")
     .select("role, aktiv")
-    .eq("epost", auth.email)
+    .eq("user_id", auth.userId)
     .maybeSingle()
 
   if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /user_id/i.test(msg)) {
+      return {
+        ok: false as const,
+        status: 500 as const,
+        feil:
+          "Medlemsregister-tabellen mangler feltet user_id. Kjør dette i Supabase (SQL Editor):\n\n" +
+          "alter table public.medlemmer add column if not exists user_id uuid;",
+      }
+    }
     return { ok: false as const, status: 400 as const, feil: "Kunne ikke hente tilgang." }
   }
   if (data?.aktiv === false) {
@@ -89,6 +100,14 @@ async function requireAdmin() {
 
   const role = String((data as { role?: unknown } | null)?.role ?? "")
   if (role !== "admin" && role !== "superadmin") {
+    const ownerEmail = String(
+      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+    )
+      .trim()
+      .toLowerCase()
+    if (ownerEmail && auth.email === ownerEmail) {
+      return { ok: true as const, admin, role: "superadmin" as const, email: auth.email }
+    }
     return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
   }
 

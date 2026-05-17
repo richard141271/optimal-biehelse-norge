@@ -191,7 +191,7 @@ export default function ProsjekterPage() {
                 </div>
               ) : gate.type === "not_member" || gate.type === "not_active" ? (
                 <div className="mt-3">
-                  <Link href="/#medlemskap" className="underline underline-offset-4">
+                  <Link href="/bli-medlem" className="underline underline-offset-4">
                     Betal / registrer medlemskap
                   </Link>
                 </div>

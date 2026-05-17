@@ -61,11 +61,20 @@ async function requireAdmin() {
   const { data, error } = await admin
     .from("medlemmer")
     .select("role, aktiv")
-    .eq("epost", user.email)
+    .eq("user_id", user.userId)
     .maybeSingle()
 
   if (error) {
     const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /user_id/i.test(msg)) {
+      return {
+        ok: false as const,
+        status: 500 as const,
+        feil:
+          "Medlemsregister-tabellen mangler feltet user_id. Kjør dette i Supabase (SQL Editor):\n\n" +
+          "alter table public.medlemmer add column if not exists user_id uuid;",
+      }
+    }
     if (/column/i.test(msg) && (/aktiv/i.test(msg) || /utmeldt_at/i.test(msg))) {
       return {
         ok: false as const,
@@ -91,6 +100,20 @@ async function requireAdmin() {
     return { ok: false as const, status: 403 as const }
   }
   if (data?.role !== "admin" && data?.role !== "superadmin") {
+    const ownerEmail = String(
+      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+    )
+      .trim()
+      .toLowerCase()
+    if (ownerEmail && user.email === ownerEmail) {
+      return {
+        ok: true as const,
+        admin,
+        email: user.email,
+        userId: user.userId,
+        role: "superadmin" as const,
+      }
+    }
     return { ok: false as const, status: 403 as const }
   }
 

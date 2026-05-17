@@ -1,8 +1,6 @@
 "use client"
 
-import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -250,46 +248,7 @@ export default function AdminLoddPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <Image
-              src="/logo.png"
-              alt="Optimal Biehelse Norge (OBNO)"
-              width={128}
-              height={128}
-              className="h-10 w-auto"
-              priority
-            />
-          </Link>
-          <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-            <Link href="/admin/medlemmer" className="hover:text-foreground">
-              Medlemmer
-            </Link>
-            <Link href="/admin/prosjekter" className="hover:text-foreground">
-              Prosjekter
-            </Link>
-            <Link href="/admin/regnskap" className="hover:text-foreground">
-              Regnskap
-            </Link>
-            <Link href="/admin/lodd" className="text-foreground">
-              Lodd
-            </Link>
-          </nav>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/admin"
-              className="inline-flex items-center justify-center rounded-lg border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
-            >
-              Adminpanel
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
-        <div className="space-y-8">
+    <div className="space-y-8">
           <header className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Loddsalg</h1>
             <p className="max-w-3xl text-muted-foreground">
@@ -551,8 +510,6 @@ export default function AdminLoddPage() {
               </section>
             </div>
           ) : null}
-        </div>
-      </main>
     </div>
   )
 }

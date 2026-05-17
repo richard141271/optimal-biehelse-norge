@@ -76,7 +76,7 @@ export async function GET() {
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
 
-  let medlem =
+  const medlem =
     ((await admin
       .from("medlemmer")
       .select("id, user_id, medlemsnummer, aktiv, kontingent_gyldig_til")
@@ -91,34 +91,15 @@ export async function GET() {
         }
       | null) ?? null
 
-  if (!medlem) {
-    const { data: byEmail } = await admin
-      .from("medlemmer")
-      .select("id, user_id, medlemsnummer, aktiv, kontingent_gyldig_til")
-      .eq("epost", email)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    medlem =
-      (byEmail as
-        | {
-            id?: string
-            user_id?: string | null
-            medlemsnummer?: number | null
-            aktiv?: boolean | null
-            kontingent_gyldig_til?: string | null
-          }
-        | null) ?? null
-
-    if (medlem?.id && !medlem.user_id) {
-      await admin.from("medlemmer").update({ user_id: userId }).eq("id", medlem.id).is("user_id", null)
-    }
-  }
-
   if (!medlem || medlem.aktiv === false || !isAktivKontingent(medlem.kontingent_gyldig_til ?? null)) {
     return NextResponse.json(
-      { ok: false, feil: "Medlemskort er kun tilgjengelig for aktive medlemmer." },
+      {
+        ok: false,
+        feil:
+          "Medlemskort er kun tilgjengelig for aktive medlemmer, og medlemskapet må være koblet til innlogging (user_id).\n\n" +
+          `Innloggings-ID: ${userId}\n` +
+          `E-post: ${email}`,
+      },
       { status: 403 }
     )
   }
@@ -136,4 +117,3 @@ export async function GET() {
 
   return NextResponse.json({ ok: true, token, exp })
 }
-

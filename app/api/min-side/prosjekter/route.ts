@@ -16,7 +16,7 @@ function isAktivKontingent(gyldigTil?: string | null) {
 
 export const dynamic = "force-dynamic"
 
-async function getLoggedInEmail() {
+async function getAuth() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!supabaseUrl || !supabaseAnonKey) return null
@@ -39,9 +39,10 @@ async function getLoggedInEmail() {
     data: { user },
   } = await supabase.auth.getUser()
 
+  const userId = user?.id ?? null
   const email = String(user?.email ?? "").trim().toLowerCase()
-  if (!email || !isValidEmail(email)) return null
-  return email
+  if (!userId || !email || !isValidEmail(email)) return null
+  return { userId, email, supabaseUrl }
 }
 
 export async function GET() {
@@ -56,8 +57,8 @@ export async function GET() {
     )
   }
 
-  const email = await getLoggedInEmail()
-  if (!email) {
+  const auth = await getAuth()
+  if (!auth) {
     return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
   }
 
@@ -75,13 +76,24 @@ export async function GET() {
   const { data: medlem, error: medlemError } = await admin
     .from("medlemmer")
     .select("aktiv, kontingent_gyldig_til")
-    .eq("epost", email)
+    .eq("user_id", auth.userId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
 
   if (medlemError) {
     const msg = String((medlemError as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /user_id/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet user_id. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists user_id uuid;",
+        },
+        { status: 500 }
+      )
+    }
     if (/column/i.test(msg) && /(kontingent_gyldig_til|aktiv)/i.test(msg)) {
       return NextResponse.json(
         {
@@ -107,7 +119,7 @@ export async function GET() {
   const { data, error } = await admin
     .from("prosjekt_soknader")
     .select("id, created_at, tittel, sted, budsjett, status")
-    .eq("epost", email)
+    .eq("epost", auth.email)
     .order("created_at", { ascending: false })
     .limit(200)
 

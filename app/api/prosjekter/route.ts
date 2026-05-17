@@ -130,7 +130,7 @@ export async function GET() {
   const { data: roleRow } = await admin
     .from("medlemmer")
     .select("role")
-    .eq("epost", auth.email)
+    .eq("user_id", auth.userId)
     .maybeSingle()
   if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
     return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
@@ -267,13 +267,25 @@ export async function POST(request: Request) {
     .maybeSingle()
 
   if (byUserIdError) {
+    const msg = String((byUserIdError as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /user_id/i.test(msg)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            "Medlemsregister-tabellen mangler feltet user_id. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists user_id uuid;",
+        },
+        { status: 500 }
+      )
+    }
     return NextResponse.json(
       { ok: false, feil: "Kunne ikke verifisere medlemskap." },
       { status: 400 }
     )
   }
 
-  let medlem =
+  const medlem =
     (byUserId as
       | {
           id?: string
@@ -288,45 +300,14 @@ export async function POST(request: Request) {
       | null) ?? null
 
   if (!medlem) {
-    const { data: byEmail, error: byEmailError } = await admin
-      .from("medlemmer")
-      .select("id, user_id, medlemsnummer, navn, epost, telefon, aktiv, kontingent_gyldig_til")
-      .eq("epost", auth.email)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (byEmailError) {
-      return NextResponse.json(
-        { ok: false, feil: "Kunne ikke verifisere medlemskap." },
-        { status: 400 }
-      )
-    }
-
-    medlem =
-      (byEmail as
-        | {
-            id?: string
-            user_id?: string | null
-            medlemsnummer?: number | null
-            navn?: string | null
-            epost?: string | null
-            telefon?: string | null
-            aktiv?: boolean | null
-            kontingent_gyldig_til?: string | null
-          }
-        | null) ?? null
-
-    if (medlem?.id && !medlem.user_id) {
-      await admin.from("medlemmer").update({ user_id: auth.userId }).eq("id", medlem.id).is("user_id", null)
-    }
-  }
-
-  if (!medlem) {
     return NextResponse.json(
       {
         ok: false,
-        feil: "Du er innlogget, men ikke registrert som medlem ennå. Registrer medlemskap først.",
+        feil:
+          "Fant ikke medlemskap. Medlemskap må være koblet til innlogging (user_id).\n\n" +
+          `Innloggings-ID: ${auth.userId}\n` +
+          `E-post: ${auth.email}\n\n` +
+          "Hvis du nylig har blitt lagt inn manuelt, må en superbruker koble medlemskapet til innloggingen i medlemsregisteret.",
       },
       { status: 403 }
     )

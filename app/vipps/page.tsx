@@ -47,7 +47,7 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
           ? "Støttemedlem"
           : "Medlemskap"
 
-  const tilbakeHref = type === "lodd" ? "/lodd" : type === "donasjon" ? "/#stott-oss" : "/#medlemskap"
+  const tilbakeHref = type === "lodd" ? "/lodd" : "/bli-medlem"
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
@@ -161,7 +161,7 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
             </div>
             <div className="mt-6">
               <Link
-                href="/#stott-oss"
+                href="/bli-medlem"
                 className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
               >
                 Tilbake

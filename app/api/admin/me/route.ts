@@ -37,8 +37,9 @@ export async function GET() {
     data: { user },
   } = await supabase.auth.getUser()
 
+  const userId = user?.id ?? null
   const email = (user?.email ?? "").trim().toLowerCase()
-  if (!email || !isValidEmail(email)) {
+  if (!userId || !email || !isValidEmail(email)) {
     return NextResponse.json(
       { ok: false, feil: "Ikke innlogget." },
       { status: 401 }
@@ -59,7 +60,7 @@ export async function GET() {
   const { data, error } = await admin
     .from("medlemmer")
     .select("role")
-    .eq("epost", email)
+    .eq("user_id", userId)
     .maybeSingle()
 
   if (error) {
@@ -72,11 +73,19 @@ export async function GET() {
   const role =
     data?.role === "admin" || data?.role === "superadmin" ? data.role : null
   if (!role) {
+    const ownerEmail = String(
+      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+    )
+      .trim()
+      .toLowerCase()
+    if (ownerEmail && email === ownerEmail) {
+      return NextResponse.json({ ok: true, email, userId, role: "superadmin" })
+    }
     return NextResponse.json(
       { ok: false, feil: "Ingen adminrolle tilgjengelig." },
       { status: 403 }
     )
   }
 
-  return NextResponse.json({ ok: true, email, role })
+  return NextResponse.json({ ok: true, email, userId, role })
 }

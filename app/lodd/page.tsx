@@ -166,46 +166,8 @@ export default function LoddPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <Image
-              src="/logo.png"
-              alt="Optimal Biehelse Norge (OBNO)"
-              width={128}
-              height={128}
-              className="h-10 w-auto"
-              priority
-            />
-          </Link>
-          <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-            <Link href="/" className="hover:text-foreground">
-              Hjem
-            </Link>
-            <Link href="/om-oss" className="hover:text-foreground">
-              Om OBNO
-            </Link>
-            <Link href="/biehelse" className="hover:text-foreground">
-              Biehelse
-            </Link>
-            <Link href="/lodd" className="text-foreground">
-              Loddsalg
-            </Link>
-          </nav>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/min-side"
-              className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-            >
-              Min side
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
-        <div className="space-y-8">
+    <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
+      <div className="space-y-8">
           <header className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs text-muted-foreground">
               {aktivtLotteri ? "Aktivt lotteri" : "Ingen aktivt lotteri"}
@@ -469,8 +431,7 @@ export default function LoddPage() {
               </section>
             )
           ) : null}
-        </div>
-      </main>
-    </div>
+      </div>
+    </main>
   )
 }
