@@ -81,18 +81,92 @@ async function requireAktivMedlem(auth: { userId: string; email: string; supabas
 
   const { data, error } = await admin
     .from("medlemmer")
-    .select("id, aktiv")
+    .select("id, aktiv, user_id, epost")
     .eq("user_id", auth.userId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
 
   if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /user_id/i.test(msg)) {
+      return {
+        ok: false as const,
+        status: 500 as const,
+        feil:
+          "Medlemsregister-tabellen mangler feltet user_id. Kjør dette i Supabase (SQL Editor):\n\n" +
+          "alter table public.medlemmer add column if not exists user_id uuid;",
+      }
+    }
+    if (/column/i.test(msg) && /aktiv/i.test(msg)) {
+      return {
+        ok: false as const,
+        status: 500 as const,
+        feil:
+          "Medlemsregister-tabellen mangler feltet aktiv. Kjør dette i Supabase (SQL Editor):\n\n" +
+          "alter table public.medlemmer add column if not exists aktiv boolean not null default true;",
+      }
+    }
     return { ok: false as const, status: 400 as const, feil: "Kunne ikke hente medlemsstatus." }
   }
 
   if (!data?.id) {
-    return { ok: false as const, status: 404 as const, feil: "Fant ikke medlemskap." }
+    const { data: byEmail, error: byEmailError } = await admin
+      .from("medlemmer")
+      .select("id, aktiv, user_id, epost")
+      .eq("epost", auth.email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (byEmailError) {
+      const msg = String((byEmailError as { message?: string } | null)?.message ?? "")
+      if (/column/i.test(msg) && /user_id/i.test(msg)) {
+        return {
+          ok: false as const,
+          status: 500 as const,
+          feil:
+            "Medlemsregister-tabellen mangler feltet user_id. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists user_id uuid;",
+        }
+      }
+      if (/column/i.test(msg) && /aktiv/i.test(msg)) {
+        return {
+          ok: false as const,
+          status: 500 as const,
+          feil:
+            "Medlemsregister-tabellen mangler feltet aktiv. Kjør dette i Supabase (SQL Editor):\n\n" +
+            "alter table public.medlemmer add column if not exists aktiv boolean not null default true;",
+        }
+      }
+      return { ok: false as const, status: 400 as const, feil: "Kunne ikke hente medlemsstatus." }
+    }
+
+    if (!byEmail?.id) {
+      return { ok: false as const, status: 404 as const, feil: "Fant ikke medlemskap." }
+    }
+    if (byEmail.aktiv === false) {
+      return { ok: false as const, status: 403 as const, feil: "Du er meldt ut." }
+    }
+
+    const existingUserId = String((byEmail as { user_id?: unknown } | null)?.user_id ?? "").trim()
+    if (existingUserId && existingUserId !== auth.userId) {
+      return {
+        ok: false as const,
+        status: 403 as const,
+        feil: "Innlogging matcher ikke medlemskapet ditt. Kontakt oss hvis dette er feil.",
+      }
+    }
+
+    if (!existingUserId) {
+      await admin
+        .from("medlemmer")
+        .update({ user_id: auth.userId })
+        .eq("id", byEmail.id)
+        .is("user_id", null)
+    }
+
+    return { ok: true as const, admin, medlemId: byEmail.id as string }
   }
   if (data.aktiv === false) {
     return { ok: false as const, status: 403 as const, feil: "Du er meldt ut." }
