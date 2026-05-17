@@ -26,6 +26,10 @@ type VippsCreatePaymentResponse = {
   redirectUrl?: string
 }
 
+type ResponsePayload =
+  | { ok: true; redirectUrl: string; ref: string }
+  | { ok: false; feil: string }
+
 function vippsMode() {
   const mode = String(process.env.VIPPS_MODE ?? "").trim().toLowerCase()
   if (mode === "vipps") return "vipps"
@@ -166,7 +170,7 @@ export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl || !serviceRoleKey) {
-    return NextResponse.json({ ok: false, feil: "Supabase er ikke konfigurert." }, { status: 500 })
+    return NextResponse.json<ResponsePayload>({ ok: false, feil: "Supabase er ikke konfigurert." }, { status: 500 })
   }
 
   const mode = vippsMode()
@@ -197,7 +201,7 @@ export async function POST(request: Request) {
 
   if (inserted.error) {
     const hint = schemaHint((inserted.error as { message?: string } | null)?.message ?? "")
-    return NextResponse.json(
+    return NextResponse.json<ResponsePayload>(
       { ok: false, feil: hint ?? "Kunne ikke opprette betaling." },
       { status: hint ? 500 : 400 }
     )
@@ -206,14 +210,18 @@ export async function POST(request: Request) {
   if (mode === "stub") {
     const assigned = await assignNextTicket(admin, ref)
     if (!assigned.ok) {
-      return NextResponse.json({ ok: false, feil: assigned.feil }, { status: assigned.status })
+      return NextResponse.json<ResponsePayload>({ ok: false, feil: assigned.feil }, { status: assigned.status })
     }
-    return NextResponse.json({ ok: true, redirectUrl: `/skrapelodd/bekreft?ref=${encodeURIComponent(ref)}` })
+    return NextResponse.json<ResponsePayload>({
+      ok: true,
+      ref,
+      redirectUrl: `/skrapelodd/bekreft?ref=${encodeURIComponent(ref)}`,
+    })
   }
 
   const token = await getVippsToken()
   if (!token) {
-    return NextResponse.json({ ok: false, feil: "Kunne ikke autentisere mot Vipps." }, { status: 502 })
+    return NextResponse.json<ResponsePayload>({ ok: false, feil: "Kunne ikke autentisere mot Vipps." }, { status: 502 })
   }
 
   const subscriptionKey = process.env.VIPPS_SUBSCRIPTION_KEY as string
@@ -253,7 +261,7 @@ export async function POST(request: Request) {
       .from("scratch_payments")
       .update({ status: "vipps_failed", updated_at: new Date().toISOString() } as unknown as never)
       .eq("id", ref)
-    return NextResponse.json({ ok: false, feil: "Vipps avviste betalingen." }, { status: 502 })
+    return NextResponse.json<ResponsePayload>({ ok: false, feil: "Vipps avviste betalingen." }, { status: 502 })
   }
 
   await admin
@@ -261,5 +269,5 @@ export async function POST(request: Request) {
     .update({ status: "vipps_created", updated_at: new Date().toISOString() } as unknown as never)
     .eq("id", ref)
 
-  return NextResponse.json({ ok: true, redirectUrl })
+  return NextResponse.json<ResponsePayload>({ ok: true, ref, redirectUrl })
 }

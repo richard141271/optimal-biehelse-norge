@@ -7,6 +7,8 @@ type Status =
   | { type: "loading" }
   | { type: "error"; message: string }
 
+const LAST_REF_KEY = "obno_scratch_last_ref"
+
 export default function SkrapeloddPage() {
   const [status, setStatus] = useState<Status>({ type: "idle" })
 
@@ -19,13 +21,35 @@ export default function SkrapeloddPage() {
         body: JSON.stringify({}),
       })
 
-      const data = (await res.json()) as { ok?: boolean; feil?: string; redirectUrl?: string | null }
-      if (!res.ok || !data.ok || !data.redirectUrl) {
+      const data = (await res.json()) as {
+        ok?: boolean
+        feil?: string
+        redirectUrl?: string | null
+        ref?: string | null
+      }
+
+      const ref = String(data.ref ?? "").trim()
+      const redirectUrl = String(data.redirectUrl ?? "").trim()
+
+      if (!res.ok || !data.ok) {
         setStatus({ type: "error", message: data.feil ?? "Kunne ikke starte Vipps-betaling." })
         return
       }
 
-      window.location.href = data.redirectUrl
+      if (ref) {
+        try {
+          window.localStorage.setItem(LAST_REF_KEY, ref)
+        } catch {
+        }
+      }
+
+      const nextUrl = redirectUrl || (ref ? `/skrapelodd/bekreft?ref=${encodeURIComponent(ref)}` : "")
+      if (!nextUrl) {
+        setStatus({ type: "error", message: "Kunne ikke starte Vipps-betaling." })
+        return
+      }
+
+      window.location.href = nextUrl
     } catch {
       setStatus({ type: "error", message: "Kunne ikke starte Vipps-betaling." })
     }
@@ -92,4 +116,3 @@ export default function SkrapeloddPage() {
     </main>
   )
 }
-

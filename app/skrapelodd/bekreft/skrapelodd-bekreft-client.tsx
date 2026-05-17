@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
@@ -8,17 +8,37 @@ type Status =
   | { type: "loading"; message: string }
   | { type: "error"; message: string }
 
+const LAST_REF_KEY = "obno_scratch_last_ref"
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
 export default function SkrapeloddBekreftClient({ refValue }: { refValue: string }) {
   const router = useRouter()
-  const ref = String(refValue ?? "").trim()
   const [status, setStatus] = useState<Status>({
     type: "loading",
     message: "Venter på betalingsbekreftelse…",
   })
+
+  const ref = useMemo(() => {
+    const fromProp = String(refValue ?? "").trim()
+    if (fromProp) return fromProp
+
+    try {
+      const fromUrl = String(new URL(window.location.href).searchParams.get("ref") ?? "").trim()
+      if (fromUrl) return fromUrl
+    } catch {
+    }
+
+    try {
+      const saved = String(window.localStorage.getItem(LAST_REF_KEY) ?? "").trim()
+      if (saved) return saved
+    } catch {
+    }
+
+    return ""
+  }, [refValue])
 
   useEffect(() => {
     let active = true
@@ -82,6 +102,14 @@ export default function SkrapeloddBekreftClient({ refValue }: { refValue: string
     }
   }, [ref, router])
 
+  useEffect(() => {
+    if (!ref) return
+    try {
+      window.localStorage.setItem(LAST_REF_KEY, ref)
+    } catch {
+    }
+  }, [ref])
+
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
       <div className="space-y-6">
@@ -115,4 +143,3 @@ export default function SkrapeloddBekreftClient({ refValue }: { refValue: string
     </main>
   )
 }
-
