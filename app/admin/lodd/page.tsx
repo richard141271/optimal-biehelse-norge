@@ -111,6 +111,13 @@ export default function AdminLoddPage() {
   const [ticketPrice, setTicketPrice] = useState("20")
   const [durationDays, setDurationDays] = useState("14")
   const [selectedLotteriId, setSelectedLotteriId] = useState<string>("")
+  const [editingPremieId, setEditingPremieId] = useState<string | null>(null)
+  const [editTittel, setEditTittel] = useState("")
+  const [editSponsorNavn, setEditSponsorNavn] = useState("")
+  const [editSponsorOrgnr, setEditSponsorOrgnr] = useState("")
+  const [editSponsorNettsted, setEditSponsorNettsted] = useState("")
+  const [editVerdi, setEditVerdi] = useState("")
+  const [editAdminNotat, setEditAdminNotat] = useState("")
 
   const selectedPremieSet = useMemo(() => {
     if (state.type !== "ready") return new Set<string>()
@@ -290,6 +297,20 @@ export default function AdminLoddPage() {
       return
     }
     await doAction({ action: "togglePremieUtlevert", premieId, lotteriId })
+  }
+
+  async function updatePremie(premieId: string) {
+    await doAction({
+      action: "updatePremie",
+      premieId,
+      tittel: editTittel,
+      sponsor_navn: editSponsorNavn,
+      sponsor_orgnr: editSponsorOrgnr,
+      sponsor_nettsted: editSponsorNettsted,
+      verdi: editVerdi,
+      admin_notat: editAdminNotat,
+    })
+    setEditingPremieId(null)
   }
 
   async function deleteRow(type: "premie" | "kjop", id: string) {
@@ -475,6 +496,7 @@ export default function AdminLoddPage() {
                       const reservedStatus = String(reservedLotteri?.status ?? "").trim()
                       const isReservedElsewhere = !!reservedLotteriId && reservedLotteriId !== selectedLotteriId
                       const isDelivered = String(p.status ?? "") === "utlevert"
+                      const isEditing = editingPremieId === p.id
 
                       return (
                         <div key={p.id} className="rounded-xl border bg-background p-4">
@@ -526,6 +548,60 @@ export default function AdminLoddPage() {
                               </div>
                             ) : null}
                           </div>
+                          {isEditing ? (
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                              <div className="space-y-1 sm:col-span-2">
+                                <Label htmlFor={`premie_tittel_${p.id}`}>Tittel</Label>
+                                <Input
+                                  id={`premie_tittel_${p.id}`}
+                                  value={editTittel}
+                                  onChange={(e) => setEditTittel(e.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label htmlFor={`premie_sponsor_${p.id}`}>Sponsor</Label>
+                                <Input
+                                  id={`premie_sponsor_${p.id}`}
+                                  value={editSponsorNavn}
+                                  onChange={(e) => setEditSponsorNavn(e.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label htmlFor={`premie_orgnr_${p.id}`}>Org.nr</Label>
+                                <Input
+                                  id={`premie_orgnr_${p.id}`}
+                                  value={editSponsorOrgnr}
+                                  onChange={(e) => setEditSponsorOrgnr(e.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-1 sm:col-span-2">
+                                <Label htmlFor={`premie_url_${p.id}`}>Nettside</Label>
+                                <Input
+                                  id={`premie_url_${p.id}`}
+                                  value={editSponsorNettsted}
+                                  onChange={(e) => setEditSponsorNettsted(e.target.value)}
+                                  placeholder="https://"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label htmlFor={`premie_verdi_${p.id}`}>Verdi (kr)</Label>
+                                <Input
+                                  id={`premie_verdi_${p.id}`}
+                                  value={editVerdi}
+                                  onChange={(e) => setEditVerdi(e.target.value)}
+                                  inputMode="decimal"
+                                />
+                              </div>
+                              <div className="space-y-1 sm:col-span-2">
+                                <Label htmlFor={`premie_notat_${p.id}`}>Admin-notat</Label>
+                                <Input
+                                  id={`premie_notat_${p.id}`}
+                                  value={editAdminNotat}
+                                  onChange={(e) => setEditAdminNotat(e.target.value)}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
                           <div className="mt-3 flex flex-wrap gap-2">
                             {selectedIsEnded ? (
                               inSelected ? (
@@ -552,6 +628,31 @@ export default function AdminLoddPage() {
                                 </Button>
                                 <Button variant="outline" onClick={() => publishPremie(p.id, true)}>
                                   Hovedpremie
+                                </Button>
+                              </>
+                            )}
+                            {!isEditing ? (
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingPremieId(p.id)
+                                  setEditTittel(String(p.tittel ?? ""))
+                                  setEditSponsorNavn(String(p.sponsor_navn ?? ""))
+                                  setEditSponsorOrgnr(String(p.sponsor_orgnr ?? ""))
+                                  setEditSponsorNettsted(String(p.sponsor_nettsted ?? ""))
+                                  setEditVerdi(p.verdi != null ? String(p.verdi) : "")
+                                  setEditAdminNotat(String(p.admin_notat ?? ""))
+                                }}
+                              >
+                                Rediger
+                              </Button>
+                            ) : (
+                              <>
+                                <Button variant="outline" onClick={() => updatePremie(p.id)}>
+                                  Lagre
+                                </Button>
+                                <Button variant="outline" onClick={() => setEditingPremieId(null)}>
+                                  Avbryt
                                 </Button>
                               </>
                             )}

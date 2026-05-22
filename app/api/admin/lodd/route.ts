@@ -599,6 +599,51 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true })
   }
 
+  if (action === "updatePremie") {
+    const premieId = String(body.premieId ?? "").trim()
+    if (!premieId) {
+      return NextResponse.json({ ok: false, feil: "Mangler premie." }, { status: 400 })
+    }
+
+    const patch: Record<string, unknown> = {}
+
+    if ("tittel" in body) {
+      const tittel = String(body.tittel ?? "").trim()
+      if (!tittel) {
+        return NextResponse.json({ ok: false, feil: "Tittel kan ikke være tom." }, { status: 400 })
+      }
+      patch.tittel = tittel
+    }
+
+    if ("sponsor_navn" in body) patch.sponsor_navn = String(body.sponsor_navn ?? "").trim() || null
+    if ("sponsor_orgnr" in body) patch.sponsor_orgnr = String(body.sponsor_orgnr ?? "").trim() || null
+
+    if ("sponsor_nettsted" in body) {
+      let url = String(body.sponsor_nettsted ?? "").trim()
+      if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`
+      patch.sponsor_nettsted = url || null
+    }
+
+    if ("verdi" in body) {
+      const raw = String(body.verdi ?? "").trim()
+      const parsed = raw ? Number(raw.replace(",", ".")) : NaN
+      patch.verdi = Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+    }
+
+    if ("admin_notat" in body) patch.admin_notat = String(body.admin_notat ?? "").trim() || null
+
+    const { error } = await gate.admin.from("lodd_premier").update(patch).eq("id", premieId)
+    if (error) {
+      const sf = schemaFeil((error as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke oppdatere premie." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    return NextResponse.json({ ok: true })
+  }
+
   if (action === "drawWinner") {
     const lotteriId = String(body.lotteriId ?? "").trim()
     if (!lotteriId) {
