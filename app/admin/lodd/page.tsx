@@ -118,6 +118,12 @@ export default function AdminLoddPage() {
   const [editSponsorNettsted, setEditSponsorNettsted] = useState("")
   const [editVerdi, setEditVerdi] = useState("")
   const [editAdminNotat, setEditAdminNotat] = useState("")
+  const [kjopPhone, setKjopPhone] = useState("")
+  const [kjopAntall, setKjopAntall] = useState("1")
+  const [kjopMetode, setKjopMetode] = useState<"vipps" | "kontant">("vipps")
+  const [kjopVippsRef, setKjopVippsRef] = useState("")
+  const [kjopBetalt, setKjopBetalt] = useState(true)
+  const [creatingKjop, setCreatingKjop] = useState(false)
 
   const selectedPremieSet = useMemo(() => {
     if (state.type !== "ready") return new Set<string>()
@@ -288,6 +294,42 @@ export default function AdminLoddPage() {
 
   async function markPaid(kjopId: string) {
     await doAction({ action: "markPaid", kjopId })
+  }
+
+  async function createKjop() {
+    const lotteriId = selectedLotteriId || ""
+    if (!lotteriId) {
+      setActionError("Velg et lotteri først.")
+      return
+    }
+
+    const antall = Math.floor(Number(kjopAntall))
+    if (!Number.isFinite(antall) || antall < 1) {
+      setActionError("Ugyldig antall.")
+      return
+    }
+
+    setCreatingKjop(true)
+    try {
+      const ok = await doAction({
+        action: "createKjop",
+        lotteriId,
+        phone: kjopPhone,
+        antall,
+        metode: kjopMetode,
+        vippsRef: kjopVippsRef,
+        paid: kjopBetalt,
+      })
+      if (ok) {
+        setKjopPhone("")
+        setKjopAntall("1")
+        setKjopVippsRef("")
+        setKjopBetalt(true)
+        setKjopMetode("vipps")
+      }
+    } finally {
+      setCreatingKjop(false)
+    }
   }
 
   async function toggleUtlevert(premieId: string) {
@@ -677,13 +719,76 @@ export default function AdminLoddPage() {
                 <h2 className="text-lg font-semibold">Salg (valgt lotteri)</h2>
                 {selectedLotteriId ? (
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Kjøp registreres som pending. Når betaling er bekreftet, markerer du kjøpet som betalt.
+                    For interne lotterier registrerer du kjøp her. Vipps kan bruke en referanse, kontant kan registreres direkte som betalt.
                   </p>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground">Velg et lotteri for å se salg.</p>
                 )}
 
                 <div className="mt-4 space-y-3">
+                  {selectedLotteriId ? (
+                    <div className="rounded-xl border bg-background p-4">
+                      <div className="text-sm font-medium">Registrer kjøp</div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                        <div className="space-y-1 sm:col-span-2">
+                          <Label htmlFor="kjop_phone">Telefon</Label>
+                          <Input
+                            id="kjop_phone"
+                            value={kjopPhone}
+                            onChange={(e) => setKjopPhone(e.target.value)}
+                            inputMode="tel"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="kjop_antall">Antall</Label>
+                          <Input
+                            id="kjop_antall"
+                            value={kjopAntall}
+                            onChange={(e) => setKjopAntall(e.target.value)}
+                            inputMode="numeric"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="kjop_metode">Betaling</Label>
+                          <select
+                            id="kjop_metode"
+                            className="h-9 w-full rounded-lg border bg-background px-3 text-sm"
+                            value={kjopMetode}
+                            onChange={(e) => setKjopMetode(e.target.value === "kontant" ? "kontant" : "vipps")}
+                          >
+                            <option value="vipps">Vipps</option>
+                            <option value="kontant">Kontant</option>
+                          </select>
+                        </div>
+                        {kjopMetode === "vipps" ? (
+                          <div className="space-y-1 sm:col-span-4">
+                            <Label htmlFor="kjop_vipps_ref">Vipps ref (valgfritt)</Label>
+                            <Input
+                              id="kjop_vipps_ref"
+                              value={kjopVippsRef}
+                              onChange={(e) => setKjopVippsRef(e.target.value)}
+                              placeholder="Hvis tomt, lages automatisk"
+                            />
+                          </div>
+                        ) : null}
+                        <div className="sm:col-span-4">
+                          <label className="inline-flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={kjopBetalt}
+                              onChange={(e) => setKjopBetalt(e.target.checked)}
+                            />
+                            Registrer som betalt
+                          </label>
+                        </div>
+                        <div className="sm:col-span-4">
+                          <Button variant="outline" onClick={createKjop} disabled={creatingKjop}>
+                            {creatingKjop ? "Lagrer…" : "Registrer"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                   {state.kjop.length ? (
                     state.kjop.map((k) => (
                       <div key={k.id} className="rounded-xl border bg-background p-4">

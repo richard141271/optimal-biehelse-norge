@@ -9,6 +9,13 @@ function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+function normalizePhone(v: unknown) {
+  const digits = String(v ?? "").replace(/\D+/g, "")
+  if (!digits) return null
+  if (digits.length < 8 || digits.length > 15) return "__invalid__"
+  return digits
+}
+
 async function getAuth() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -592,6 +599,108 @@ export async function POST(request: Request) {
       const sf = schemaFeil((error as { message?: string } | null)?.message)
       return NextResponse.json(
         { ok: false, feil: sf ?? "Kunne ikke markere betalt." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === "createKjop") {
+    const lotteriId = String(body.lotteriId ?? "").trim()
+    const antall = Math.floor(Number(body.antall ?? 0))
+    const metode = String(body.metode ?? "vipps").trim().toLowerCase()
+    const vippsRefInput = String(body.vippsRef ?? "").trim()
+    const paid = Boolean(body.paid)
+
+    if (!lotteriId) {
+      return NextResponse.json({ ok: false, feil: "Mangler lotteri." }, { status: 400 })
+    }
+    if (!Number.isFinite(antall) || antall < 1 || antall > 200) {
+      return NextResponse.json({ ok: false, feil: "Antall må være mellom 1 og 200." }, { status: 400 })
+    }
+
+    const telefon = normalizePhone(body.phone)
+    if (telefon === "__invalid__") {
+      return NextResponse.json({ ok: false, feil: "Ugyldig telefonnummer." }, { status: 400 })
+    }
+    if (!telefon) {
+      return NextResponse.json({ ok: false, feil: "Mangler telefonnummer." }, { status: 400 })
+    }
+
+    const { data: lotteriRow, error: lotteriError } = await gate.admin
+      .from("lodd_lotteri")
+      .select("id, status, ticket_price")
+      .eq("id", lotteriId)
+      .maybeSingle()
+
+    if (lotteriError) {
+      const sf = schemaFeil((lotteriError as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke hente lotteri." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    const lotteriStatus = String((lotteriRow as Record<string, unknown> | null)?.status ?? "").trim()
+    if (!lotteriRow?.id || !lotteriStatus) {
+      return NextResponse.json({ ok: false, feil: "Ukjent lotteri." }, { status: 404 })
+    }
+    if (lotteriStatus === "ended") {
+      return NextResponse.json({ ok: false, feil: "Lotteriet er avsluttet." }, { status: 400 })
+    }
+
+    const pris = Number((lotteriRow as Record<string, unknown>).ticket_price ?? 20)
+    const ticketPrice = Number.isFinite(pris) && pris > 0 ? pris : 20
+    const belop = antall * ticketPrice
+
+    const { data: maxRows, error: maxError } = await gate.admin
+      .from("lodd_kjop")
+      .select("ticket_to")
+      .eq("lotteri_id", lotteriId)
+      .order("ticket_to", { ascending: false })
+      .limit(1)
+
+    if (maxError) {
+      const sf = schemaFeil((maxError as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke reservere lodd." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    const currentMax =
+      Array.isArray(maxRows) && maxRows.length
+        ? Number((maxRows[0] as Record<string, unknown>).ticket_to ?? 0)
+        : 0
+    const ticketFrom = (Number.isFinite(currentMax) ? currentMax : 0) + 1
+    const ticketTo = ticketFrom + antall - 1
+
+    const vippsRef =
+      metode === "vipps"
+        ? vippsRefInput || `lodd-${ticketFrom}-${ticketTo}-${crypto.randomUUID().slice(0, 8)}`
+        : null
+
+    const note = metode === "kontant" ? "Kontant" : metode === "vipps" ? "Vipps" : metode || null
+
+    const { error: insertError } = await gate.admin.from("lodd_kjop").insert({
+      lotteri_id: lotteriId,
+      phone: telefon,
+      antall,
+      belop,
+      status: paid ? "paid" : "pending",
+      ticket_from: ticketFrom,
+      ticket_to: ticketTo,
+      vipps_ref: vippsRef,
+      paid_at: paid ? new Date().toISOString() : null,
+      paid_by_epost: paid ? gate.email : null,
+      note,
+    })
+
+    if (insertError) {
+      const sf = schemaFeil((insertError as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke opprette kjøp." },
         { status: sf ? 500 : 400 }
       )
     }
