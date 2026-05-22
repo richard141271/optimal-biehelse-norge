@@ -32,7 +32,6 @@ type Premie = {
 
 type Winner = {
   winner_loddnr?: number | null
-  winner_phone?: string | null
   created_at?: string | null
 }
 
@@ -336,12 +335,16 @@ export default function LoddPage() {
                         <div className="mt-2 space-y-1 text-muted-foreground">
                           {state.winners.map((w, idx) => (
                             <div key={`${w.winner_loddnr ?? "?"}-${idx}`}>
-                              #{w.winner_loddnr ?? "?"} · Telefon: {w.winner_phone ?? "?"}
+                              Vinnerlodd: #{w.winner_loddnr ?? "?"}
                             </div>
                           ))}
                         </div>
                       </div>
                     ) : null}
+                    <div className="mt-3 rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
+                      Premier kan hentes på kontoret vårt i Fredriksfrydveien 2, 1792 Tistedal. Ved avtale kan premie
+                      legges ut og hentes i selvbetjening (åpent alle dager 06.00–23.00).
+                    </div>
                   </div>
                 </div>
 

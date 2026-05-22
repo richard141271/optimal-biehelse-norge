@@ -61,6 +61,7 @@ type Kjop = {
 }
 
 type Winner = {
+  premie_id?: string | null
   winner_loddnr?: number | null
   winner_phone?: string | null
   created_at?: string | null
@@ -109,6 +110,12 @@ function formatDateTime(iso?: string | null) {
   })
 }
 
+function toSmsHref(phone: string, body: string) {
+  const digits = String(phone ?? "").replace(/\D+/g, "")
+  const encoded = encodeURIComponent(body)
+  return `sms:${digits}?body=${encoded}`
+}
+
 export default function AdminLoddPage() {
   const router = useRouter()
   const [state, setState] = useState<State>({ type: "loading" })
@@ -141,6 +148,17 @@ export default function AdminLoddPage() {
     return new Set((state.activePremier ?? []).map((p) => String(p.premie_id ?? "")))
   }, [state])
 
+  const selectedPremieMetaById = useMemo(() => {
+    if (state.type !== "ready") return new Map<string, ActivePremieJoin>()
+    const m = new Map<string, ActivePremieJoin>()
+    for (const p of state.activePremier ?? []) {
+      const id = String(p.premie_id ?? "").trim()
+      if (!id) continue
+      m.set(id, p)
+    }
+    return m
+  }, [state])
+
   const lotteriById = useMemo(() => {
     if (state.type !== "ready") return new Map<string, Lotteri>()
     return new Map(state.lotterier.map((l) => [l.id, l]))
@@ -167,6 +185,24 @@ export default function AdminLoddPage() {
     if (!id) return null
     return state.lotterier.find((l) => l.id === id) ?? null
   }, [state, selectedLotteriId])
+
+  const winnerByPremieId = useMemo(() => {
+    if (state.type !== "ready") return new Map<string, Winner>()
+    const m = new Map<string, Winner>()
+    for (const w of state.winners ?? []) {
+      const premieId = String(w.premie_id ?? "").trim()
+      if (!premieId) continue
+      if (!m.has(premieId)) m.set(premieId, w)
+    }
+    return m
+  }, [state])
+
+  const winnerNumbers = useMemo(() => {
+    if (state.type !== "ready") return []
+    return (state.winners ?? [])
+      .map((w) => Number(w.winner_loddnr ?? 0))
+      .filter((n) => Number.isFinite(n) && n > 0)
+  }, [state])
 
   useEffect(() => {
     if (state.type !== "ready") return
@@ -561,9 +597,12 @@ export default function AdminLoddPage() {
                     ) : null}
                   </div>
                   {state.winners.length ? (
-                    <div className="rounded-xl border bg-muted/30 p-4 text-sm">
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
                       <div className="font-medium">Vinnere</div>
-                      <div className="mt-2 space-y-1 text-muted-foreground">
+                      <div className="mt-1 text-xs text-emerald-900/80">
+                        Vinnerlodd annonseres her og på loddsalgssiden.
+                      </div>
+                      <div className="mt-2 space-y-1 text-emerald-900/90">
                         {state.winners.map((w, idx) => (
                           <div key={`${w.winner_loddnr ?? "?"}-${idx}`}>
                             #{w.winner_loddnr ?? "?"} · {w.winner_phone ?? "?"}
@@ -634,12 +673,30 @@ export default function AdminLoddPage() {
                       const isReservedElsewhere = !!reservedLotteriId && reservedLotteriId !== selectedLotteriId
                       const isDelivered = String(p.status ?? "") === "utlevert"
                       const isEditing = editingPremieId === p.id
+                      const meta = selectedPremieMetaById.get(p.id) ?? null
+                      const isHovedpremie = Boolean(meta?.is_hovedpremie)
+                      const winner = winnerByPremieId.get(p.id) ?? null
+                      const winnerNumber = Number(winner?.winner_loddnr ?? 0)
+                      const winnerPhone = String(winner?.winner_phone ?? "").trim()
+                      const hasWinner = Number.isFinite(winnerNumber) && winnerNumber > 0
 
                       return (
                         <div key={p.id} className="rounded-xl border bg-background p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="text-sm font-medium">{p.tittel ?? "Premie"}</div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-sm font-medium">{p.tittel ?? "Premie"}</div>
+                                {isHovedpremie && inSelected ? (
+                                  <div className="rounded-full border bg-background px-2 py-0.5 text-xs text-muted-foreground">
+                                    Hovedpremie
+                                  </div>
+                                ) : null}
+                                {hasWinner ? (
+                                  <div className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-900">
+                                    Vinner: #{winnerNumber}
+                                  </div>
+                                ) : null}
+                              </div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 {formatDateTime(p.created_at ?? null)}
                                 {p.status ? ` · ${p.status}` : ""}
@@ -677,6 +734,9 @@ export default function AdminLoddPage() {
                                     p.sponsor_navn
                                   )}
                                 </div>
+                              ) : null}
+                              {hasWinner && winnerPhone ? (
+                                <div className="mt-2 text-sm text-muted-foreground">Telefon: {winnerPhone}</div>
                               ) : null}
                             </div>
                             {p.image_url ? (
@@ -793,6 +853,19 @@ export default function AdminLoddPage() {
                                 </Button>
                               </>
                             )}
+                            {hasWinner && winnerPhone ? (
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  const lotteriTitle = String(selectedLotteri?.tittel ?? "OBNO loddsalg").trim()
+                                  const premieTitle = String(p.tittel ?? "premie").trim()
+                                  const body = `Hei! Du har vunnet ${premieTitle} i ${lotteriTitle}. Vinnerlodd: #${winnerNumber}.\\n\\nHenting: Fredriksfrydveien 2, 1792 Tistedal. Ved avtale kan premie legges ut i selvbetjening (06.00–23.00).\\n\\nSvar gjerne på denne SMS-en for å avtale henting.`
+                                  window.location.href = toSmsHref(winnerPhone, body)
+                                }}
+                              >
+                                Varsle vinneren
+                              </Button>
+                            ) : null}
                             {state.role === "superadmin" ? (
                               <Button variant="destructive" onClick={() => deleteRow("premie", p.id)}>
                                 Slett
@@ -885,8 +958,25 @@ export default function AdminLoddPage() {
                     </div>
                   ) : null}
                   {state.kjop.length ? (
-                    state.kjop.map((k) => (
-                      <div key={k.id} className="rounded-xl border bg-background p-4">
+                    state.kjop.map((k) => {
+                      const from = Number(k.ticket_from ?? 0)
+                      const to = Number(k.ticket_to ?? 0)
+                      const hasWinnerInRange =
+                        Number.isFinite(from) &&
+                        from > 0 &&
+                        Number.isFinite(to) &&
+                        to >= from &&
+                        winnerNumbers.some((n) => n >= from && n <= to)
+
+                      return (
+                      <div
+                        key={k.id}
+                        className={
+                          hasWinnerInRange
+                            ? "rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+                            : "rounded-xl border bg-background p-4"
+                        }
+                      >
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="text-sm">
                             <span className="font-medium">#{k.ticket_from ?? "?"}–{k.ticket_to ?? "?"}</span>
@@ -914,7 +1004,8 @@ export default function AdminLoddPage() {
                           <div className="mt-1 text-xs text-muted-foreground">Betalt: {formatDateTime(k.paid_at)}</div>
                         ) : null}
                       </div>
-                    ))
+                      )
+                    })
                   ) : (
                     <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
                       Ingen kjøp registrert.

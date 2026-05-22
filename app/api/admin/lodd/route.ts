@@ -112,10 +112,16 @@ function schemaFeil(msg?: string) {
     "  id uuid primary key default gen_random_uuid(),\n" +
     "  created_at timestamptz not null default now(),\n" +
     "  lotteri_id uuid not null references public.lodd_lotteri(id) on delete cascade,\n" +
+    "  premie_id uuid references public.lodd_premier(id) on delete set null,\n" +
     "  winner_loddnr integer not null,\n" +
     "  winner_phone text not null,\n" +
     "  drawn_by_epost text\n" +
     ");\n" +
+    "do $$ begin\n" +
+    "  if to_regclass('public.lodd_winners') is not null then\n" +
+    "    alter table public.lodd_winners add column if not exists premie_id uuid references public.lodd_premier(id) on delete set null;\n" +
+    "  end if;\n" +
+    "end $$;\n" +
     "create index if not exists lodd_lotteri_status_idx on public.lodd_lotteri (status);\n" +
     "create index if not exists lodd_kjop_lotteri_idx on public.lodd_kjop (lotteri_id, created_at desc);\n" +
     "create index if not exists lodd_kjop_status_idx on public.lodd_kjop (status);\n"
@@ -274,7 +280,7 @@ export async function GET(request: Request) {
   const { data: winners, error: winnersError } = selectedLotteriId
     ? await gate.admin
         .from("lodd_winners")
-        .select("winner_loddnr, winner_phone, created_at")
+        .select("premie_id, winner_loddnr, winner_phone, created_at")
         .eq("lotteri_id", selectedLotteriId)
         .order("created_at", { ascending: true })
         .limit(200)
@@ -812,6 +818,71 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, feil: "Mangler lotteri." }, { status: 400 })
     }
 
+    const { data: premieJoin, error: premieJoinError } = await gate.admin
+      .from("lodd_lotteri_premier")
+      .select("premie_id, is_hovedpremie, sort_order")
+      .eq("lotteri_id", lotteriId)
+      .order("is_hovedpremie", { ascending: false })
+      .order("sort_order", { ascending: true })
+
+    if (premieJoinError) {
+      const sf = schemaFeil((premieJoinError as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke hente premier." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    const reservedPremieIds = (premieJoin ?? [])
+      .map((r) => String((r as Record<string, unknown>).premie_id ?? "").trim())
+      .filter(Boolean)
+
+    if (!reservedPremieIds.length) {
+      return NextResponse.json({ ok: false, feil: "Legg til premier i lotteriet før du trekker vinner." }, { status: 400 })
+    }
+
+    const { data: alreadyAssigned, error: alreadyAssignedError } = await gate.admin
+      .from("lodd_winners")
+      .select("id, premie_id")
+      .eq("lotteri_id", lotteriId)
+      .order("created_at", { ascending: true })
+      .limit(500)
+
+    if (alreadyAssignedError) {
+      const sf = schemaFeil((alreadyAssignedError as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke hente vinnere." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    const assignedSet = new Set<string>()
+    const missingAssignments: { id: string }[] = []
+    for (const r of alreadyAssigned ?? []) {
+      const rr = r as Record<string, unknown>
+      const id = String(rr.id ?? "").trim()
+      const premieId = String(rr.premie_id ?? "").trim()
+      if (!id) continue
+      if (premieId) assignedSet.add(premieId)
+      else missingAssignments.push({ id })
+    }
+
+    if (missingAssignments.length) {
+      let cursor = 0
+      for (const w of missingAssignments) {
+        const next = reservedPremieIds.find((pid) => !assignedSet.has(pid) && reservedPremieIds.indexOf(pid) >= cursor) ?? ""
+        if (!next) break
+        assignedSet.add(next)
+        cursor = reservedPremieIds.indexOf(next) + 1
+        await gate.admin.from("lodd_winners").update({ premie_id: next } as unknown as never).eq("id", w.id)
+      }
+    }
+
+    const nextPremieId = reservedPremieIds.find((id) => !assignedSet.has(id)) ?? ""
+    if (!nextPremieId) {
+      return NextResponse.json({ ok: false, feil: "Alle premier i lotteriet er allerede trukket." }, { status: 400 })
+    }
+
     const { data: kjop, error: kjopError } = await gate.admin
       .from("lodd_kjop")
       .select("id, created_at, phone, antall, ticket_from, ticket_to")
@@ -914,6 +985,7 @@ export async function POST(request: Request) {
 
     const { error: winnerInsertError } = await gate.admin.from("lodd_winners").insert({
       lotteri_id: lotteriId,
+      premie_id: nextPremieId,
       winner_loddnr: winnerNumber,
       winner_phone: winnerPhone,
       drawn_by_epost: gate.email,
