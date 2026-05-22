@@ -40,6 +40,13 @@ type ActivePremieJoin = {
   sort_order?: number | null
 }
 
+type PremieLink = {
+  lotteri_id?: string | null
+  premie_id?: string | null
+  is_hovedpremie?: boolean | null
+  sort_order?: number | null
+}
+
 type Kjop = {
   id: string
   created_at?: string | null
@@ -63,6 +70,7 @@ type State =
       activeLotteri: Lotteri | null
       premier: Premie[]
       activePremier: ActivePremieJoin[]
+      premieLinks: PremieLink[]
       kjop: Kjop[]
     }
 
@@ -73,6 +81,8 @@ type ApiOk = {
   activeLotteri: Lotteri | null
   premier: Premie[]
   activePremier: ActivePremieJoin[]
+  premieLinks?: PremieLink[]
+  selectedLotteriId?: string | null
   kjop: Kjop[]
 }
 
@@ -102,14 +112,43 @@ export default function AdminLoddPage() {
   const [durationDays, setDurationDays] = useState("14")
   const [selectedLotteriId, setSelectedLotteriId] = useState<string>("")
 
-  const activePremieSet = useMemo(() => {
+  const selectedPremieSet = useMemo(() => {
     if (state.type !== "ready") return new Set<string>()
     return new Set((state.activePremier ?? []).map((p) => String(p.premie_id ?? "")))
   }, [state])
 
-  const hent = useCallback(async () => {
+  const lotteriById = useMemo(() => {
+    if (state.type !== "ready") return new Map<string, Lotteri>()
+    return new Map(state.lotterier.map((l) => [l.id, l]))
+  }, [state])
+
+  const reservedLotteriIdByPremieId = useMemo(() => {
+    if (state.type !== "ready") return new Map<string, string>()
+    const m = new Map<string, string>()
+    for (const link of state.premieLinks ?? []) {
+      const premieId = String(link.premie_id ?? "").trim()
+      const lotteriId = String(link.lotteri_id ?? "").trim()
+      if (!premieId || !lotteriId) continue
+      const lotteri = lotteriById.get(lotteriId)
+      const st = String(lotteri?.status ?? "").trim()
+      if (!st || st === "ended") continue
+      if (!m.has(premieId)) m.set(premieId, lotteriId)
+    }
+    return m
+  }, [state, lotteriById])
+
+  const selectedLotteri = useMemo(() => {
+    if (state.type !== "ready") return null
+    const id = String(selectedLotteriId ?? "").trim()
+    if (!id) return null
+    return state.lotterier.find((l) => l.id === id) ?? null
+  }, [state, selectedLotteriId])
+
+  const hent = useCallback(
+    async (lotteriId?: string) => {
     setActionError(null)
-    const res = await fetch(`/api/admin/lodd?ts=${Date.now()}`, { cache: "no-store" })
+    const q = lotteriId ? `&lotteriId=${encodeURIComponent(lotteriId)}` : ""
+    const res = await fetch(`/api/admin/lodd?ts=${Date.now()}${q}`, { cache: "no-store" })
     if (res.status === 401) {
       router.push("/admin/login")
       router.refresh()
@@ -125,6 +164,7 @@ export default function AdminLoddPage() {
     const activeLotteri = (data as ApiOk).activeLotteri ?? null
     const premier = (data as ApiOk).premier ?? []
     const activePremier = (data as ApiOk).activePremier ?? []
+    const premieLinks = (data as ApiOk).premieLinks ?? []
     const kjop = (data as ApiOk).kjop ?? []
     setState({
       type: "ready",
@@ -133,14 +173,19 @@ export default function AdminLoddPage() {
       activeLotteri,
       premier,
       activePremier,
+      premieLinks,
       kjop,
     })
 
-    const preferred =
+    const nextSelected =
+      String((data as ApiOk).selectedLotteriId ?? "").trim() ||
       String(activeLotteri?.id ?? "").trim() ||
       String(lotterier.find((l) => l.status === "draft")?.id ?? "").trim()
-    setSelectedLotteriId((prev) => prev || preferred)
-  }, [router])
+
+    setSelectedLotteriId((prev) => prev || nextSelected)
+  },
+    [router]
+  )
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -161,7 +206,7 @@ export default function AdminLoddPage() {
       setActionError(data.feil ?? "Noe gikk galt.")
       return false
     }
-    await hent()
+    await hent(selectedLotteriId || undefined)
     return true
   }
 
@@ -189,6 +234,16 @@ export default function AdminLoddPage() {
       action: "activateLotteri",
       lotteriId: id,
       durationDays: Number.isFinite(days) && days > 0 ? days : 14,
+    })
+  }
+
+  async function activateLotteriInternal(id: string) {
+    const days = Math.floor(Number(durationDays))
+    await doAction({
+      action: "activateLotteri",
+      lotteriId: id,
+      durationDays: Number.isFinite(days) && days > 0 ? days : 14,
+      visibility: "internal",
     })
   }
 
@@ -226,6 +281,15 @@ export default function AdminLoddPage() {
 
   async function markPaid(kjopId: string) {
     await doAction({ action: "markPaid", kjopId })
+  }
+
+  async function toggleUtlevert(premieId: string) {
+    const lotteriId = selectedLotteriId || ""
+    if (!lotteriId) {
+      setActionError("Velg et lotteri først.")
+      return
+    }
+    await doAction({ action: "togglePremieUtlevert", premieId, lotteriId })
   }
 
   async function deleteRow(type: "premie" | "kjop", id: string) {
@@ -304,9 +368,9 @@ export default function AdminLoddPage() {
                         {formatDateTime(state.activeLotteri.end_at ?? null)}
                       </div>
                       {state.activeLotteri.winner_loddnr ? (
-                        <div>
-                          <span className="font-medium text-foreground">Vinner:</span>{" "}
-                          #{state.activeLotteri.winner_loddnr} · {state.activeLotteri.winner_phone}
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-900">
+                          <span className="font-medium">Vinner:</span> #{state.activeLotteri.winner_loddnr} ·{" "}
+                          {state.activeLotteri.winner_phone}
                         </div>
                       ) : null}
                     </div>
@@ -356,7 +420,11 @@ export default function AdminLoddPage() {
                   <select
                     className="h-9 w-full rounded-lg border bg-background px-3 text-sm"
                     value={selectedLotteriId}
-                    onChange={(e) => setSelectedLotteriId(e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      setSelectedLotteriId(next)
+                      hent(next).catch(() => setActionError("Kunne ikke hente loddsalg."))
+                    }}
                   >
                     <option value="">—</option>
                     {state.lotterier.map((l) => (
@@ -369,7 +437,10 @@ export default function AdminLoddPage() {
                     {selectedLotteriId ? (
                       <>
                         <Button variant="outline" onClick={() => activateLotteri(selectedLotteriId)}>
-                          Start (krever 3 premier)
+                          Start offentlig
+                        </Button>
+                        <Button variant="outline" onClick={() => activateLotteriInternal(selectedLotteriId)}>
+                          Start internt
                         </Button>
                         <Button variant="outline" onClick={() => endLotteri(selectedLotteriId)}>
                           Avslutt
@@ -386,13 +457,25 @@ export default function AdminLoddPage() {
               <section className="rounded-2xl border bg-card p-6">
                 <h2 className="text-lg font-semibold">Premiearkiv</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Premier som medlemmer har registrert. Publiser minst 3 i et lotteri før du starter salg.
+                  Velg lotteri til venstre og reserver premier til det. Reserverte premier kan ikke brukes i flere lotterier samtidig.
                 </p>
 
                 <div className="mt-4 space-y-3">
                   {state.premier.length ? (
                     state.premier.map((p) => {
-                      const isPublished = activePremieSet.has(p.id)
+                      const selectedIsEnded = String(selectedLotteri?.status ?? "") === "ended"
+                      const inSelected = selectedPremieSet.has(p.id)
+                      if (selectedIsEnded && !inSelected) return null
+                      const isArchived = String(p.status ?? "") === "arkivert" || String(p.status ?? "") === "utlevert"
+                      if (!selectedIsEnded && isArchived && !inSelected) return null
+
+                      const reservedLotteriId = reservedLotteriIdByPremieId.get(p.id) ?? ""
+                      const reservedLotteri = reservedLotteriId ? lotteriById.get(reservedLotteriId) ?? null : null
+                      const reservedTitle = String(reservedLotteri?.tittel ?? "").trim()
+                      const reservedStatus = String(reservedLotteri?.status ?? "").trim()
+                      const isReservedElsewhere = !!reservedLotteriId && reservedLotteriId !== selectedLotteriId
+                      const isDelivered = String(p.status ?? "") === "utlevert"
+
                       return (
                         <div key={p.id} className="rounded-xl border bg-background p-4">
                           <div className="flex items-start justify-between gap-3">
@@ -403,6 +486,22 @@ export default function AdminLoddPage() {
                                 {p.status ? ` · ${p.status}` : ""}
                                 {p.submitted_by_epost ? ` · ${p.submitted_by_epost}` : ""}
                               </div>
+                              {selectedIsEnded ? (
+                                <div className="mt-2 text-sm text-muted-foreground">
+                                  Lotteriarkiv:{" "}
+                                  <span className="font-medium text-foreground">{String(selectedLotteri?.tittel ?? "Lotteri")}</span>
+                                </div>
+                              ) : reservedLotteriId ? (
+                                <div className="mt-2 text-sm text-muted-foreground">
+                                  Reservert til:{" "}
+                                  <span className="font-medium text-foreground">
+                                    {reservedTitle || "Lotteri"}
+                                    {reservedStatus ? ` · ${reservedStatus}` : ""}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="mt-2 text-sm text-muted-foreground">Reservert til: ingen</div>
+                              )}
                               {p.sponsor_navn ? (
                                 <div className="mt-2 text-sm text-muted-foreground">
                                   Sponsor:{" "}
@@ -428,19 +527,33 @@ export default function AdminLoddPage() {
                             ) : null}
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {!isPublished ? (
+                            {selectedIsEnded ? (
+                              inSelected ? (
+                                <Button variant="outline" onClick={() => toggleUtlevert(p.id)}>
+                                  {isDelivered ? "Ikke utlevert" : "Utlevert"}
+                                </Button>
+                              ) : null
+                            ) : inSelected ? (
+                              <Button variant="outline" onClick={() => unpublishPremie(p.id)}>
+                                Fjern fra valgt lotteri
+                              </Button>
+                            ) : !selectedLotteriId ? (
+                              <Button variant="outline" disabled>
+                                Velg lotteri
+                              </Button>
+                            ) : isReservedElsewhere ? (
+                              <Button variant="outline" disabled>
+                                Reservert i annet lotteri
+                              </Button>
+                            ) : (
                               <>
                                 <Button variant="outline" onClick={() => publishPremie(p.id, false)}>
-                                  Publiser
+                                  Reserver
                                 </Button>
                                 <Button variant="outline" onClick={() => publishPremie(p.id, true)}>
                                   Hovedpremie
                                 </Button>
                               </>
-                            ) : (
-                              <Button variant="outline" onClick={() => unpublishPremie(p.id)}>
-                                Fjern fra lotteri
-                              </Button>
                             )}
                             {state.role === "superadmin" ? (
                               <Button variant="destructive" onClick={() => deleteRow("premie", p.id)}>
@@ -460,13 +573,13 @@ export default function AdminLoddPage() {
               </section>
 
               <section className="rounded-2xl border bg-card p-6 lg:col-span-2">
-                <h2 className="text-lg font-semibold">Salg (aktivt lotteri)</h2>
-                {state.activeLotteri ? (
+                <h2 className="text-lg font-semibold">Salg (valgt lotteri)</h2>
+                {selectedLotteriId ? (
                   <p className="mt-1 text-sm text-muted-foreground">
                     Kjøp registreres som pending. Når betaling er bekreftet, markerer du kjøpet som betalt.
                   </p>
                 ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">Ingen aktivt lotteri.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Velg et lotteri for å se salg.</p>
                 )}
 
                 <div className="mt-4 space-y-3">

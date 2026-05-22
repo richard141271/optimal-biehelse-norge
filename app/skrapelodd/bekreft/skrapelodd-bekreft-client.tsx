@@ -10,6 +10,10 @@ type Status =
 
 const LAST_REF_KEY = "obno_scratch_last_ref"
 
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
@@ -23,17 +27,17 @@ export default function SkrapeloddBekreftClient({ refValue }: { refValue: string
 
   const ref = useMemo(() => {
     const fromProp = String(refValue ?? "").trim()
-    if (fromProp) return fromProp
+    if (fromProp && isUuid(fromProp)) return fromProp
 
     try {
       const fromUrl = String(new URL(window.location.href).searchParams.get("ref") ?? "").trim()
-      if (fromUrl) return fromUrl
+      if (fromUrl && isUuid(fromUrl)) return fromUrl
     } catch {
     }
 
     try {
       const saved = String(window.localStorage.getItem(LAST_REF_KEY) ?? "").trim()
-      if (saved) return saved
+      if (saved && isUuid(saved)) return saved
     } catch {
     }
 

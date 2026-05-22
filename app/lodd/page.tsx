@@ -412,7 +412,7 @@ export default function LoddPage() {
               <section className="rounded-2xl border bg-card p-6 sm:p-8">
                 <h2 className="text-xl font-semibold tracking-tight">Ingen aktivt lotteri akkurat nå</h2>
                 <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                  Vi åpner loddsalg når vi har minst tre premier klare. I mellomtiden kan du donere eller bidra med premie.
+                  Vi åpner loddsalg når vi har premier klare. I mellomtiden kan du donere eller bidra med premie.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link

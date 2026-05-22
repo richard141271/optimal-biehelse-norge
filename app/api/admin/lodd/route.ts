@@ -159,9 +159,12 @@ async function requireAdmin() {
   return { ok: true as const, admin, role: role as "admin" | "superadmin", email: auth.email }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const gate = await requireAdmin()
   if (!gate.ok) return NextResponse.json({ ok: false, feil: gate.feil }, { status: gate.status })
+
+  const url = new URL(request.url)
+  const requestedLotteriId = String(url.searchParams.get("lotteriId") ?? "").trim()
 
   const { data: lotterier, error: lotteriError } = await gate.admin
     .from("lodd_lotteri")
@@ -177,10 +180,20 @@ export async function GET() {
     )
   }
 
-  const active =
-    (lotterier ?? []).find(
-      (l) => String((l as Record<string, unknown>).status ?? "") === "active"
-    ) ?? null
+  const lotteriRows = lotterier ?? []
+  const activePublic =
+    lotteriRows.find((l) => String((l as Record<string, unknown>).status ?? "") === "active") ?? null
+  const activeInternal =
+    lotteriRows.find((l) => String((l as Record<string, unknown>).status ?? "") === "active_internal") ?? null
+  const firstDraft =
+    lotteriRows.find((l) => String((l as Record<string, unknown>).status ?? "") === "draft") ?? null
+
+  const selectedLotteriId =
+    requestedLotteriId ||
+    String((activePublic as Record<string, unknown> | null)?.id ?? "").trim() ||
+    String((activeInternal as Record<string, unknown> | null)?.id ?? "").trim() ||
+    String((firstDraft as Record<string, unknown> | null)?.id ?? "").trim() ||
+    ""
 
   const { data: premier, error: premieError } = await gate.admin
     .from("lodd_premier")
@@ -210,12 +223,23 @@ export async function GET() {
     }
   }
 
-  const lotteriId = String((active as Record<string, unknown> | null)?.id ?? "").trim()
-  const { data: kjop, error: kjopError } = lotteriId
+  const lotteriIds = lotteriRows
+    .map((l) => String((l as Record<string, unknown>).id ?? "").trim())
+    .filter(Boolean)
+
+  const { data: premieLinks } = lotteriIds.length
+    ? await gate.admin
+        .from("lodd_lotteri_premier")
+        .select("lotteri_id, premie_id, is_hovedpremie, sort_order")
+        .in("lotteri_id", lotteriIds)
+        .limit(2000)
+    : { data: [] }
+
+  const { data: kjop, error: kjopError } = selectedLotteriId
     ? await gate.admin
         .from("lodd_kjop")
         .select("id, created_at, phone, antall, belop, status, ticket_from, ticket_to, vipps_ref, paid_at")
-        .eq("lotteri_id", lotteriId)
+        .eq("lotteri_id", selectedLotteriId)
         .order("created_at", { ascending: false })
         .limit(500)
     : { data: [], error: null }
@@ -228,20 +252,22 @@ export async function GET() {
     )
   }
 
-  const { data: activePremieJoin } = lotteriId
+  const { data: selectedPremieJoin } = selectedLotteriId
     ? await gate.admin
         .from("lodd_lotteri_premier")
         .select("premie_id, is_hovedpremie, sort_order")
-        .eq("lotteri_id", lotteriId)
+        .eq("lotteri_id", selectedLotteriId)
     : { data: [] }
 
   return NextResponse.json({
     ok: true,
     role: gate.role,
-    lotterier: lotterier ?? [],
-    activeLotteri: active,
+    lotterier: lotteriRows,
+    activeLotteri: activePublic,
     premier: premieRows,
-    activePremier: activePremieJoin ?? [],
+    activePremier: selectedPremieJoin ?? [],
+    premieLinks: premieLinks ?? [],
+    selectedLotteriId: selectedLotteriId || null,
     kjop: kjop ?? [],
   })
 }
@@ -298,6 +324,65 @@ export async function POST(request: Request) {
     const sortOrder = Number(body.sortOrder ?? 0)
     if (!premieId || !lotteriId) {
       return NextResponse.json({ ok: false, feil: "Mangler premie/lotteri." }, { status: 400 })
+    }
+
+    const { data: lotteriRow } = await gate.admin
+      .from("lodd_lotteri")
+      .select("id, tittel, status")
+      .eq("id", lotteriId)
+      .maybeSingle()
+
+    const lotteriStatus = String((lotteriRow as Record<string, unknown> | null)?.status ?? "").trim()
+    if (!lotteriRow?.id || !lotteriStatus) {
+      return NextResponse.json({ ok: false, feil: "Ukjent lotteri." }, { status: 404 })
+    }
+    if (lotteriStatus === "ended") {
+      return NextResponse.json({ ok: false, feil: "Lotteriet er arkivert." }, { status: 400 })
+    }
+
+    const { data: existingLinks, error: existingLinksError } = await gate.admin
+      .from("lodd_lotteri_premier")
+      .select("lotteri_id")
+      .eq("premie_id", premieId)
+      .limit(20)
+
+    if (existingLinksError) {
+      const sf = schemaFeil((existingLinksError as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke sjekke premie." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    const otherLotteriIds = (existingLinks ?? [])
+      .map((r) => String((r as Record<string, unknown>).lotteri_id ?? "").trim())
+      .filter((id) => id && id !== lotteriId)
+
+    if (otherLotteriIds.length) {
+      const { data: otherRows } = await gate.admin
+        .from("lodd_lotteri")
+        .select("id, tittel, status")
+        .in("id", otherLotteriIds)
+        .limit(20)
+
+      const blocking = (otherRows ?? []).find((r) => String((r as Record<string, unknown>).status ?? "") !== "ended")
+      if (blocking) {
+        const title = String((blocking as Record<string, unknown>).tittel ?? "annet lotteri").trim()
+        const st = String((blocking as Record<string, unknown>).status ?? "").trim()
+        return NextResponse.json(
+          { ok: false, feil: `Premien er allerede reservert til ${title}${st ? ` · ${st}` : ""}.` },
+          { status: 400 }
+        )
+      }
+    }
+
+    const { data: premieRow } = await gate.admin.from("lodd_premier").select("id, status").eq("id", premieId).maybeSingle()
+    const premieStatus = String((premieRow as Record<string, unknown> | null)?.status ?? "").trim()
+    if (!premieRow?.id) {
+      return NextResponse.json({ ok: false, feil: "Ukjent premie." }, { status: 404 })
+    }
+    if (premieStatus === "arkivert" || premieStatus === "utlevert") {
+      return NextResponse.json({ ok: false, feil: "Premien ligger i arkivet og kan ikke brukes på nytt." }, { status: 400 })
     }
 
     const { error: joinError } = await gate.admin.from("lodd_lotteri_premier").upsert(
@@ -375,10 +460,25 @@ export async function POST(request: Request) {
   if (action === "activateLotteri") {
     const lotteriId = String(body.lotteriId ?? "").trim()
     const durationDays = Math.floor(Number(body.durationDays ?? 14))
+    const visibility = String(body.visibility ?? "public").trim().toLowerCase()
     if (!lotteriId) {
       return NextResponse.json({ ok: false, feil: "Mangler lotteri." }, { status: 400 })
     }
     const days = Number.isFinite(durationDays) && durationDays > 0 ? durationDays : 14
+
+    const { data: lotteriRow } = await gate.admin
+      .from("lodd_lotteri")
+      .select("id, status")
+      .eq("id", lotteriId)
+      .maybeSingle()
+
+    const currentStatus = String((lotteriRow as Record<string, unknown> | null)?.status ?? "").trim()
+    if (!lotteriRow?.id) {
+      return NextResponse.json({ ok: false, feil: "Ukjent lotteri." }, { status: 404 })
+    }
+    if (currentStatus === "ended") {
+      return NextResponse.json({ ok: false, feil: "Lotteriet er arkivert og kan ikke startes på nytt." }, { status: 400 })
+    }
 
     const { data: countRows } = await gate.admin
       .from("lodd_lotteri_premier")
@@ -386,8 +486,25 @@ export async function POST(request: Request) {
       .eq("lotteri_id", lotteriId)
 
     const premieCount = Array.isArray(countRows) ? countRows.length : 0
-    if (premieCount < 3) {
-      return NextResponse.json({ ok: false, feil: "Lotteri må ha minst 3 premier." }, { status: 400 })
+    if (premieCount < 1) {
+      return NextResponse.json({ ok: false, feil: "Lotteri må ha minst 1 premie." }, { status: 400 })
+    }
+
+    const nextStatus = visibility === "internal" ? "active_internal" : "active"
+    if (nextStatus === "active") {
+      const { data: existingPublic } = await gate.admin
+        .from("lodd_lotteri")
+        .select("id")
+        .eq("status", "active")
+        .neq("id", lotteriId)
+        .limit(1)
+
+      if (existingPublic?.length) {
+        return NextResponse.json(
+          { ok: false, feil: "Det finnes allerede et offentlig aktivt lotteri. Avslutt det først, eller start internt." },
+          { status: 400 }
+        )
+      }
     }
 
     const now = new Date()
@@ -396,7 +513,7 @@ export async function POST(request: Request) {
     const { error } = await gate.admin
       .from("lodd_lotteri")
       .update({
-        status: "active",
+        status: nextStatus,
         start_at: now.toISOString(),
         end_at: end.toISOString(),
         winner_loddnr: null,
@@ -434,6 +551,23 @@ export async function POST(request: Request) {
         { ok: false, feil: sf ?? "Kunne ikke avslutte lotteri." },
         { status: sf ? 500 : 400 }
       )
+    }
+
+    const { data: linkRows } = await gate.admin
+      .from("lodd_lotteri_premier")
+      .select("premie_id")
+      .eq("lotteri_id", lotteriId)
+
+    const premieIds = (linkRows ?? [])
+      .map((r) => String((r as Record<string, unknown>).premie_id ?? "").trim())
+      .filter(Boolean)
+
+    if (premieIds.length) {
+      await gate.admin
+        .from("lodd_premier")
+        .update({ status: "arkivert" })
+        .in("id", premieIds)
+        .neq("status", "utlevert")
     }
 
     return NextResponse.json({ ok: true })
@@ -537,6 +671,56 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ ok: true, winnerPhone, winnerNumber })
+  }
+
+  if (action === "togglePremieUtlevert") {
+    const premieId = String(body.premieId ?? "").trim()
+    const lotteriId = String(body.lotteriId ?? "").trim()
+    if (!premieId || !lotteriId) {
+      return NextResponse.json({ ok: false, feil: "Mangler premie/lotteri." }, { status: 400 })
+    }
+
+    const { data: lotteriRow } = await gate.admin
+      .from("lodd_lotteri")
+      .select("status")
+      .eq("id", lotteriId)
+      .maybeSingle()
+
+    const lotteriStatus = String((lotteriRow as Record<string, unknown> | null)?.status ?? "").trim()
+    if (lotteriStatus !== "ended") {
+      return NextResponse.json({ ok: false, feil: "Premie kan kun krysses ut når lotteriet er arkivert." }, { status: 400 })
+    }
+
+    const { data: joinRow } = await gate.admin
+      .from("lodd_lotteri_premier")
+      .select("premie_id")
+      .eq("lotteri_id", lotteriId)
+      .eq("premie_id", premieId)
+      .maybeSingle()
+
+    if (!joinRow) {
+      return NextResponse.json({ ok: false, feil: "Premien tilhører ikke dette lotteriet." }, { status: 400 })
+    }
+
+    const { data: premieRow } = await gate.admin
+      .from("lodd_premier")
+      .select("status")
+      .eq("id", premieId)
+      .maybeSingle()
+
+    const current = String((premieRow as Record<string, unknown> | null)?.status ?? "").trim()
+    const next = current === "utlevert" ? "arkivert" : "utlevert"
+
+    const { error } = await gate.admin.from("lodd_premier").update({ status: next }).eq("id", premieId)
+    if (error) {
+      const sf = schemaFeil((error as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke oppdatere premie." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    return NextResponse.json({ ok: true })
   }
 
   return NextResponse.json({ ok: false, feil: "Ugyldig handling." }, { status: 400 })

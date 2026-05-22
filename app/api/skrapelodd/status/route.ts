@@ -32,6 +32,10 @@ type VippsCaptureResponse = {
   pspReference?: string
 }
 
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
+}
+
 function vippsMode() {
   const mode = String(process.env.VIPPS_MODE ?? "").trim().toLowerCase()
   if (mode === "vipps") return "vipps"
@@ -182,7 +186,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url)
   const ref = String(url.searchParams.get("ref") ?? "").trim()
-  if (!ref) {
+  if (!ref || !isUuid(ref)) {
     return NextResponse.json({ ok: false, feil: "Mangler ref." }, { status: 400 })
   }
 
@@ -197,6 +201,29 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, feil: "Kunne ikke hente betaling." }, { status: 400 })
   }
   if (!payment.data) {
+    if (vippsMode() === "stub") {
+      const inserted = await admin
+        .from("scratch_payments")
+        .insert({
+          id: ref,
+          amount_ore: PRICE_ORE,
+          status: "created",
+          payment_verified: false,
+        } as unknown as never)
+        .select("id")
+        .maybeSingle()
+
+      if (inserted.error) {
+        return NextResponse.json({ ok: false, feil: "Ukjent betaling." }, { status: 404 })
+      }
+
+      const assigned = await assignNextTicket(admin, ref)
+      if (!assigned.ok) {
+        return NextResponse.json({ ok: false, feil: assigned.feil }, { status: assigned.status })
+      }
+      return NextResponse.json({ ok: true, state: "READY", ready: true })
+    }
+
     return NextResponse.json({ ok: false, feil: "Ukjent betaling." }, { status: 404 })
   }
 
