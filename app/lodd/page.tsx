@@ -30,10 +30,16 @@ type Premie = {
   is_hovedpremie?: boolean | null
 }
 
+type Winner = {
+  winner_loddnr?: number | null
+  winner_phone?: string | null
+  created_at?: string | null
+}
+
 type State =
   | { type: "loading" }
   | { type: "error"; message: string }
-  | { type: "ready"; lotteri: Lotteri | null; premier: Premie[]; solgt: number }
+  | { type: "ready"; lotteri: Lotteri | null; premier: Premie[]; solgt: number; winners: Winner[] }
 
 type KjopState =
   | { type: "idle" }
@@ -53,6 +59,7 @@ type ApiLoddOk = {
   lotteri: Lotteri | null
   premier: Premie[]
   stats?: { solgt?: number }
+  winners?: Winner[]
 }
 
 type ApiLoddErr = { ok?: false; feil?: string }
@@ -101,6 +108,7 @@ export default function LoddPage() {
       lotteri: data.lotteri ?? null,
       premier: data.premier ?? [],
       solgt: Number((data as ApiLoddOk).stats?.solgt ?? 0),
+      winners: (data as ApiLoddOk).winners ?? [],
     })
   }
 
@@ -322,11 +330,15 @@ export default function LoddPage() {
                     ) : (
                       <div className="mt-3 text-sm text-muted-foreground">Trekningstid er ikke satt.</div>
                     )}
-                    {aktivtLotteri.winner_loddnr ? (
+                    {state.type === "ready" && state.winners.length ? (
                       <div className="mt-3 rounded-xl border bg-muted/30 p-4 text-sm">
-                        <div className="font-medium">Vinner er trukket</div>
-                        <div className="mt-1 text-muted-foreground">
-                          Vinnerlodd: #{aktivtLotteri.winner_loddnr} · Telefon: {aktivtLotteri.winner_phone}
+                        <div className="font-medium">Vinnere</div>
+                        <div className="mt-2 space-y-1 text-muted-foreground">
+                          {state.winners.map((w, idx) => (
+                            <div key={`${w.winner_loddnr ?? "?"}-${idx}`}>
+                              #{w.winner_loddnr ?? "?"} · Telefon: {w.winner_phone ?? "?"}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     ) : null}

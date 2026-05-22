@@ -45,6 +45,14 @@ function schemaFeil(msg?: string) {
     "  paid_by_epost text,\n" +
     "  note text\n" +
     ");\n" +
+    "create table if not exists public.lodd_winners (\n" +
+    "  id uuid primary key default gen_random_uuid(),\n" +
+    "  created_at timestamptz not null default now(),\n" +
+    "  lotteri_id uuid not null references public.lodd_lotteri(id) on delete cascade,\n" +
+    "  winner_loddnr integer not null,\n" +
+    "  winner_phone text not null,\n" +
+    "  drawn_by_epost text\n" +
+    ");\n" +
     "create index if not exists lodd_kjop_lotteri_idx on public.lodd_kjop (lotteri_id, created_at desc);\n" +
     "create index if not exists lodd_kjop_status_idx on public.lodd_kjop (status);\n"
   )
@@ -136,10 +144,26 @@ export async function GET() {
     ? statsRows.reduce((sum, r) => sum + Number((r as { antall?: unknown }).antall ?? 0), 0)
     : 0
 
+  const { data: winners, error: winnersError } = await admin
+    .from("lodd_winners")
+    .select("winner_loddnr, winner_phone, created_at")
+    .eq("lotteri_id", lotteri.id)
+    .order("created_at", { ascending: true })
+    .limit(200)
+
+  if (winnersError) {
+    const sf = schemaFeil((winnersError as { message?: string } | null)?.message)
+    return NextResponse.json(
+      { ok: false, feil: sf ?? "Kunne ikke hente vinnere." },
+      { status: sf ? 500 : 400 }
+    )
+  }
+
   return NextResponse.json({
     ok: true,
     lotteri,
     premier,
     stats: { solgt },
+    winners: winners ?? [],
   })
 }

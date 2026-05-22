@@ -108,6 +108,14 @@ function schemaFeil(msg?: string) {
     "  paid_by_epost text,\n" +
     "  note text\n" +
     ");\n" +
+    "create table if not exists public.lodd_winners (\n" +
+    "  id uuid primary key default gen_random_uuid(),\n" +
+    "  created_at timestamptz not null default now(),\n" +
+    "  lotteri_id uuid not null references public.lodd_lotteri(id) on delete cascade,\n" +
+    "  winner_loddnr integer not null,\n" +
+    "  winner_phone text not null,\n" +
+    "  drawn_by_epost text\n" +
+    ");\n" +
     "create index if not exists lodd_lotteri_status_idx on public.lodd_lotteri (status);\n" +
     "create index if not exists lodd_kjop_lotteri_idx on public.lodd_kjop (lotteri_id, created_at desc);\n" +
     "create index if not exists lodd_kjop_status_idx on public.lodd_kjop (status);\n"
@@ -190,15 +198,12 @@ export async function GET(request: Request) {
   const lotteriRows = lotterier ?? []
   const activePublic =
     lotteriRows.find((l) => String((l as Record<string, unknown>).status ?? "") === "active") ?? null
-  const activeInternal =
-    lotteriRows.find((l) => String((l as Record<string, unknown>).status ?? "") === "active_internal") ?? null
   const firstDraft =
     lotteriRows.find((l) => String((l as Record<string, unknown>).status ?? "") === "draft") ?? null
 
   const selectedLotteriId =
     requestedLotteriId ||
     String((activePublic as Record<string, unknown> | null)?.id ?? "").trim() ||
-    String((activeInternal as Record<string, unknown> | null)?.id ?? "").trim() ||
     String((firstDraft as Record<string, unknown> | null)?.id ?? "").trim() ||
     ""
 
@@ -266,6 +271,23 @@ export async function GET(request: Request) {
         .eq("lotteri_id", selectedLotteriId)
     : { data: [] }
 
+  const { data: winners, error: winnersError } = selectedLotteriId
+    ? await gate.admin
+        .from("lodd_winners")
+        .select("winner_loddnr, winner_phone, created_at")
+        .eq("lotteri_id", selectedLotteriId)
+        .order("created_at", { ascending: true })
+        .limit(200)
+    : { data: [], error: null }
+
+  if (winnersError) {
+    const sf = schemaFeil((winnersError as { message?: string } | null)?.message)
+    return NextResponse.json(
+      { ok: false, feil: sf ?? "Kunne ikke hente vinnere." },
+      { status: sf ? 500 : 400 }
+    )
+  }
+
   return NextResponse.json({
     ok: true,
     role: gate.role,
@@ -276,6 +298,7 @@ export async function GET(request: Request) {
     premieLinks: premieLinks ?? [],
     selectedLotteriId: selectedLotteriId || null,
     kjop: kjop ?? [],
+    winners: winners ?? [],
   })
 }
 
@@ -322,6 +345,40 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ ok: true, id: data?.id ?? null })
+  }
+
+  if (action === "updateLotteri") {
+    const lotteriId = String(body.lotteriId ?? "").trim()
+    const tittel = String(body.tittel ?? "").trim()
+    const beskrivelse = String(body.beskrivelse ?? "").trim()
+    const ticketPrice = Number(body.ticketPrice ?? NaN)
+
+    if (!lotteriId) {
+      return NextResponse.json({ ok: false, feil: "Mangler lotteri." }, { status: 400 })
+    }
+    if (!tittel) {
+      return NextResponse.json({ ok: false, feil: "Tittel kan ikke være tom." }, { status: 400 })
+    }
+    if (Number.isFinite(ticketPrice) && ticketPrice <= 0) {
+      return NextResponse.json({ ok: false, feil: "Ugyldig pris per lodd." }, { status: 400 })
+    }
+
+    const patch: Record<string, unknown> = {
+      tittel,
+      beskrivelse: beskrivelse || null,
+    }
+    if (Number.isFinite(ticketPrice)) patch.ticket_price = ticketPrice
+
+    const { error } = await gate.admin.from("lodd_lotteri").update(patch).eq("id", lotteriId)
+    if (error) {
+      const sf = schemaFeil((error as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke oppdatere lotteri." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    return NextResponse.json({ ok: true })
   }
 
   if (action === "publishPremie") {
@@ -467,7 +524,6 @@ export async function POST(request: Request) {
   if (action === "activateLotteri") {
     const lotteriId = String(body.lotteriId ?? "").trim()
     const durationDays = Math.floor(Number(body.durationDays ?? 14))
-    const visibility = String(body.visibility ?? "public").trim().toLowerCase()
     if (!lotteriId) {
       return NextResponse.json({ ok: false, feil: "Mangler lotteri." }, { status: 400 })
     }
@@ -497,21 +553,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, feil: "Lotteri må ha minst 1 premie." }, { status: 400 })
     }
 
-    const nextStatus = visibility === "internal" ? "active_internal" : "active"
-    if (nextStatus === "active") {
-      const { data: existingPublic } = await gate.admin
-        .from("lodd_lotteri")
-        .select("id")
-        .eq("status", "active")
-        .neq("id", lotteriId)
-        .limit(1)
+    const { data: existingPublic } = await gate.admin
+      .from("lodd_lotteri")
+      .select("id")
+      .eq("status", "active")
+      .neq("id", lotteriId)
+      .limit(1)
 
-      if (existingPublic?.length) {
-        return NextResponse.json(
-          { ok: false, feil: "Det finnes allerede et offentlig aktivt lotteri. Avslutt det først, eller start internt." },
-          { status: 400 }
-        )
-      }
+    if (existingPublic?.length) {
+      return NextResponse.json(
+        { ok: false, feil: "Det finnes allerede et offentlig aktivt lotteri. Avslutt det først." },
+        { status: 400 }
+      )
     }
 
     const now = new Date()
@@ -520,7 +573,7 @@ export async function POST(request: Request) {
     const { error } = await gate.admin
       .from("lodd_lotteri")
       .update({
-        status: nextStatus,
+        status: "active",
         start_at: now.toISOString(),
         end_at: end.toISOString(),
         winner_loddnr: null,
@@ -761,7 +814,7 @@ export async function POST(request: Request) {
 
     const { data: kjop, error: kjopError } = await gate.admin
       .from("lodd_kjop")
-      .select("phone, antall, ticket_from, ticket_to")
+      .select("id, created_at, phone, antall, ticket_from, ticket_to")
       .eq("lotteri_id", lotteriId)
       .eq("status", "paid")
       .order("created_at", { ascending: true })
@@ -775,12 +828,68 @@ export async function POST(request: Request) {
     }
 
     const rows = Array.isArray(kjop) ? kjop : []
-    const total = rows.reduce(
-      (sum, r) => sum + Number((r as Record<string, unknown>).antall ?? 0),
-      0
-    )
+    const total = rows.reduce((sum, r) => sum + Number((r as Record<string, unknown>).antall ?? 0), 0)
     if (!Number.isFinite(total) || total <= 0) {
       return NextResponse.json({ ok: false, feil: "Ingen betalte lodd å trekke blant." }, { status: 400 })
+    }
+
+    let cursor = 1
+    const normalized = rows
+      .map((r) => {
+        const rr = r as Record<string, unknown>
+        const id = String(rr.id ?? "").trim()
+        const phone = String(rr.phone ?? "").trim()
+        const antall = Math.floor(Number(rr.antall ?? 0))
+        const ticketFromRaw = Number(rr.ticket_from ?? NaN)
+        const ticketToRaw = Number(rr.ticket_to ?? NaN)
+
+        if (!id || !phone || !Number.isFinite(antall) || antall <= 0) return null
+
+        const hasRange =
+          Number.isFinite(ticketFromRaw) &&
+          ticketFromRaw > 0 &&
+          Number.isFinite(ticketToRaw) &&
+          ticketToRaw >= ticketFromRaw
+
+        if (hasRange) {
+          cursor = Math.max(cursor, Math.floor(ticketToRaw) + 1)
+          return {
+            id,
+            phone,
+            antall,
+            ticketFrom: Math.floor(ticketFromRaw),
+            ticketTo: Math.floor(ticketToRaw),
+            needsUpdate: false,
+          }
+        }
+
+        const ticketFrom = cursor
+        const ticketTo = cursor + antall - 1
+        cursor = ticketTo + 1
+        return {
+          id,
+          phone,
+          antall,
+          ticketFrom,
+          ticketTo,
+          needsUpdate: true,
+        }
+      })
+      .filter(Boolean) as {
+      id: string
+      phone: string
+      antall: number
+      ticketFrom: number
+      ticketTo: number
+      needsUpdate: boolean
+    }[]
+
+    for (const r of normalized) {
+      if (!r.needsUpdate) continue
+      await gate.admin
+        .from("lodd_kjop")
+        .update({ ticket_from: r.ticketFrom, ticket_to: r.ticketTo } as unknown as never)
+        .eq("id", r.id)
     }
 
     let idx = Math.floor(Math.random() * total)
@@ -789,14 +898,11 @@ export async function POST(request: Request) {
 
     let winnerPhone = ""
     let winnerNumber = 0
-    for (const r of rows) {
-      const rr = r as Record<string, unknown>
-      const a = Number(rr.antall ?? 0)
-      const from = Number(rr.ticket_from ?? 0)
-      if (!a || !Number.isFinite(a) || !from || !Number.isFinite(from)) continue
+    for (const r of normalized) {
+      const a = r.antall
       if (idx < a) {
-        winnerPhone = String(rr.phone ?? "")
-        winnerNumber = from + idx
+        winnerPhone = r.phone
+        winnerNumber = r.ticketFrom + idx
         break
       }
       idx -= a
@@ -804,6 +910,21 @@ export async function POST(request: Request) {
 
     if (!winnerPhone || !winnerNumber) {
       return NextResponse.json({ ok: false, feil: "Kunne ikke trekke vinner." }, { status: 400 })
+    }
+
+    const { error: winnerInsertError } = await gate.admin.from("lodd_winners").insert({
+      lotteri_id: lotteriId,
+      winner_loddnr: winnerNumber,
+      winner_phone: winnerPhone,
+      drawn_by_epost: gate.email,
+    })
+
+    if (winnerInsertError) {
+      const sf = schemaFeil((winnerInsertError as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke lagre vinner." },
+        { status: sf ? 500 : 400 }
+      )
     }
 
     const { error } = await gate.admin
@@ -899,6 +1020,37 @@ export async function DELETE(request: Request) {
   const id = String(body.id ?? "").trim()
   if (!type || !id) {
     return NextResponse.json({ ok: false, feil: "Mangler type/id." }, { status: 400 })
+  }
+
+  if (type === "lotteri") {
+    const { data, error: readError } = await gate.admin
+      .from("lodd_lotteri")
+      .select("status")
+      .eq("id", id)
+      .maybeSingle()
+
+    if (readError) {
+      const sf = schemaFeil((readError as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke hente lotteri." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    const status = String((data as Record<string, unknown> | null)?.status ?? "").trim()
+    if (status === "active") {
+      return NextResponse.json({ ok: false, feil: "Avslutt lotteriet før du sletter." }, { status: 400 })
+    }
+
+    const { error } = await gate.admin.from("lodd_lotteri").delete().eq("id", id)
+    if (error) {
+      const sf = schemaFeil((error as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke slette lotteri." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+    return NextResponse.json({ ok: true })
   }
 
   if (type === "premie") {

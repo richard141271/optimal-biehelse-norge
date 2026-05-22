@@ -27,10 +27,6 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms))
-}
-
 export default function SkrapeloddTicketPage({ params }: { params: { ref: string } }) {
   const ref = useMemo(() => String(params.ref ?? "").trim(), [params.ref])
   const [load, setLoad] = useState<LoadState>({ type: "loading" })
@@ -40,95 +36,37 @@ export default function SkrapeloddTicketPage({ params }: { params: { ref: string
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const drawingRef = useRef(false)
-  const autoFixTriedRef = useRef(false)
 
   useEffect(() => {
     let active = true
     async function run() {
       const refOk = !!ref && (isDigits(ref) || isUuid(ref))
       if (!refOk) {
-        if (!autoFixTriedRef.current) {
-          autoFixTriedRef.current = true
-          try {
-            const res = await fetch("/api/skrapelodd/kjop", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({}),
-            })
-            const data = (await res.json()) as { ok?: boolean; redirectUrl?: string | null }
-            const redirectUrl = String(data.redirectUrl ?? "").trim()
-            if (res.ok && data.ok && redirectUrl) {
-              window.location.href = redirectUrl
-              return
-            }
-          } catch {
-          }
-        }
         setLoad({ type: "error", message: "Kunne ikke hente skrapelodd." })
         return
       }
       setLoad({ type: "loading" })
 
-      const startedAt = Date.now()
-      let attempt = 0
+      try {
+        const res = await fetch(`/api/skrapelodd/${encodeURIComponent(ref)}?ts=${Date.now()}`, {
+          cache: "no-store",
+        })
+        const data = (await res.json()) as {
+          ok?: boolean
+          feil?: string
+          ticket?: Ticket
+        }
 
-      while (active) {
-        attempt += 1
-        try {
-          const res = await fetch(`/api/skrapelodd/${encodeURIComponent(ref)}?ts=${Date.now()}`, {
-            cache: "no-store",
-          })
-          const data = (await res.json()) as {
-            ok?: boolean
-            feil?: string
-            pending?: boolean
-            ticket?: Ticket
-          }
-
-          if (data.ok && data.ticket) {
-            setLoad({ type: "ready", ticket: data.ticket })
-            return
-          }
-
-          if (!res.ok && (res.status === 400 || res.status === 404) && !autoFixTriedRef.current) {
-            autoFixTriedRef.current = true
-            try {
-              const newRes = await fetch("/api/skrapelodd/kjop", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({}),
-              })
-              const newData = (await newRes.json()) as { ok?: boolean; redirectUrl?: string | null }
-              const redirectUrl = String(newData.redirectUrl ?? "").trim()
-              if (newRes.ok && newData.ok && redirectUrl) {
-                window.location.href = redirectUrl
-                return
-              }
-            } catch {
-            }
-          }
-
-          if (!res.ok && data.feil) {
-            setLoad({ type: "error", message: data.feil })
-            return
-          }
-
-          const elapsed = Date.now() - startedAt
-          if (elapsed > 60_000) {
-            setLoad({
-              type: "error",
-              message:
-                "Vi fikk ikke bekreftet betalingen enda. Hvis du har betalt i Vipps, prøv å oppdatere siden om litt.",
-            })
-            return
-          }
-
-          const wait = Math.min(2500, 400 + attempt * 150)
-          await sleep(wait)
-        } catch {
-          setLoad({ type: "error", message: "Kunne ikke hente skrapelodd." })
+        if (!active) return
+        if (data.ok && data.ticket) {
+          setLoad({ type: "ready", ticket: data.ticket })
           return
         }
+
+        setLoad({ type: "error", message: data.feil ?? "Kunne ikke hente skrapelodd." })
+      } catch {
+        if (!active) return
+        setLoad({ type: "error", message: "Kunne ikke hente skrapelodd." })
       }
     }
     run()

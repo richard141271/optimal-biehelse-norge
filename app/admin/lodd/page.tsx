@@ -60,6 +60,12 @@ type Kjop = {
   paid_at?: string | null
 }
 
+type Winner = {
+  winner_loddnr?: number | null
+  winner_phone?: string | null
+  created_at?: string | null
+}
+
 type State =
   | { type: "loading" }
   | { type: "error"; message: string }
@@ -72,6 +78,7 @@ type State =
       activePremier: ActivePremieJoin[]
       premieLinks: PremieLink[]
       kjop: Kjop[]
+      winners: Winner[]
     }
 
 type ApiOk = {
@@ -84,6 +91,7 @@ type ApiOk = {
   premieLinks?: PremieLink[]
   selectedLotteriId?: string | null
   kjop: Kjop[]
+  winners?: Winner[]
 }
 
 type ApiErr = { ok?: false; feil?: string }
@@ -111,6 +119,9 @@ export default function AdminLoddPage() {
   const [ticketPrice, setTicketPrice] = useState("20")
   const [durationDays, setDurationDays] = useState("14")
   const [selectedLotteriId, setSelectedLotteriId] = useState<string>("")
+  const [editLotteriTittel, setEditLotteriTittel] = useState("")
+  const [editLotteriBeskrivelse, setEditLotteriBeskrivelse] = useState("")
+  const [editLotteriTicketPrice, setEditLotteriTicketPrice] = useState("")
   const [editingPremieId, setEditingPremieId] = useState<string | null>(null)
   const [editTittel, setEditTittel] = useState("")
   const [editSponsorNavn, setEditSponsorNavn] = useState("")
@@ -157,6 +168,16 @@ export default function AdminLoddPage() {
     return state.lotterier.find((l) => l.id === id) ?? null
   }, [state, selectedLotteriId])
 
+  useEffect(() => {
+    if (state.type !== "ready") return
+    if (!selectedLotteri) return
+    setEditLotteriTittel(String(selectedLotteri.tittel ?? ""))
+    setEditLotteriBeskrivelse(String(selectedLotteri.beskrivelse ?? ""))
+    setEditLotteriTicketPrice(
+      selectedLotteri.ticket_price != null ? String(Number(selectedLotteri.ticket_price)) : ""
+    )
+  }, [state, selectedLotteri])
+
   const hent = useCallback(
     async (lotteriId?: string) => {
     setActionError(null)
@@ -179,6 +200,7 @@ export default function AdminLoddPage() {
     const activePremier = (data as ApiOk).activePremier ?? []
     const premieLinks = (data as ApiOk).premieLinks ?? []
     const kjop = (data as ApiOk).kjop ?? []
+    const winners = (data as ApiOk).winners ?? []
     setState({
       type: "ready",
       role,
@@ -188,6 +210,7 @@ export default function AdminLoddPage() {
       activePremier,
       premieLinks,
       kjop,
+      winners,
     })
 
     const nextSelected =
@@ -241,22 +264,26 @@ export default function AdminLoddPage() {
     }
   }
 
+  async function updateLotteri() {
+    const id = String(selectedLotteriId ?? "").trim()
+    if (!id) return
+    const priceRaw = editLotteriTicketPrice.replace(",", ".").trim()
+    const price = priceRaw ? Number(priceRaw) : NaN
+    await doAction({
+      action: "updateLotteri",
+      lotteriId: id,
+      tittel: editLotteriTittel,
+      beskrivelse: editLotteriBeskrivelse,
+      ticketPrice: Number.isFinite(price) ? price : undefined,
+    })
+  }
+
   async function activateLotteri(id: string) {
     const days = Math.floor(Number(durationDays))
     await doAction({
       action: "activateLotteri",
       lotteriId: id,
       durationDays: Number.isFinite(days) && days > 0 ? days : 14,
-    })
-  }
-
-  async function activateLotteriInternal(id: string) {
-    const days = Math.floor(Number(durationDays))
-    await doAction({
-      action: "activateLotteri",
-      lotteriId: id,
-      durationDays: Number.isFinite(days) && days > 0 ? days : 14,
-      visibility: "internal",
     })
   }
 
@@ -355,7 +382,7 @@ export default function AdminLoddPage() {
     setEditingPremieId(null)
   }
 
-  async function deleteRow(type: "premie" | "kjop", id: string) {
+  async function deleteRow(type: "premie" | "kjop" | "lotteri", id: string) {
     if (state.type !== "ready") return
     if (state.role !== "superadmin") return
     if (!confirm("Slette dette?")) return
@@ -490,20 +517,34 @@ export default function AdminLoddPage() {
                     }}
                   >
                     <option value="">—</option>
-                    {state.lotterier.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.tittel ?? "Lotteri"} · {l.status}
-                      </option>
-                    ))}
+                    {state.lotterier.some((l) => l.status !== "ended") ? (
+                      <optgroup label="Aktive/utkast">
+                        {state.lotterier
+                          .filter((l) => l.status !== "ended")
+                          .map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.tittel ?? "Lotteri"} · {l.status}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ) : null}
+                    {state.lotterier.some((l) => l.status === "ended") ? (
+                      <optgroup label="Lotteriarkiv">
+                        {state.lotterier
+                          .filter((l) => l.status === "ended")
+                          .map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.tittel ?? "Lotteri"} · {l.status}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ) : null}
                   </select>
                   <div className="flex flex-wrap gap-2">
                     {selectedLotteriId ? (
                       <>
                         <Button variant="outline" onClick={() => activateLotteri(selectedLotteriId)}>
-                          Start offentlig
-                        </Button>
-                        <Button variant="outline" onClick={() => activateLotteriInternal(selectedLotteriId)}>
-                          Start internt
+                          Start
                         </Button>
                         <Button variant="outline" onClick={() => endLotteri(selectedLotteriId)}>
                           Avslutt
@@ -511,9 +552,63 @@ export default function AdminLoddPage() {
                         <Button variant="outline" onClick={() => drawWinner(selectedLotteriId)}>
                           Trekk vinner
                         </Button>
+                        {state.role === "superadmin" ? (
+                          <Button variant="destructive" onClick={() => deleteRow("lotteri", selectedLotteriId)}>
+                            Slett lotteri
+                          </Button>
+                        ) : null}
                       </>
                     ) : null}
                   </div>
+                  {state.winners.length ? (
+                    <div className="rounded-xl border bg-muted/30 p-4 text-sm">
+                      <div className="font-medium">Vinnere</div>
+                      <div className="mt-2 space-y-1 text-muted-foreground">
+                        {state.winners.map((w, idx) => (
+                          <div key={`${w.winner_loddnr ?? "?"}-${idx}`}>
+                            #{w.winner_loddnr ?? "?"} · {w.winner_phone ?? "?"}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {selectedLotteriId ? (
+                    <div className="rounded-xl border bg-background p-4">
+                      <div className="text-sm font-medium">Rediger valgt lotteri</div>
+                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2 sm:col-span-2">
+                          <Label htmlFor="edit_lotteri_tittel">Tittel</Label>
+                          <Input
+                            id="edit_lotteri_tittel"
+                            value={editLotteriTittel}
+                            onChange={(e) => setEditLotteriTittel(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="edit_lotteri_price">Pris per lodd (NOK)</Label>
+                          <Input
+                            id="edit_lotteri_price"
+                            value={editLotteriTicketPrice}
+                            onChange={(e) => setEditLotteriTicketPrice(e.target.value)}
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div className="space-y-2 sm:col-span-2">
+                          <Label htmlFor="edit_lotteri_desc">Beskrivelse</Label>
+                          <Input
+                            id="edit_lotteri_desc"
+                            value={editLotteriBeskrivelse}
+                            onChange={(e) => setEditLotteriBeskrivelse(e.target.value)}
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Button variant="outline" onClick={updateLotteri}>
+                            Lagre endringer
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </section>
 
@@ -719,7 +814,7 @@ export default function AdminLoddPage() {
                 <h2 className="text-lg font-semibold">Salg (valgt lotteri)</h2>
                 {selectedLotteriId ? (
                   <p className="mt-1 text-sm text-muted-foreground">
-                    For interne lotterier registrerer du kjøp her. Vipps kan bruke en referanse, kontant kan registreres direkte som betalt.
+                    Registrer kjøp her. Vipps kan bruke en referanse, kontant kan registreres direkte som betalt.
                   </p>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground">Velg et lotteri for å se salg.</p>
