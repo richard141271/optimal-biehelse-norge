@@ -7,8 +7,6 @@ type Status =
   | { type: "loading" }
   | { type: "error"; message: string }
 
-const LAST_REF_KEY = "obno_scratch_last_ref"
-
 export default function SkrapeloddPage() {
   const [status, setStatus] = useState<Status>({ type: "idle" })
 
@@ -25,33 +23,25 @@ export default function SkrapeloddPage() {
         ok?: boolean
         feil?: string
         redirectUrl?: string | null
-        ref?: string | null
+        ticketNumber?: number | null
       }
 
-      const ref = String(data.ref ?? "").trim()
       const redirectUrl = String(data.redirectUrl ?? "").trim()
 
       if (!res.ok || !data.ok) {
-        setStatus({ type: "error", message: data.feil ?? "Kunne ikke starte Vipps-betaling." })
+        setStatus({ type: "error", message: data.feil ?? "Kunne ikke hente skrapelodd." })
         return
       }
 
-      if (ref) {
-        try {
-          window.localStorage.setItem(LAST_REF_KEY, ref)
-        } catch {
-        }
-      }
-
-      const nextUrl = redirectUrl || (ref ? `/skrapelodd/bekreft?ref=${encodeURIComponent(ref)}` : "")
+      const nextUrl = redirectUrl
       if (!nextUrl) {
-        setStatus({ type: "error", message: "Kunne ikke starte Vipps-betaling." })
+        setStatus({ type: "error", message: "Kunne ikke hente skrapelodd." })
         return
       }
 
       window.location.href = nextUrl
     } catch {
-      setStatus({ type: "error", message: "Kunne ikke starte Vipps-betaling." })
+      setStatus({ type: "error", message: "Kunne ikke hente skrapelodd." })
     }
   }
 
@@ -77,7 +67,7 @@ export default function SkrapeloddPage() {
                 disabled={status.type === "loading"}
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
               >
-                {status.type === "loading" ? "Åpner Vipps…" : "Kjøp lodd"}
+                {status.type === "loading" ? "Åpner…" : "Åpne Vipps"}
               </button>
               <div className="text-sm text-muted-foreground">
                 Pris: <span className="font-medium text-foreground">20 kr</span> per lodd

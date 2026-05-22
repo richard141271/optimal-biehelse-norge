@@ -32,6 +32,10 @@ function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
 }
 
+function isDigits(v: string) {
+  return /^\d+$/.test(v)
+}
+
 function vippsMode() {
   const mode = String(process.env.VIPPS_MODE ?? "").trim().toLowerCase()
   if (mode === "vipps") return "vipps"
@@ -179,11 +183,47 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ re
 
   const params = await context.params
   const ref = String(params.ref ?? "").trim()
-  if (!ref || !isUuid(ref)) {
-    return NextResponse.json({ ok: false, feil: "Ugyldig ref." }, { status: 400 })
-  }
+  if (!ref) return NextResponse.json({ ok: false, feil: "Ugyldig ref." }, { status: 400 })
 
   const admin = createClient<Db>(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+
+  if (isDigits(ref)) {
+    const ticketNumber = Number(ref)
+    if (!Number.isFinite(ticketNumber) || ticketNumber <= 0) {
+      return NextResponse.json({ ok: false, feil: "Ugyldig referanse." }, { status: 400 })
+    }
+
+    const ticket = await admin
+      .from("scratch_tickets")
+      .select("ticket_number, prize_name, is_winner, claimed")
+      .eq("ticket_number", ticketNumber)
+      .maybeSingle()
+
+    if (ticket.error || !ticket.data) {
+      return NextResponse.json({ ok: false, feil: "Ukjent skrapelodd." }, { status: 404 })
+    }
+
+    const t = ticket.data as {
+      ticket_number?: number | null
+      prize_name?: string | null
+      is_winner?: boolean | null
+      claimed?: boolean | null
+    }
+
+    return NextResponse.json({
+      ok: true,
+      ticket: {
+        ticketNumber: Number(t.ticket_number ?? 0),
+        prizeName: t.prize_name ?? null,
+        isWinner: Boolean(t.is_winner),
+        claimed: Boolean(t.claimed),
+      },
+    })
+  }
+
+  if (!isUuid(ref)) {
+    return NextResponse.json({ ok: false, feil: "Ugyldig referanse." }, { status: 400 })
+  }
 
   const payment = await admin
     .from("scratch_payments")

@@ -19,6 +19,10 @@ function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
 }
 
+function isDigits(v: string) {
+  return /^\d+$/.test(v)
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
@@ -32,18 +36,35 @@ export default function SkrapeloddTicketPage({ params }: { params: { ref: string
   const [load, setLoad] = useState<LoadState>({ type: "loading" })
   const [revealed, setRevealed] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [starting, setStarting] = useState(false)
-  const [startError, setStartError] = useState<string | null>(null)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const drawingRef = useRef(false)
+  const autoFixTriedRef = useRef(false)
 
   useEffect(() => {
     let active = true
     async function run() {
-      if (!ref || !isUuid(ref)) {
-        setLoad({ type: "error", message: "Ugyldig referanse." })
+      const refOk = !!ref && (isDigits(ref) || isUuid(ref))
+      if (!refOk) {
+        if (!autoFixTriedRef.current) {
+          autoFixTriedRef.current = true
+          try {
+            const res = await fetch("/api/skrapelodd/kjop", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({}),
+            })
+            const data = (await res.json()) as { ok?: boolean; redirectUrl?: string | null }
+            const redirectUrl = String(data.redirectUrl ?? "").trim()
+            if (res.ok && data.ok && redirectUrl) {
+              window.location.href = redirectUrl
+              return
+            }
+          } catch {
+          }
+        }
+        setLoad({ type: "error", message: "Kunne ikke hente skrapelodd." })
         return
       }
       setLoad({ type: "loading" })
@@ -67,6 +88,24 @@ export default function SkrapeloddTicketPage({ params }: { params: { ref: string
           if (data.ok && data.ticket) {
             setLoad({ type: "ready", ticket: data.ticket })
             return
+          }
+
+          if (!res.ok && (res.status === 400 || res.status === 404) && !autoFixTriedRef.current) {
+            autoFixTriedRef.current = true
+            try {
+              const newRes = await fetch("/api/skrapelodd/kjop", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({}),
+              })
+              const newData = (await newRes.json()) as { ok?: boolean; redirectUrl?: string | null }
+              const redirectUrl = String(newData.redirectUrl ?? "").trim()
+              if (newRes.ok && newData.ok && redirectUrl) {
+                window.location.href = redirectUrl
+                return
+              }
+            } catch {
+            }
           }
 
           if (!res.ok && data.feil) {
@@ -97,29 +136,6 @@ export default function SkrapeloddTicketPage({ params }: { params: { ref: string
       active = false
     }
   }, [ref])
-
-  async function startTest() {
-    setStartError(null)
-    setStarting(true)
-    try {
-      const res = await fetch("/api/skrapelodd/kjop", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-      })
-      const data = (await res.json()) as { ok?: boolean; feil?: string; redirectUrl?: string | null }
-      const redirectUrl = String(data.redirectUrl ?? "").trim()
-      if (!res.ok || !data.ok || !redirectUrl) {
-        setStartError(data.feil ?? "Kunne ikke starte test.")
-        return
-      }
-      window.location.href = redirectUrl
-    } catch {
-      setStartError("Kunne ikke starte test.")
-    } finally {
-      setStarting(false)
-    }
-  }
 
   useEffect(() => {
     if (load.type !== "ready") return
@@ -256,16 +272,7 @@ export default function SkrapeloddTicketPage({ params }: { params: { ref: string
 
         {load.type === "error" ? (
           <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-6 text-sm text-destructive">
-            <div>{load.message}</div>
-            {startError ? <div className="mt-2">{startError}</div> : null}
-            <div className="mt-4 flex flex-wrap gap-3 text-sm">
-              <button className="underline underline-offset-4" onClick={() => startTest()} disabled={starting}>
-                {starting ? "Starter…" : "Start testlodd"}
-              </button>
-              <Link href="/skrapelodd" className="underline underline-offset-4">
-                Tilbake
-              </Link>
-            </div>
+            {load.message}
           </div>
         ) : null}
 
