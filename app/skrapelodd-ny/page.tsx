@@ -1,0 +1,61 @@
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+
+type Status =
+  | { type: "idle" }
+  | { type: "loading" }
+  | { type: "error"; message: string }
+
+export default function SkrapeloddNyPage() {
+  const router = useRouter()
+  const [status, setStatus] = useState<Status>({ type: "idle" })
+
+  async function start() {
+    setStatus({ type: "loading" })
+    try {
+      const res = await fetch("/api/skrapelodd-ny/new", { method: "POST", cache: "no-store" })
+      const data = (await res.json()) as { ok?: boolean; feil?: string; redirectUrl?: string | null }
+      const redirectUrl = String(data.redirectUrl ?? "").trim()
+      if (!res.ok || !data.ok || !redirectUrl) {
+        setStatus({ type: "error", message: data.feil ?? "Kunne ikke hente skrapelodd." })
+        return
+      }
+      router.push(redirectUrl)
+      router.refresh()
+    } catch {
+      setStatus({ type: "error", message: "Kunne ikke hente skrapelodd." })
+    }
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-10">
+      <div className="space-y-2">
+        <div className="text-sm text-muted-foreground">
+          <Link href="/admin" className="underline underline-offset-4">
+            Tilbake
+          </Link>
+        </div>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Skrapelodd (ny)</h1>
+        <p className="text-muted-foreground">Hent et skrapelodd og skrap frem resultatet.</p>
+      </div>
+
+      {status.type === "error" ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {status.message}
+        </div>
+      ) : null}
+
+      <button
+        onClick={start}
+        disabled={status.type === "loading"}
+        className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
+      >
+        {status.type === "loading" ? "Henter…" : "Hent skrapelodd"}
+      </button>
+    </div>
+  )
+}
+

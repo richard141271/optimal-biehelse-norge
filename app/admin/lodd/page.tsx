@@ -883,136 +883,148 @@ export default function AdminLoddPage() {
                 </div>
               </section>
 
-              <section className="rounded-2xl border bg-card p-6 lg:col-span-2">
-                <h2 className="text-lg font-semibold">Salg (valgt lotteri)</h2>
-                {selectedLotteriId ? (
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Registrer kjøp her. Vipps kan bruke en referanse, kontant kan registreres direkte som betalt.
-                  </p>
-                ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">Velg et lotteri for å se salg.</p>
-                )}
+              <details className="rounded-2xl border bg-card lg:col-span-2">
+                <summary className="cursor-pointer list-none p-6">
+                  <div className="text-lg font-semibold">Salg (valgt lotteri)</div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    {selectedLotteriId
+                      ? "Åpne ved behov for å registrere kjøp og se salg."
+                      : "Velg et lotteri først."}
+                  </div>
+                </summary>
 
-                <div className="mt-4 space-y-3">
+                <div className="px-6 pb-6">
                   {selectedLotteriId ? (
-                    <div className="rounded-xl border bg-background p-4">
-                      <div className="text-sm font-medium">Registrer kjøp</div>
-                      <div className="mt-3 grid gap-3 sm:grid-cols-4">
-                        <div className="space-y-1 sm:col-span-2">
-                          <Label htmlFor="kjop_phone">Telefon</Label>
-                          <Input
-                            id="kjop_phone"
-                            value={kjopPhone}
-                            onChange={(e) => setKjopPhone(e.target.value)}
-                            inputMode="tel"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="kjop_antall">Antall</Label>
-                          <Input
-                            id="kjop_antall"
-                            value={kjopAntall}
-                            onChange={(e) => setKjopAntall(e.target.value)}
-                            inputMode="numeric"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="kjop_metode">Betaling</Label>
-                          <select
-                            id="kjop_metode"
-                            className="h-9 w-full rounded-lg border bg-background px-3 text-sm"
-                            value={kjopMetode}
-                            onChange={(e) => setKjopMetode(e.target.value === "kontant" ? "kontant" : "vipps")}
-                          >
-                            <option value="vipps">Vipps</option>
-                            <option value="kontant">Kontant</option>
-                          </select>
-                        </div>
-                        {kjopMetode === "vipps" ? (
-                          <div className="space-y-1 sm:col-span-4">
-                            <Label htmlFor="kjop_vipps_ref">Vipps ref (valgfritt)</Label>
-                            <Input
-                              id="kjop_vipps_ref"
-                              value={kjopVippsRef}
-                              onChange={(e) => setKjopVippsRef(e.target.value)}
-                              placeholder="Hvis tomt, lages automatisk"
-                            />
-                          </div>
-                        ) : null}
-                        <div className="sm:col-span-4">
-                          <label className="inline-flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={kjopBetalt}
-                              onChange={(e) => setKjopBetalt(e.target.checked)}
-                            />
-                            Registrer som betalt
-                          </label>
-                        </div>
-                        <div className="sm:col-span-4">
-                          <Button variant="outline" onClick={createKjop} disabled={creatingKjop}>
-                            {creatingKjop ? "Lagrer…" : "Registrer"}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                  {state.kjop.length ? (
-                    state.kjop.map((k) => {
-                      const from = Number(k.ticket_from ?? 0)
-                      const to = Number(k.ticket_to ?? 0)
-                      const hasWinnerInRange =
-                        Number.isFinite(from) &&
-                        from > 0 &&
-                        Number.isFinite(to) &&
-                        to >= from &&
-                        winnerNumbers.some((n) => n >= from && n <= to)
-
-                      return (
-                      <div
-                        key={k.id}
-                        className={
-                          hasWinnerInRange
-                            ? "rounded-xl border border-emerald-200 bg-emerald-50 p-4"
-                            : "rounded-xl border bg-background p-4"
-                        }
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="text-sm">
-                            <span className="font-medium">#{k.ticket_from ?? "?"}–{k.ticket_to ?? "?"}</span>
-                            <span className="ml-2 text-muted-foreground">
-                              {k.phone} · {k.antall} lodd · {Number(k.belop ?? 0)} kr · {k.status}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {k.status !== "paid" ? (
-                              <Button variant="outline" onClick={() => markPaid(k.id)}>
-                                Marker betalt
-                              </Button>
-                            ) : null}
-                            {state.role === "superadmin" ? (
-                              <Button variant="destructive" onClick={() => deleteRow("kjop", k.id)}>
-                                Slett
-                              </Button>
-                            ) : null}
-                          </div>
-                        </div>
-                        {k.vipps_ref ? (
-                          <div className="mt-2 text-xs text-muted-foreground">Vipps ref: {k.vipps_ref}</div>
-                        ) : null}
-                        {k.paid_at ? (
-                          <div className="mt-1 text-xs text-muted-foreground">Betalt: {formatDateTime(k.paid_at)}</div>
-                        ) : null}
-                      </div>
-                      )
-                    })
+                    <p className="text-sm text-muted-foreground">
+                      Registrer kjøp her. Vipps kan bruke en referanse, kontant kan registreres direkte som betalt.
+                    </p>
                   ) : (
-                    <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
-                      Ingen kjøp registrert.
-                    </div>
+                    <p className="text-sm text-muted-foreground">Velg et lotteri for å se salg.</p>
                   )}
+
+                  <div className="mt-4 space-y-3">
+                    {selectedLotteriId ? (
+                      <div className="rounded-xl border bg-background p-4">
+                        <div className="text-sm font-medium">Registrer kjøp</div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                          <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor="kjop_phone">Telefon</Label>
+                            <Input
+                              id="kjop_phone"
+                              value={kjopPhone}
+                              onChange={(e) => setKjopPhone(e.target.value)}
+                              inputMode="tel"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="kjop_antall">Antall</Label>
+                            <Input
+                              id="kjop_antall"
+                              value={kjopAntall}
+                              onChange={(e) => setKjopAntall(e.target.value)}
+                              inputMode="numeric"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="kjop_metode">Betaling</Label>
+                            <select
+                              id="kjop_metode"
+                              className="h-9 w-full rounded-lg border bg-background px-3 text-sm"
+                              value={kjopMetode}
+                              onChange={(e) => setKjopMetode(e.target.value === "kontant" ? "kontant" : "vipps")}
+                            >
+                              <option value="vipps">Vipps</option>
+                              <option value="kontant">Kontant</option>
+                            </select>
+                          </div>
+                          {kjopMetode === "vipps" ? (
+                            <div className="space-y-1 sm:col-span-4">
+                              <Label htmlFor="kjop_vipps_ref">Vipps ref (valgfritt)</Label>
+                              <Input
+                                id="kjop_vipps_ref"
+                                value={kjopVippsRef}
+                                onChange={(e) => setKjopVippsRef(e.target.value)}
+                                placeholder="Hvis tomt, lages automatisk"
+                              />
+                            </div>
+                          ) : null}
+                          <div className="sm:col-span-4">
+                            <label className="inline-flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={kjopBetalt}
+                                onChange={(e) => setKjopBetalt(e.target.checked)}
+                              />
+                              Registrer som betalt
+                            </label>
+                          </div>
+                          <div className="sm:col-span-4">
+                            <Button variant="outline" onClick={createKjop} disabled={creatingKjop}>
+                              {creatingKjop ? "Lagrer…" : "Registrer"}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    {state.kjop.length ? (
+                      state.kjop.map((k) => {
+                        const from = Number(k.ticket_from ?? 0)
+                        const to = Number(k.ticket_to ?? 0)
+                        const hasWinnerInRange =
+                          Number.isFinite(from) &&
+                          from > 0 &&
+                          Number.isFinite(to) &&
+                          to >= from &&
+                          winnerNumbers.some((n) => n >= from && n <= to)
+
+                        return (
+                          <div
+                            key={k.id}
+                            className={
+                              hasWinnerInRange
+                                ? "rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+                                : "rounded-xl border bg-background p-4"
+                            }
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="text-sm">
+                                <span className="font-medium">#{k.ticket_from ?? "?"}–{k.ticket_to ?? "?"}</span>
+                                <span className="ml-2 text-muted-foreground">
+                                  {k.phone} · {k.antall} lodd · {Number(k.belop ?? 0)} kr · {k.status}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {k.status !== "paid" ? (
+                                  <Button variant="outline" onClick={() => markPaid(k.id)}>
+                                    Marker betalt
+                                  </Button>
+                                ) : null}
+                                {state.role === "superadmin" ? (
+                                  <Button variant="destructive" onClick={() => deleteRow("kjop", k.id)}>
+                                    Slett
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+                            {k.vipps_ref ? (
+                              <div className="mt-2 text-xs text-muted-foreground">Vipps ref: {k.vipps_ref}</div>
+                            ) : null}
+                            {k.paid_at ? (
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                Betalt: {formatDateTime(k.paid_at)}
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
+                        Ingen kjøp registrert.
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </section>
+              </details>
             </div>
           ) : null}
     </div>
