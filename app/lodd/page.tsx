@@ -92,7 +92,7 @@ export default function LoddPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [kjopState, setKjopState] = useState<KjopState>({ type: "idle" })
   const [telefon, setTelefon] = useState("")
-  const [antall, setAntall] = useState(5)
+  const [antallInput, setAntallInput] = useState("5")
   const [now, setNow] = useState(0)
 
   const hent = async () => {
@@ -129,6 +129,11 @@ export default function LoddPage() {
 
   const aktivtLotteri = state.type === "ready" ? state.lotteri : null
   const pris = Number(aktivtLotteri?.ticket_price ?? 20)
+  const antall = useMemo(() => {
+    const n = Math.floor(Number(String(antallInput ?? "").replace(",", ".").trim()))
+    if (!Number.isFinite(n)) return 1
+    return Math.max(1, Math.min(50, n))
+  }, [antallInput])
   const belop = antall * (Number.isFinite(pris) && pris > 0 ? pris : 20)
   const countdown = formatCountdown(aktivtLotteri?.end_at ?? null, now)
 
@@ -159,14 +164,13 @@ export default function LoddPage() {
         setKjopState({ type: "error", message: (data as ApiKjopErr).feil ?? "Kunne ikke opprette kjøp." })
         return
       }
-      setKjopState({
-        type: "created",
-        orderId: String((data as ApiKjopOk).orderId ?? ""),
-        vippsRef: String((data as ApiKjopOk).vippsRef ?? ""),
-        belop: Number((data as ApiKjopOk).belop ?? 0),
-        ticketFrom: Number((data as ApiKjopOk).ticketFrom ?? 0),
-        ticketTo: Number((data as ApiKjopOk).ticketTo ?? 0),
-      })
+      const ok = data as ApiKjopOk
+      const vippsHref = `/vipps?type=lodd&belop=${encodeURIComponent(
+        String(ok.belop)
+      )}&ref=${encodeURIComponent(ok.vippsRef)}&ticketFrom=${encodeURIComponent(
+        String(ok.ticketFrom)
+      )}&ticketTo=${encodeURIComponent(String(ok.ticketTo))}&return=${encodeURIComponent("/lodd")}`
+      window.location.href = vippsHref
     } catch {
       setKjopState({ type: "error", message: "Noe gikk galt. Prøv igjen." })
     }
@@ -240,17 +244,21 @@ export default function LoddPage() {
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={() => setAntall((v) => Math.max(1, v - 1))}
+                            onClick={() => setAntallInput(String(Math.max(1, antall - 1)))}
                           >
                             −
                           </Button>
-                          <div className="min-w-[64px] rounded-lg border bg-background px-3 py-2 text-center text-sm">
-                            {antall}
-                          </div>
+                          <Input
+                            aria-label="Antall lodd"
+                            value={antallInput}
+                            onChange={(e) => setAntallInput(e.target.value)}
+                            inputMode="numeric"
+                            className="w-20 text-center"
+                          />
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={() => setAntall((v) => Math.min(50, v + 1))}
+                            onClick={() => setAntallInput(String(Math.min(50, antall + 1)))}
                           >
                             +
                           </Button>

@@ -77,6 +77,7 @@ function schemaFeil(msg?: string) {
     "  tittel text not null default 'Loddsalg',\n" +
     "  beskrivelse text,\n" +
     "  ticket_price numeric not null default 20,\n" +
+    "  sale_duration_minutes integer not null default 10080,\n" +
     "  status text not null default 'draft',\n" +
     "  start_at timestamptz,\n" +
     "  end_at timestamptz,\n" +
@@ -86,6 +87,11 @@ function schemaFeil(msg?: string) {
     "  winner_drawn_at timestamptz,\n" +
     "  winner_drawn_by_epost text\n" +
     ");\n" +
+    "do $$ begin\n" +
+    "  if to_regclass('public.lodd_lotteri') is not null then\n" +
+    "    alter table public.lodd_lotteri add column if not exists sale_duration_minutes integer not null default 10080;\n" +
+    "  end if;\n" +
+    "end $$;\n" +
     "create table if not exists public.lodd_lotteri_premier (\n" +
     "  lotteri_id uuid not null references public.lodd_lotteri(id) on delete cascade,\n" +
     "  premie_id uuid not null references public.lodd_premier(id) on delete cascade,\n" +
@@ -189,7 +195,7 @@ export async function GET(request: Request) {
 
   const { data: lotterier, error: lotteriError } = await gate.admin
     .from("lodd_lotteri")
-    .select("id, created_at, tittel, beskrivelse, ticket_price, status, start_at, end_at, winner_loddnr, winner_phone, winner_drawn_at")
+    .select("id, created_at, tittel, beskrivelse, ticket_price, sale_duration_minutes, status, start_at, end_at, winner_loddnr, winner_phone, winner_drawn_at")
     .order("created_at", { ascending: false })
     .limit(20)
 
@@ -326,9 +332,15 @@ export async function POST(request: Request) {
     const tittel = String(body.tittel ?? "Loddsalg").trim() || "Loddsalg"
     const ticketPrice = Number(body.ticketPrice ?? 20)
     const beskrivelse = String(body.beskrivelse ?? "").trim()
+    const saleDaysInput = Number(body.saleDays ?? NaN)
     if (!Number.isFinite(ticketPrice) || ticketPrice <= 0) {
       return NextResponse.json({ ok: false, feil: "Ugyldig pris per lodd." }, { status: 400 })
     }
+    if (Number.isFinite(saleDaysInput) && saleDaysInput <= 0) {
+      return NextResponse.json({ ok: false, feil: "Ugyldig salg (dager)." }, { status: 400 })
+    }
+    const saleMinutesRaw = Number.isFinite(saleDaysInput) ? Math.round(saleDaysInput * 24 * 60) : 10080
+    const saleMinutes = Number.isFinite(saleMinutesRaw) && saleMinutesRaw > 0 ? saleMinutesRaw : 10080
 
     const { data, error } = await gate.admin
       .from("lodd_lotteri")
@@ -336,6 +348,7 @@ export async function POST(request: Request) {
         tittel,
         beskrivelse: beskrivelse || null,
         ticket_price: ticketPrice,
+        sale_duration_minutes: saleMinutes,
         status: "draft",
         created_by_epost: gate.email,
       })
@@ -358,6 +371,8 @@ export async function POST(request: Request) {
     const tittel = String(body.tittel ?? "").trim()
     const beskrivelse = String(body.beskrivelse ?? "").trim()
     const ticketPrice = Number(body.ticketPrice ?? NaN)
+    const saleDaysInput = Number(body.saleDays ?? NaN)
+    const endAtInput = String(body.endAt ?? "").trim()
 
     if (!lotteriId) {
       return NextResponse.json({ ok: false, feil: "Mangler lotteri." }, { status: 400 })
@@ -368,12 +383,52 @@ export async function POST(request: Request) {
     if (Number.isFinite(ticketPrice) && ticketPrice <= 0) {
       return NextResponse.json({ ok: false, feil: "Ugyldig pris per lodd." }, { status: 400 })
     }
+    if (Number.isFinite(saleDaysInput) && saleDaysInput <= 0) {
+      return NextResponse.json({ ok: false, feil: "Ugyldig salg (dager)." }, { status: 400 })
+    }
 
     const patch: Record<string, unknown> = {
       tittel,
       beskrivelse: beskrivelse || null,
     }
     if (Number.isFinite(ticketPrice)) patch.ticket_price = ticketPrice
+    if (Number.isFinite(saleDaysInput)) {
+      const minutes = Math.round(saleDaysInput * 24 * 60)
+      if (Number.isFinite(minutes) && minutes > 0) patch.sale_duration_minutes = minutes
+    }
+
+    if (endAtInput) {
+      const d = new Date(endAtInput)
+      if (Number.isNaN(d.getTime())) {
+        return NextResponse.json({ ok: false, feil: "Ugyldig sluttdato." }, { status: 400 })
+      }
+
+      const { data: lotteriRow, error: lotteriError } = await gate.admin
+        .from("lodd_lotteri")
+        .select("start_at, status")
+        .eq("id", lotteriId)
+        .maybeSingle()
+
+      if (lotteriError) {
+        const sf = schemaFeil((lotteriError as { message?: string } | null)?.message)
+        return NextResponse.json(
+          { ok: false, feil: sf ?? "Kunne ikke hente lotteri." },
+          { status: sf ? 500 : 400 }
+        )
+      }
+
+      const startAtIso = String((lotteriRow as Record<string, unknown> | null)?.start_at ?? "").trim()
+      if (startAtIso) {
+        const start = new Date(startAtIso)
+        if (!Number.isNaN(start.getTime())) {
+          const ms = d.getTime() - start.getTime()
+          const minutes = Math.max(1, Math.round(ms / (60 * 1000)))
+          patch.sale_duration_minutes = minutes
+        }
+      }
+
+      patch.end_at = d.toISOString()
+    }
 
     const { error } = await gate.admin.from("lodd_lotteri").update(patch).eq("id", lotteriId)
     if (error) {
@@ -529,15 +584,14 @@ export async function POST(request: Request) {
 
   if (action === "activateLotteri") {
     const lotteriId = String(body.lotteriId ?? "").trim()
-    const durationDays = Math.floor(Number(body.durationDays ?? 14))
+    const durationDaysInput = Number(body.durationDays ?? NaN)
     if (!lotteriId) {
       return NextResponse.json({ ok: false, feil: "Mangler lotteri." }, { status: 400 })
     }
-    const days = Number.isFinite(durationDays) && durationDays > 0 ? durationDays : 14
 
     const { data: lotteriRow } = await gate.admin
       .from("lodd_lotteri")
-      .select("id, status")
+      .select("id, status, sale_duration_minutes")
       .eq("id", lotteriId)
       .maybeSingle()
 
@@ -573,13 +627,25 @@ export async function POST(request: Request) {
       )
     }
 
+    const savedMinutes = Math.floor(
+      Number((lotteriRow as Record<string, unknown> | null)?.sale_duration_minutes ?? 10080)
+    )
+    const minutesInput = Number.isFinite(durationDaysInput) ? Math.round(durationDaysInput * 24 * 60) : NaN
+    const minutes =
+      Number.isFinite(minutesInput) && minutesInput > 0
+        ? minutesInput
+        : Number.isFinite(savedMinutes) && savedMinutes > 0
+          ? savedMinutes
+          : 10080
+
     const now = new Date()
-    const end = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
+    const end = new Date(now.getTime() + minutes * 60 * 1000)
 
     const { error } = await gate.admin
       .from("lodd_lotteri")
       .update({
         status: "active",
+        sale_duration_minutes: minutes,
         start_at: now.toISOString(),
         end_at: end.toISOString(),
         winner_loddnr: null,

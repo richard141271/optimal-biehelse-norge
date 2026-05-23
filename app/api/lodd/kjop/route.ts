@@ -21,6 +21,7 @@ function schemaFeil(msg?: string) {
     "  tittel text not null default 'Loddsalg',\n" +
     "  beskrivelse text,\n" +
     "  ticket_price numeric not null default 20,\n" +
+    "  sale_duration_minutes integer not null default 10080,\n" +
     "  status text not null default 'draft',\n" +
     "  start_at timestamptz,\n" +
     "  end_at timestamptz,\n" +
@@ -30,6 +31,11 @@ function schemaFeil(msg?: string) {
     "  winner_drawn_at timestamptz,\n" +
     "  winner_drawn_by_epost text\n" +
     ");\n" +
+    "do $$ begin\n" +
+    "  if to_regclass('public.lodd_lotteri') is not null then\n" +
+    "    alter table public.lodd_lotteri add column if not exists sale_duration_minutes integer not null default 10080;\n" +
+    "  end if;\n" +
+    "end $$;\n" +
     "create table if not exists public.lodd_kjop (\n" +
     "  id uuid primary key default gen_random_uuid(),\n" +
     "  created_at timestamptz not null default now(),\n" +

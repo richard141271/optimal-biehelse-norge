@@ -25,6 +25,9 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
   const type = normalizeType(rawType)
   const rawBelop = (getFirst(searchParams?.belop) ?? "").trim()
   const ref = (getFirst(searchParams?.ref) ?? "").trim()
+  const ticketFrom = (getFirst(searchParams?.ticketFrom) ?? "").trim()
+  const ticketTo = (getFirst(searchParams?.ticketTo) ?? "").trim()
+  const returnHref = (getFirst(searchParams?.return) ?? "").trim()
   const parsedBelop = Number(rawBelop)
   const belop =
     Number.isFinite(parsedBelop) && parsedBelop > 0 ? Math.round(parsedBelop) : null
@@ -47,7 +50,7 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
           ? "Støttemedlem"
           : "Medlemskap"
 
-  const tilbakeHref = type === "lodd" ? "/lodd" : "/bli-medlem"
+  const tilbakeHref = returnHref || (type === "lodd" ? "/lodd" : "/bli-medlem")
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
@@ -71,6 +74,12 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
           <div className="rounded-2xl border bg-card p-6 sm:p-8">
             <div className="text-sm font-medium">{tittel}</div>
             <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+              {type === "lodd" && ticketFrom && ticketTo ? (
+                <div>
+                  <span className="font-medium text-foreground">Dine lodd:</span>{" "}
+                  {ticketFrom}–{ticketTo}
+                </div>
+              ) : null}
               <div>
                 <span className="font-medium text-foreground">Vipps-nummer:</span>{" "}
                 #{vippsNummer}
@@ -161,7 +170,7 @@ export default function VippsPage({ searchParams }: { searchParams?: SearchParam
             </div>
             <div className="mt-6">
               <Link
-                href="/bli-medlem"
+                href={tilbakeHref}
                 className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
               >
                 Tilbake

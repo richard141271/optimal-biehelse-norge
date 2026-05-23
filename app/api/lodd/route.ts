@@ -14,6 +14,7 @@ function schemaFeil(msg?: string) {
     "  tittel text not null default 'Loddsalg',\n" +
     "  beskrivelse text,\n" +
     "  ticket_price numeric not null default 20,\n" +
+    "  sale_duration_minutes integer not null default 10080,\n" +
     "  status text not null default 'draft',\n" +
     "  start_at timestamptz,\n" +
     "  end_at timestamptz,\n" +
@@ -23,6 +24,11 @@ function schemaFeil(msg?: string) {
     "  winner_drawn_at timestamptz,\n" +
     "  winner_drawn_by_epost text\n" +
     ");\n" +
+    "do $$ begin\n" +
+    "  if to_regclass('public.lodd_lotteri') is not null then\n" +
+    "    alter table public.lodd_lotteri add column if not exists sale_duration_minutes integer not null default 10080;\n" +
+    "  end if;\n" +
+    "end $$;\n" +
     "create table if not exists public.lodd_lotteri_premier (\n" +
     "  lotteri_id uuid not null references public.lodd_lotteri(id) on delete cascade,\n" +
     "  premie_id uuid not null references public.lodd_premier(id) on delete cascade,\n" +
@@ -80,7 +86,9 @@ export async function GET() {
 
   const { data: lotteri, error: lotteriError } = await admin
     .from("lodd_lotteri")
-    .select("id, tittel, beskrivelse, ticket_price, status, start_at, end_at, winner_loddnr, winner_phone, winner_drawn_at")
+    .select(
+      "id, tittel, beskrivelse, ticket_price, sale_duration_minutes, status, start_at, end_at, winner_loddnr, winner_phone, winner_drawn_at"
+    )
     .eq("status", "active")
     .order("start_at", { ascending: false })
     .limit(1)

@@ -12,6 +12,7 @@ type Lotteri = {
   tittel?: string | null
   beskrivelse?: string | null
   ticket_price?: number | null
+  sale_duration_minutes?: number | null
   status?: string | null
   start_at?: string | null
   end_at?: string | null
@@ -116,6 +117,14 @@ function toSmsHref(phone: string, body: string) {
   return `sms:${digits}?body=${encoded}`
 }
 
+function toDateTimeLocalValue(iso?: string | null) {
+  if (!iso) return ""
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export default function AdminLoddPage() {
   const router = useRouter()
   const [state, setState] = useState<State>({ type: "loading" })
@@ -124,11 +133,13 @@ export default function AdminLoddPage() {
 
   const [tittel, setTittel] = useState("Månedslotteri")
   const [ticketPrice, setTicketPrice] = useState("20")
-  const [durationDays, setDurationDays] = useState("14")
+  const [durationDays, setDurationDays] = useState("7")
   const [selectedLotteriId, setSelectedLotteriId] = useState<string>("")
   const [editLotteriTittel, setEditLotteriTittel] = useState("")
   const [editLotteriBeskrivelse, setEditLotteriBeskrivelse] = useState("")
   const [editLotteriTicketPrice, setEditLotteriTicketPrice] = useState("")
+  const [editLotteriSaleDays, setEditLotteriSaleDays] = useState("")
+  const [editLotteriEndAt, setEditLotteriEndAt] = useState("")
   const [editingPremieId, setEditingPremieId] = useState<string | null>(null)
   const [editTittel, setEditTittel] = useState("")
   const [editSponsorNavn, setEditSponsorNavn] = useState("")
@@ -212,6 +223,26 @@ export default function AdminLoddPage() {
     setEditLotteriTicketPrice(
       selectedLotteri.ticket_price != null ? String(Number(selectedLotteri.ticket_price)) : ""
     )
+    const savedMinutes = Math.floor(Number(selectedLotteri.sale_duration_minutes ?? NaN))
+    if (Number.isFinite(savedMinutes) && savedMinutes > 0) {
+      const rawDays = savedMinutes / (24 * 60)
+      const days = Number.isFinite(rawDays) ? Math.round(rawDays * 1000) / 1000 : 7
+      setEditLotteriSaleDays(String(days))
+    } else if (selectedLotteri.start_at && selectedLotteri.end_at) {
+      const start = new Date(selectedLotteri.start_at)
+      const end = new Date(selectedLotteri.end_at)
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+        const minutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / (60 * 1000)))
+        const rawDays = minutes / (24 * 60)
+        const days = Number.isFinite(rawDays) ? Math.round(rawDays * 1000) / 1000 : 7
+        setEditLotteriSaleDays(String(days))
+      } else {
+        setEditLotteriSaleDays("7")
+      }
+    } else {
+      setEditLotteriSaleDays("7")
+    }
+    setEditLotteriEndAt(toDateTimeLocalValue(selectedLotteri.end_at ?? null))
   }, [state, selectedLotteri])
 
   const hent = useCallback(
@@ -288,12 +319,18 @@ export default function AdminLoddPage() {
       setActionError("Ugyldig pris per lodd.")
       return
     }
+    const saleDays = Number(durationDays.replace(",", ".").trim())
+    if (!Number.isFinite(saleDays) || saleDays <= 0) {
+      setActionError("Ugyldig salg (dager).")
+      return
+    }
     setCreating(true)
     try {
       await doAction({
         action: "createLotteri",
         tittel,
         ticketPrice: price,
+        saleDays,
       })
     } finally {
       setCreating(false)
@@ -305,21 +342,30 @@ export default function AdminLoddPage() {
     if (!id) return
     const priceRaw = editLotteriTicketPrice.replace(",", ".").trim()
     const price = priceRaw ? Number(priceRaw) : NaN
+    const saleDays = Number(editLotteriSaleDays.replace(",", ".").trim())
+    if (!Number.isFinite(saleDays) || saleDays <= 0) {
+      setActionError("Ugyldig salg (dager).")
+      return
+    }
+    const endAt = editLotteriEndAt ? new Date(editLotteriEndAt) : null
+    const endAtIso = endAt && !Number.isNaN(endAt.getTime()) ? endAt.toISOString() : ""
     await doAction({
       action: "updateLotteri",
       lotteriId: id,
       tittel: editLotteriTittel,
       beskrivelse: editLotteriBeskrivelse,
       ticketPrice: Number.isFinite(price) ? price : undefined,
+      saleDays,
+      endAt: endAtIso || undefined,
     })
   }
 
   async function activateLotteri(id: string) {
-    const days = Math.floor(Number(durationDays))
+    const days = Number(editLotteriSaleDays.replace(",", ".").trim())
     await doAction({
       action: "activateLotteri",
       lotteriId: id,
-      durationDays: Number.isFinite(days) && days > 0 ? days : 14,
+      durationDays: Number.isFinite(days) && days > 0 ? days : 7,
     })
   }
 
@@ -632,6 +678,26 @@ export default function AdminLoddPage() {
                             inputMode="decimal"
                           />
                         </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="edit_lotteri_days">Salg (dager)</Label>
+                          <Input
+                            id="edit_lotteri_days"
+                            value={editLotteriSaleDays}
+                            onChange={(e) => setEditLotteriSaleDays(e.target.value)}
+                            inputMode="numeric"
+                          />
+                        </div>
+                        {String(selectedLotteri?.status ?? "") === "active" ? (
+                          <div className="space-y-2 sm:col-span-2">
+                            <Label htmlFor="edit_lotteri_endat">Slutt (dato/tid)</Label>
+                            <Input
+                              id="edit_lotteri_endat"
+                              type="datetime-local"
+                              value={editLotteriEndAt}
+                              onChange={(e) => setEditLotteriEndAt(e.target.value)}
+                            />
+                          </div>
+                        ) : null}
                         <div className="space-y-2 sm:col-span-2">
                           <Label htmlFor="edit_lotteri_desc">Beskrivelse</Label>
                           <Input
