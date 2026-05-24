@@ -16,7 +16,7 @@ type Db = {
 }
 
 type ResponsePayload =
-  | { ok: true; id: string; redirectUrl: string }
+  | { ok: true; id: string; nextUrl: string }
   | { ok: false; feil: string }
 
 const DEFAULT_PRIZES = [
@@ -120,5 +120,5 @@ export async function POST(request: Request) {
     )
   }
 
-  return NextResponse.json<ResponsePayload>({ ok: true, id, redirectUrl: `/skrapelodd-ny/${id}` })
+  return NextResponse.json<ResponsePayload>({ ok: true, id, nextUrl: `/skrapelodd-ny/${id}` })
 }

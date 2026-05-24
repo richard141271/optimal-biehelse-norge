@@ -6,19 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-const VIPPS_QR_BASE = "https://qr.vipps.no/28/2/01/031/52387?v=1"
+const MANUAL_VIPPS_KEY = "obno_manual_vipps_lodd_pending"
 
 function normalizePhone(v: unknown) {
   const digits = String(v ?? "").replace(/\D+/g, "")
   if (!digits) return null
   if (digits.length < 8 || digits.length > 15) return "__invalid__"
   return digits
-}
-
-function buildVippsQrUrl(amountNok: number, message: string) {
-  const amountOre = Math.max(0, Math.round((Number.isFinite(amountNok) ? amountNok : 0) * 100))
-  const m = encodeURIComponent(String(message ?? "").trim())
-  return `${VIPPS_QR_BASE}&a=${encodeURIComponent(String(amountOre))}&m=${m}`
 }
 
 type Lotteri = {
@@ -97,6 +91,7 @@ function formatCountdown(endAt: string | null | undefined, nowMs: number) {
 export default function LoddPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [kjopState, setKjopState] = useState<KjopState>({ type: "idle" })
+  const [visManuellVipps, setVisManuellVipps] = useState(false)
   const [telefon, setTelefon] = useState("")
   const [antallInput, setAntallInput] = useState("5")
   const [now, setNow] = useState(0)
@@ -122,6 +117,15 @@ export default function LoddPage() {
       hent().catch(() => setState({ type: "error", message: "Kunne ikke hente loddsalg." }))
     }, 0)
     return () => clearTimeout(id)
+  }, [])
+
+  useEffect(() => {
+    const raw = window.sessionStorage.getItem(MANUAL_VIPPS_KEY)
+    if (!raw) return
+    window.sessionStorage.removeItem(MANUAL_VIPPS_KEY)
+    setVisManuellVipps(true)
+    const id = window.setTimeout(() => setVisManuellVipps(false), 15_000)
+    return () => window.clearTimeout(id)
   }, [])
 
   useEffect(() => {
@@ -186,10 +190,12 @@ export default function LoddPage() {
       }
 
       const ok = data as ApiKjopOk
-      const reference = String(ok.vippsRef ?? "").trim()
-      const amount = Number(ok.belop ?? 0)
-      const vippsUrl = buildVippsQrUrl(amount, reference)
-      window.location.replace(vippsUrl)
+      window.sessionStorage.setItem(MANUAL_VIPPS_KEY, "1")
+      setVisManuellVipps(true)
+      window.location.href = "vipps://"
+      window.setTimeout(() => {
+        window.location.href = "/lodd"
+      }, 2000)
     } catch {
       setKjopState({ type: "error", message: "Noe gikk galt. Prøv igjen." })
     }
@@ -291,6 +297,12 @@ export default function LoddPage() {
 
                       {kjopState.type === "error" ? (
                         <div className="text-sm text-destructive">{kjopState.message}</div>
+                      ) : null}
+
+                      {visManuellVipps ? (
+                        <div className="text-sm text-muted-foreground">
+                          Åpne Vipps og betal manuelt til #52387
+                        </div>
                       ) : null}
 
                     </form>

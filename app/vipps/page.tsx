@@ -1,79 +1,8 @@
 import Link from "next/link"
-import Image from "next/image"
 
 const vippsNummer = "52387"
 
-function normalizeType(type: string | undefined) {
-  const raw = String(type ?? "").trim().toLowerCase()
-  if (raw === "lodd" || raw === "loddsalg") return "lodd"
-  if (raw === "skrapelodd" || raw === "skrape" || raw === "scratch") return "skrapelodd"
-  if (raw === "donasjon" || raw === "donere" || raw === "donate") return "donasjon"
-  if (raw === "stottemedlem" || raw === "støttemedlem" || raw === "stotte") {
-    return "stottemedlem"
-  }
-  return "medlemskap"
-}
-
-type SearchParams = Record<string, string | string[] | undefined>
-
-function getFirst(value: string | string[] | undefined) {
-  if (Array.isArray(value)) return value[0]
-  return value
-}
-
-export default async function VippsPage({
-  searchParams,
-}: {
-  searchParams?: SearchParams | Promise<SearchParams>
-}) {
-  const sp = ((await Promise.resolve(searchParams)) ?? {}) as SearchParams
-
-  const rawType = getFirst(sp.type)
-  const type = normalizeType(rawType)
-  const rawBelop = (getFirst(sp.belop) ?? "").trim()
-  const ref = (getFirst(sp.ref) ?? "").trim()
-  const messageOverride = (getFirst(sp.message) ?? "").trim()
-  const ticketFrom = (getFirst(sp.ticketFrom) ?? "").trim()
-  const ticketTo = (getFirst(sp.ticketTo) ?? "").trim()
-  const returnHref = (getFirst(sp.return) ?? "").trim()
-  const afterHref = (getFirst(sp.after) ?? "").trim()
-  const parsedBelop = Number(rawBelop)
-  const belop =
-    Number.isFinite(parsedBelop) && parsedBelop > 0 ? Math.round(parsedBelop) : null
-
-  const forslagMelding =
-    messageOverride ||
-    (type === "lodd"
-      ? `OBNO Lodd ${ref || ""}`.trim()
-      : type === "skrapelodd"
-        ? `OBNO Skrapelodd ${ref || ""}`.trim()
-        : type === "donasjon"
-          ? "OBNO Donasjon"
-          : type === "stottemedlem"
-            ? "OBNO Støttemedlem"
-            : "OBNO Medlemskap")
-
-  const tittel =
-    type === "lodd"
-      ? "Loddsalg"
-      : type === "skrapelodd"
-        ? "Skrapelodd"
-      : type === "donasjon"
-        ? "Donasjon"
-        : type === "stottemedlem"
-          ? "Støttemedlem"
-          : "Medlemskap"
-
-  const tilbakeHref =
-    returnHref || (type === "lodd" ? "/lodd" : type === "skrapelodd" ? "/skrapelodd" : "/bli-medlem")
-
-  const deeplink =
-    belop && forslagMelding
-      ? `vipps://pay?V=01&receiverId=${encodeURIComponent(vippsNummer)}&amount=${encodeURIComponent(
-          String(belop)
-        )}&message=${encodeURIComponent(forslagMelding)}`
-      : "vipps://"
-
+export default function VippsPage() {
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
       <div className="space-y-8">
@@ -87,131 +16,32 @@ export default async function VippsPage({
             Betal med Vipps
           </h1>
           <p className="max-w-3xl text-muted-foreground">
-            Denne lenken fungerer i alle nettlesere. På mobil kan du åpne Vipps-appen
-            direkte. På PC/Mac viser vi informasjonen du trenger for å betale i Vipps.
+            Åpne Vipps og betal manuelt til #{vippsNummer}.
           </p>
         </header>
 
-        <section className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border bg-card p-6 sm:p-8">
-            <div className="text-sm font-medium">{tittel}</div>
-            <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-              {type === "lodd" && ticketFrom && ticketTo ? (
-                <div>
-                  <span className="font-medium text-foreground">Dine lodd:</span>{" "}
-                  {ticketFrom}–{ticketTo}
-                </div>
-              ) : null}
-              <div>
-                <span className="font-medium text-foreground">Vipps-nummer:</span>{" "}
-                #{vippsNummer}
-              </div>
-              <div>
-                <span className="font-medium text-foreground">Beløp:</span>{" "}
-                {belop ? `${belop} kr` : "Velg beløp i Vipps"}
-              </div>
-              <div>
-                <span className="font-medium text-foreground">Melding:</span>{" "}
-                {forslagMelding}
-              </div>
+        <section className="rounded-2xl border bg-card p-6 sm:p-8">
+          <div className="text-sm font-medium">Vipps</div>
+          <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+            <div>
+              <span className="font-medium text-foreground">Vipps-nummer:</span> #{vippsNummer}
             </div>
-
-            <div className="mt-5">
-              <div className="text-sm font-medium">QR-kode</div>
-              <div className="mt-2 inline-flex rounded-xl border bg-background p-3">
-                <Image
-                  src="/qr.png"
-                  alt="Vipps QR-kode"
-                  width={220}
-                  height={220}
-                  className="h-auto w-[180px] sm:w-[220px]"
-                  priority
-                />
-              </div>
-              <div className="mt-2 text-xs text-muted-foreground">
-                Skann QR-koden for å åpne Vipps.
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              <a
-                href={deeplink}
-                className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-              >
-                Åpne Vipps
-              </a>
-              {afterHref ? (
-                <Link
-                  href={afterHref}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
-                >
-                  Åpne etterpå
-                </Link>
-              ) : null}
-              <Link
-                href={tilbakeHref}
-                className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
-              >
-                Tilbake
-              </Link>
-            </div>
-
-            <div className="mt-6 space-y-2 text-sm text-muted-foreground">
-              <div className="font-medium text-foreground">Slik betaler du:</div>
-              <ol className="list-decimal space-y-1 pl-5">
-                <li>Åpne Vipps og søk opp #{vippsNummer}.</li>
-                <li>
-                  Velg beløp (
-                  {belop
-                    ? `${belop} kr`
-                    : type === "lodd"
-                      ? "20 kr per lodd (velg antall)"
-                      : "100 kr eller 300 kr"}
-                  ).
-                </li>
-                <li>Skriv gjerne meldingen “{forslagMelding}”.</li>
-              </ol>
-            </div>
+            <div>Åpne Vipps og betal manuelt til #{vippsNummer}.</div>
           </div>
 
-          <div className="rounded-2xl border bg-card p-6 sm:p-8">
-            <div className="text-sm font-medium">Hvis Vipps ikke åpner</div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Noen nettlesere/innstillinger kan blokkere app-åpning. Da kan du åpne
-              Vipps manuelt og bruke #{vippsNummer}.
-            </p>
-            <div className="mt-4 space-y-2 text-sm">
-              <a
-                className="text-primary underline-offset-4 hover:underline"
-                href="https://apps.apple.com/no/app/vipps/id984380185"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Last ned Vipps (iPhone)
-              </a>
-              <a
-                className="block text-primary underline-offset-4 hover:underline"
-                href="https://play.google.com/store/apps/details?id=no.dnb.vipps"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Last ned Vipps (Android)
-              </a>
-            </div>
-            <div className="mt-6">
-              <Link
-                href={tilbakeHref}
-                className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
-              >
-                Tilbake
-              </Link>
-            </div>
-            <div className="mt-4 text-sm text-muted-foreground">
-              Spørsmål?{" "}
-              <a href="mailto:post@obno.no" className="underline underline-offset-4 hover:text-foreground">
-                post@obno.no
-              </a>
-            </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <a
+              href="vipps://"
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+            >
+              Åpne Vipps
+            </a>
+            <Link
+              href="/"
+              className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
+            >
+              Tilbake
+            </Link>
           </div>
         </section>
       </div>

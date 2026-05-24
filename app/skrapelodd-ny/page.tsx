@@ -25,13 +25,13 @@ export default function SkrapeloddNyPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ telefon }),
       })
-      const data = (await res.json()) as { ok?: boolean; feil?: string; redirectUrl?: string | null }
-      const redirectUrl = String(data.redirectUrl ?? "").trim()
-      if (!res.ok || !data.ok || !redirectUrl) {
+      const data = (await res.json()) as { ok?: boolean; feil?: string; nextUrl?: string | null }
+      const nextUrl = String(data.nextUrl ?? "").trim()
+      if (!res.ok || !data.ok || !nextUrl) {
         setStatus({ type: "error", message: data.feil ?? "Kunne ikke hente skrapelodd." })
         return
       }
-      router.push(redirectUrl)
+      router.push(nextUrl)
       router.refresh()
     } catch {
       setStatus({ type: "error", message: "Kunne ikke hente skrapelodd." })

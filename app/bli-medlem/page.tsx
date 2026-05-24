@@ -1,6 +1,4 @@
 import { MedlemskapForm } from "@/components/landing/medlemskap-form"
-import Image from "next/image"
-import Link from "next/link"
 
 export default function BliMedlemPage() {
   return (
@@ -25,24 +23,12 @@ export default function BliMedlemPage() {
               </p>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <Link
-                  href="/vipps?belop=100&type=medlemskap"
+                <a
+                  href="vipps://"
                   className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
                 >
-                  Medlemskap 100 kr
-                </Link>
-                <Link
-                  href="/vipps?belop=300&type=stottemedlem"
-                  className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
-                >
-                  Støttemedlem 300 kr
-                </Link>
-                <Link
-                  href="/vipps?type=donasjon"
-                  className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
-                >
-                  Donasjon (valgfritt)
-                </Link>
+                  Åpne Vipps
+                </a>
               </div>
 
               <div className="mt-4 space-y-1 text-sm">
@@ -71,17 +57,6 @@ export default function BliMedlemPage() {
                   <span className="font-medium text-foreground">3626 75 74418</span>
                 </div>
               </div>
-
-              <div className="mt-4 inline-flex rounded-xl border bg-background p-3">
-                <Image
-                  src="/qr.png"
-                  alt="Vipps QR-kode"
-                  width={220}
-                  height={220}
-                  className="h-auto w-[160px] sm:w-[200px]"
-                  priority
-                />
-              </div>
             </div>
           </div>
 
@@ -101,4 +76,3 @@ export default function BliMedlemPage() {
     </main>
   )
 }
-

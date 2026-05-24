@@ -16,7 +16,7 @@ type Db = {
 }
 
 type ResponsePayload =
-  | { ok: true; redirectUrl: string; ticketNumber: number }
+  | { ok: true; nextUrl: string; ticketNumber: number }
   | { ok: false; feil: string }
 
 function schemaHint(message: string) {
@@ -96,6 +96,6 @@ export async function POST() {
   return NextResponse.json<ResponsePayload>({
     ok: true,
     ticketNumber,
-    redirectUrl: `/skrapelodd/${ticketNumber}`,
+    nextUrl: `/skrapelodd/${ticketNumber}`,
   })
 }

@@ -9,37 +9,6 @@ type Status =
   | { type: "loading" }
   | { type: "error"; message: string }
 
-const VIPPS_RECEIVER_ID = "52387"
-const PRICE_NOK = 20
-
-function isMobileDevice() {
-  if (typeof navigator === "undefined") return false
-  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-}
-
-function buildVippsPayDeepLink(amountNok: number, message: string) {
-  const amount = Number.isFinite(amountNok) ? Math.round(amountNok) : 0
-  const msg = encodeURIComponent(String(message ?? "").trim())
-  return `vipps://pay?V=01&receiverId=${encodeURIComponent(VIPPS_RECEIVER_ID)}&amount=${encodeURIComponent(
-    String(amount)
-  )}&message=${msg}`
-}
-
-function tryOpenVippsOrFallback(deeplink: string, fallbackUrl: string) {
-  let didHide = false
-  const onVisibility = () => {
-    if (document.visibilityState === "hidden") didHide = true
-  }
-  document.addEventListener("visibilitychange", onVisibility)
-
-  window.location.href = deeplink
-
-  window.setTimeout(() => {
-    document.removeEventListener("visibilitychange", onVisibility)
-    if (!didHide) window.location.href = fallbackUrl
-  }, 1200)
-}
-
 export default function SkrapeloddPage() {
   const [status, setStatus] = useState<Status>({ type: "idle" })
   const [telefon, setTelefon] = useState("")
@@ -58,47 +27,23 @@ export default function SkrapeloddPage() {
       const data = (await res.json()) as {
         ok?: boolean
         feil?: string
-        redirectUrl?: string | null
+        nextUrl?: string | null
       }
 
-      const redirectUrl = String(data.redirectUrl ?? "").trim()
+      const nextUrl = String(data.nextUrl ?? "").trim()
 
       if (!res.ok || !data.ok) {
         setStatus({ type: "error", message: data.feil ?? "Kunne ikke hente skrapelodd." })
         return
       }
 
-      const nextUrl = redirectUrl
       if (!nextUrl) {
         setStatus({ type: "error", message: "Kunne ikke hente skrapelodd." })
         return
       }
 
       setNextHref(nextUrl)
-      const ref = nextUrl.split("/").filter(Boolean).pop() ?? ""
-      const message = `OBNO Skrapelodd ${ref}`.trim()
-      const vippsFallbackHref = `/vipps?type=skrapelodd&belop=${encodeURIComponent(
-        String(PRICE_NOK)
-      )}&message=${encodeURIComponent(message)}&ref=${encodeURIComponent(ref)}&return=${encodeURIComponent(
-        "/skrapelodd"
-      )}&after=${encodeURIComponent(nextUrl)}`
-
-      if (!isMobileDevice()) {
-        window.location.href = vippsFallbackHref
-        return
-      }
-
-      const deeplink = buildVippsPayDeepLink(PRICE_NOK, message)
-
-      const onBack = () => {
-        if (document.visibilityState !== "visible") return
-        window.removeEventListener("visibilitychange", onBack)
-        window.location.href = nextUrl
-      }
-      window.addEventListener("visibilitychange", onBack)
-      window.setTimeout(() => window.removeEventListener("visibilitychange", onBack), 2 * 60 * 1000)
-
-      tryOpenVippsOrFallback(deeplink, vippsFallbackHref)
+      window.location.href = nextUrl
     } catch {
       setStatus({ type: "error", message: "Kunne ikke hente skrapelodd." })
     }
