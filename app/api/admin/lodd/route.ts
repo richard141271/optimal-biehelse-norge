@@ -37,6 +37,8 @@ const regnskapSchemaFeil =
   "alter table public.regnskap_poster add column if not exists utlegg_status text;\n" +
   "alter table public.regnskap_poster add column if not exists utlegg_utbetalt_at timestamptz;\n"
 
+const regnskapMotpartForLoddsalg = "4747372406"
+
 function normalizePhone(v: unknown) {
   const digits = String(v ?? "").replace(/\D+/g, "")
   if (!digits) return null
@@ -112,7 +114,12 @@ async function ensureRegnskapForKjop(
   const dato = paidIso.includes("T") ? paidIso.slice(0, 10) : paidIso
   const klokke = paidIso.includes("T") ? paidIso.slice(11, 16) : ""
   const line1 = `${range ? `#${range}` : "Loddsalg"} · ${kjop.antall} lodd · ${formatKr(belop)} · paid`
-  const notat = [line1, vippsRef ? `Vipps ref: ${vippsRef}` : null, `Betalt: ${dato}${klokke ? `, ${klokke}` : ""}`]
+  const notat = [
+    line1,
+    `Telefon: ${kjop.phone}`,
+    vippsRef ? `Vipps ref: ${vippsRef}` : null,
+    `Betalt: ${dato}${klokke ? `, ${klokke}` : ""}`,
+  ]
     .filter(Boolean)
     .join("\n")
 
@@ -120,7 +127,7 @@ async function ensureRegnskapForKjop(
     dato,
     type: "inntekt",
     belop,
-    motpart: kjop.phone,
+    motpart: regnskapMotpartForLoddsalg,
     vare: vippsRef || (range ? `Loddsalg #${range}` : "Loddsalg"),
     notat,
     bilag_path: null,
