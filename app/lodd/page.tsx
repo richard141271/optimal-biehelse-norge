@@ -1,50 +1,19 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { type FormEvent, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 const VIPPS_RECEIVER_ID = "52387"
 
-function isMobileDevice() {
-  if (typeof navigator === "undefined") return false
-  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-}
-
 function buildVippsPayDeepLink(amountNok: number, message: string) {
   const amount = Number.isFinite(amountNok) ? Math.round(amountNok) : 0
   const msg = encodeURIComponent(String(message ?? "").trim())
-  return `vipps://pay?recipient=${encodeURIComponent(VIPPS_RECEIVER_ID)}&amount=${encodeURIComponent(
+  return `vipps://pay?V=01&receiverId=${encodeURIComponent(VIPPS_RECEIVER_ID)}&amount=${encodeURIComponent(
     String(amount)
   )}&message=${msg}`
-}
-
-function safeCopyToClipboard(text: string) {
-  const value = String(text ?? "")
-  if (!value) return Promise.resolve(false)
-  if (navigator?.clipboard?.writeText) {
-    return navigator.clipboard
-      .writeText(value)
-      .then(() => true)
-      .catch(() => false)
-  }
-  try {
-    const el = document.createElement("textarea")
-    el.value = value
-    el.style.position = "fixed"
-    el.style.left = "-9999px"
-    el.style.top = "-9999px"
-    document.body.appendChild(el)
-    el.focus()
-    el.select()
-    const ok = document.execCommand("copy")
-    document.body.removeChild(el)
-    return Promise.resolve(Boolean(ok))
-  } catch {
-    return Promise.resolve(false)
-  }
 }
 
 function normalizePhone(v: unknown) {
@@ -90,17 +59,6 @@ type State =
 type KjopState =
   | { type: "idle" }
   | { type: "creating" }
-  | {
-      type: "vipps"
-      deeplink: string
-      message: string
-      amount: number
-      vippsRef: string
-      ticketFrom: number
-      ticketTo: number
-      successHref: string
-      autoOpenFailed?: boolean
-    }
   | { type: "error"; message: string }
 
 type ApiLoddOk = {
@@ -124,12 +82,6 @@ type ApiKjopOk = {
 
 type ApiKjopErr = { ok?: false; feil?: string }
 
-type ReserveState =
-  | { type: "idle" }
-  | { type: "loading"; key: string }
-  | { type: "ready"; key: string; data: ApiKjopOk }
-  | { type: "error"; key: string; message: string }
-
 function formatCountdown(endAt: string | null | undefined, nowMs: number) {
   if (!endAt) return null
   const d = new Date(endAt)
@@ -147,7 +99,6 @@ function formatCountdown(endAt: string | null | undefined, nowMs: number) {
 export default function LoddPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [kjopState, setKjopState] = useState<KjopState>({ type: "idle" })
-  const [reserve, setReserve] = useState<ReserveState>({ type: "idle" })
   const [telefon, setTelefon] = useState("")
   const [antallInput, setAntallInput] = useState("5")
   const [now, setNow] = useState(0)
@@ -194,56 +145,6 @@ export default function LoddPage() {
   const belop = antall * (Number.isFinite(pris) && pris > 0 ? pris : 20)
   const countdown = formatCountdown(aktivtLotteri?.end_at ?? null, now)
 
-  const telefonDigits = useMemo(() => normalizePhone(telefon), [telefon])
-  const reserveKey = useMemo(() => {
-    if (telefonDigits === "__invalid__" || !telefonDigits) return ""
-    if (!aktivtLotteri?.id) return ""
-    return `${aktivtLotteri.id}|${telefonDigits}|${antall}`
-  }, [telefonDigits, aktivtLotteri?.id, antall])
-
-  useEffect(() => {
-    if (!reserveKey) {
-      setReserve({ type: "idle" })
-      return
-    }
-    if (reserve.type === "ready" && reserve.key === reserveKey) return
-    if (reserve.type === "loading" && reserve.key === reserveKey) return
-
-    const id = window.setTimeout(() => {
-      let cancelled = false
-      setReserve({ type: "loading", key: reserveKey })
-      fetch("/api/lodd/kjop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ antall, telefon: telefonDigits }),
-      })
-        .then(async (res) => {
-          const data = (await res.json()) as ApiKjopOk | ApiKjopErr
-          if (cancelled) return
-          if (!res.ok || !data.ok) {
-            setReserve({
-              type: "error",
-              key: reserveKey,
-              message: (data as ApiKjopErr).feil ?? "Kunne ikke opprette kjøp.",
-            })
-            return
-          }
-          setReserve({ type: "ready", key: reserveKey, data: data as ApiKjopOk })
-        })
-        .catch(() => {
-          if (cancelled) return
-          setReserve({ type: "error", key: reserveKey, message: "Kunne ikke opprette kjøp." })
-        })
-
-      return () => {
-        cancelled = true
-      }
-    }, 350)
-
-    return () => window.clearTimeout(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reserveKey])
-
   const hovedpremie = useMemo(() => {
     if (state.type !== "ready") return null
     return (state.premier ?? []).find((p) => p.is_hovedpremie) ?? state.premier[0] ?? null
@@ -256,52 +157,44 @@ export default function LoddPage() {
     return list.filter((p) => String(p.id ?? "") !== mainId)
   }, [state, hovedpremie])
 
-  function onBuyClick() {
-    if (kjopState.type === "vipps") return
-    if (reserve.type !== "ready") return
+  async function kjop(e: FormEvent) {
+    e.preventDefault()
+    if (kjopState.type === "creating") return
 
-    const ok = reserve.data
-    const message = String(ok.vippsRef ?? "").trim()
-    const amount = Number(ok.belop ?? 0)
-    const deeplink = buildVippsPayDeepLink(amount, message)
-    const successHref = `/lodd/suksess?from=${encodeURIComponent(
-      String(ok.ticketFrom)
-    )}&to=${encodeURIComponent(String(ok.ticketTo))}&ref=${encodeURIComponent(
-      message
-    )}&amount=${encodeURIComponent(String(amount))}`
+    const telefonDigits = normalizePhone(telefon)
+    if (telefonDigits === "__invalid__") {
+      setKjopState({ type: "error", message: "Ugyldig telefonnummer." })
+      return
+    }
+    if (!telefonDigits) {
+      setKjopState({ type: "error", message: "Skriv inn telefonnummer." })
+      return
+    }
 
-    let didHide = false
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        didHide = true
+    setKjopState({ type: "creating" })
+    try {
+      const res = await fetch("/api/lodd/kjop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ antall, telefon: telefonDigits }),
+      })
+      const data = (await res.json()) as ApiKjopOk | ApiKjopErr
+      if (!res.ok || !data.ok) {
+        setKjopState({
+          type: "error",
+          message: (data as ApiKjopErr).feil ?? "Kunne ikke opprette kjøp.",
+        })
         return
       }
-      if (didHide && document.visibilityState === "visible") {
-        document.removeEventListener("visibilitychange", onVisibility)
-        window.location.href = successHref
-      }
-    }
-    document.addEventListener("visibilitychange", onVisibility)
 
-    if (isMobileDevice()) {
-      window.location.replace(deeplink)
+      const ok = data as ApiKjopOk
+      const reference = String(ok.vippsRef ?? "").trim()
+      const amount = Number(ok.belop ?? 0)
+      const vippsUrl = buildVippsPayDeepLink(amount, reference)
+      window.location.replace(vippsUrl)
+    } catch {
+      setKjopState({ type: "error", message: "Noe gikk galt. Prøv igjen." })
     }
-
-    window.setTimeout(() => {
-      if (didHide) return
-      document.removeEventListener("visibilitychange", onVisibility)
-      setKjopState({
-        type: "vipps",
-        deeplink,
-        message,
-        amount,
-        vippsRef: message,
-        ticketFrom: ok.ticketFrom,
-        ticketTo: ok.ticketTo,
-        successHref,
-        autoOpenFailed: true,
-      })
-    }, 1200)
   }
 
   return (
@@ -352,7 +245,7 @@ export default function LoddPage() {
 
                   <div className="rounded-2xl border bg-card p-6">
                     <div className="text-sm font-medium">Kjøp lodd</div>
-                    <form className="mt-4 space-y-4" onSubmit={(e) => e.preventDefault()}>
+                    <form className="mt-4 space-y-4" onSubmit={kjop}>
                       <div className="space-y-2">
                         <Label htmlFor="telefon">Telefonnummer</Label>
                         <Input
@@ -394,68 +287,14 @@ export default function LoddPage() {
                         </div>
                       </div>
 
-                      <Button type="button" onClick={onBuyClick} disabled={reserve.type !== "ready"} className="w-full">
-                        Kjøp lodd nå
+                      <Button type="submit" disabled={kjopState.type === "creating"} className="w-full">
+                        {kjopState.type === "creating" ? "Åpner Vipps…" : "Kjøp lodd nå"}
                       </Button>
 
                       {kjopState.type === "error" ? (
                         <div className="text-sm text-destructive">{kjopState.message}</div>
                       ) : null}
 
-                      {reserve.type === "error" ? (
-                        <div className="text-sm text-destructive">{reserve.message}</div>
-                      ) : null}
-
-                      {kjopState.type === "vipps" ? (
-                        <div className="rounded-xl border bg-muted/30 p-4 text-sm">
-                          <div className="font-medium">Åpner Vipps…</div>
-                          <div className="mt-1 text-muted-foreground">
-                            Vipps skal åpne direkte med ferdig utfylt beløp og melding.
-                          </div>
-                          <div className="mt-3 space-y-1 text-muted-foreground">
-                            <div>
-                              <span className="font-medium text-foreground">Dine lodd:</span>{" "}
-                              {kjopState.ticketFrom}–{kjopState.ticketTo}
-                            </div>
-                            <div>
-                              <span className="font-medium text-foreground">Beløp:</span> {kjopState.amount} kr
-                            </div>
-                            <div className="break-all">
-                              <span className="font-medium text-foreground">Vippsmelding:</span> {kjopState.message}
-                            </div>
-                          </div>
-
-                          {kjopState.autoOpenFailed ? (
-                            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
-                              Vipps åpnet ikke automatisk. Bruk knappene under.
-                            </div>
-                          ) : null}
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <a
-                              href={kjopState.deeplink}
-                              className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-                            >
-                              Åpne Vipps
-                            </a>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={async () => {
-                                await safeCopyToClipboard(kjopState.message)
-                              }}
-                            >
-                              Kopier Vippsmelding
-                            </Button>
-                            <Link
-                              href={kjopState.successHref}
-                              className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
-                            >
-                              Jeg har betalt
-                            </Link>
-                          </div>
-                        </div>
-                      ) : null}
                     </form>
                   </div>
 
