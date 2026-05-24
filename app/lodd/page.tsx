@@ -6,16 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-const VIPPS_RECEIVER_ID = "52387"
-
-function buildVippsPayDeepLink(amountNok: number, message: string) {
-  const amount = Number.isFinite(amountNok) ? Math.round(amountNok) : 0
-  const msg = encodeURIComponent(String(message ?? "").trim())
-  return `vipps://pay?V=01&receiverId=${encodeURIComponent(VIPPS_RECEIVER_ID)}&amount=${encodeURIComponent(
-    String(amount)
-  )}&message=${msg}`
-}
-
 function normalizePhone(v: unknown) {
   const digits = String(v ?? "").replace(/\D+/g, "")
   if (!digits) return null
@@ -78,6 +68,7 @@ type ApiKjopOk = {
   vippsRef: string
   ticketFrom: number
   ticketTo: number
+  redirectUrl: string
 }
 
 type ApiKjopErr = { ok?: false; feil?: string }
@@ -188,10 +179,12 @@ export default function LoddPage() {
       }
 
       const ok = data as ApiKjopOk
-      const reference = String(ok.vippsRef ?? "").trim()
-      const amount = Number(ok.belop ?? 0)
-      const vippsUrl = buildVippsPayDeepLink(amount, reference)
-      window.location.replace(vippsUrl)
+      const redirectUrl = String(ok.redirectUrl ?? "").trim()
+      if (!redirectUrl) {
+        setKjopState({ type: "error", message: "Kunne ikke åpne Vipps." })
+        return
+      }
+      window.location.replace(redirectUrl)
     } catch {
       setKjopState({ type: "error", message: "Noe gikk galt. Prøv igjen." })
     }
