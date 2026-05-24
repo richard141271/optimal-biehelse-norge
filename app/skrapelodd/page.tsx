@@ -13,7 +13,7 @@ export default function SkrapeloddPage() {
   async function kjop() {
     setStatus({ type: "loading" })
     try {
-      const res = await fetch("/api/skrapelodd/kjop", {
+      const res = await fetch("/api/skrapelodd-ny/new", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({}),
@@ -23,7 +23,6 @@ export default function SkrapeloddPage() {
         ok?: boolean
         feil?: string
         redirectUrl?: string | null
-        ticketNumber?: number | null
       }
 
       const redirectUrl = String(data.redirectUrl ?? "").trim()
@@ -67,7 +66,7 @@ export default function SkrapeloddPage() {
                 disabled={status.type === "loading"}
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
               >
-                {status.type === "loading" ? "Åpner…" : "Åpne Vipps"}
+                {status.type === "loading" ? "Åpner…" : "Start skrapelodd"}
               </button>
               <div className="text-sm text-muted-foreground">
                 Pris: <span className="font-medium text-foreground">20 kr</span> per lodd

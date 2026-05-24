@@ -20,14 +20,20 @@ function getFirst(value: string | string[] | undefined) {
   return value
 }
 
-export default function VippsPage({ searchParams }: { searchParams?: SearchParams }) {
-  const rawType = getFirst(searchParams?.type)
+export default async function VippsPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams | Promise<SearchParams>
+}) {
+  const sp = ((await Promise.resolve(searchParams)) ?? {}) as SearchParams
+
+  const rawType = getFirst(sp.type)
   const type = normalizeType(rawType)
-  const rawBelop = (getFirst(searchParams?.belop) ?? "").trim()
-  const ref = (getFirst(searchParams?.ref) ?? "").trim()
-  const ticketFrom = (getFirst(searchParams?.ticketFrom) ?? "").trim()
-  const ticketTo = (getFirst(searchParams?.ticketTo) ?? "").trim()
-  const returnHref = (getFirst(searchParams?.return) ?? "").trim()
+  const rawBelop = (getFirst(sp.belop) ?? "").trim()
+  const ref = (getFirst(sp.ref) ?? "").trim()
+  const ticketFrom = (getFirst(sp.ticketFrom) ?? "").trim()
+  const ticketTo = (getFirst(sp.ticketTo) ?? "").trim()
+  const returnHref = (getFirst(sp.return) ?? "").trim()
   const parsedBelop = Number(rawBelop)
   const belop =
     Number.isFinite(parsedBelop) && parsedBelop > 0 ? Math.round(parsedBelop) : null
