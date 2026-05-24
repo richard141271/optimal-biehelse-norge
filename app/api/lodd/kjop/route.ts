@@ -134,7 +134,7 @@ export async function POST(request: Request) {
   const ticketFrom = (Number.isFinite(currentMax) ? currentMax : 0) + 1
   const ticketTo = ticketFrom + antall - 1
 
-  const vippsRef = `lodd-${ticketFrom}-${ticketTo}-${crypto.randomUUID().slice(0, 8)}`
+  const vippsRef = `OBNO-LODD-${ticketFrom}-${ticketTo}-${crypto.randomUUID().slice(0, 6)}`
 
   const { data: inserted, error: insertError } = await admin
     .from("lodd_kjop")

@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
 import { type FormEvent, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -17,24 +16,35 @@ function isMobileDevice() {
 function buildVippsPayDeepLink(amountNok: number, message: string) {
   const amount = Number.isFinite(amountNok) ? Math.round(amountNok) : 0
   const msg = encodeURIComponent(String(message ?? "").trim())
-  return `vipps://pay?V=01&receiverId=${encodeURIComponent(VIPPS_RECEIVER_ID)}&amount=${encodeURIComponent(
+  return `vipps://pay?recipient=${encodeURIComponent(VIPPS_RECEIVER_ID)}&amount=${encodeURIComponent(
     String(amount)
   )}&message=${msg}`
 }
 
-function tryOpenVippsOrFallback(deeplink: string, fallbackUrl: string) {
-  let didHide = false
-  const onVisibility = () => {
-    if (document.visibilityState === "hidden") didHide = true
+function safeCopyToClipboard(text: string) {
+  const value = String(text ?? "")
+  if (!value) return Promise.resolve(false)
+  if (navigator?.clipboard?.writeText) {
+    return navigator.clipboard
+      .writeText(value)
+      .then(() => true)
+      .catch(() => false)
   }
-  document.addEventListener("visibilitychange", onVisibility)
-
-  window.location.href = deeplink
-
-  window.setTimeout(() => {
-    document.removeEventListener("visibilitychange", onVisibility)
-    if (!didHide) window.location.href = fallbackUrl
-  }, 1200)
+  try {
+    const el = document.createElement("textarea")
+    el.value = value
+    el.style.position = "fixed"
+    el.style.left = "-9999px"
+    el.style.top = "-9999px"
+    document.body.appendChild(el)
+    el.focus()
+    el.select()
+    const ok = document.execCommand("copy")
+    document.body.removeChild(el)
+    return Promise.resolve(Boolean(ok))
+  } catch {
+    return Promise.resolve(false)
+  }
 }
 
 type Lotteri = {
@@ -74,12 +84,15 @@ type KjopState =
   | { type: "idle" }
   | { type: "creating" }
   | {
-      type: "created"
-      orderId: string
+      type: "vipps"
+      deeplink: string
+      message: string
+      amount: number
       vippsRef: string
-      belop: number
       ticketFrom: number
       ticketTo: number
+      successHref: string
+      autoOpenFailed?: boolean
     }
   | { type: "error"; message: string }
 
@@ -182,6 +195,7 @@ export default function LoddPage() {
   async function kjop(e: FormEvent) {
     e.preventDefault()
     if (kjopState.type === "creating") return
+    if (kjopState.type === "vipps") return
     setKjopState({ type: "creating" })
     try {
       const res = await fetch("/api/lodd/kjop", {
@@ -195,22 +209,56 @@ export default function LoddPage() {
         return
       }
       const ok = data as ApiKjopOk
-      const message = `OBNO Lodd ${antall}stk ${ok.vippsRef}`.trim()
-      const vippsFallbackHref = `/vipps?type=lodd&belop=${encodeURIComponent(
-        String(ok.belop)
-      )}&message=${encodeURIComponent(message)}&ref=${encodeURIComponent(
-        ok.vippsRef
-      )}&ticketFrom=${encodeURIComponent(String(ok.ticketFrom))}&ticketTo=${encodeURIComponent(
-        String(ok.ticketTo)
-      )}&return=${encodeURIComponent("/lodd")}`
+      const message = String(ok.vippsRef ?? "").trim()
+      const amount = Number(ok.belop ?? 0)
+      const successHref = `/lodd/suksess?from=${encodeURIComponent(
+        String(ok.ticketFrom)
+      )}&to=${encodeURIComponent(String(ok.ticketTo))}&ref=${encodeURIComponent(
+        message
+      )}&amount=${encodeURIComponent(String(amount))}`
+
+      const deeplink = buildVippsPayDeepLink(amount, message)
+      setKjopState({
+        type: "vipps",
+        deeplink,
+        message,
+        amount,
+        vippsRef: message,
+        ticketFrom: ok.ticketFrom,
+        ticketTo: ok.ticketTo,
+        successHref,
+      })
 
       if (!isMobileDevice()) {
-        window.location.href = vippsFallbackHref
+        setKjopState((prev) =>
+          prev.type === "vipps" ? { ...prev, autoOpenFailed: true } : prev
+        )
         return
       }
 
-      const deeplink = buildVippsPayDeepLink(ok.belop, message)
-      tryOpenVippsOrFallback(deeplink, vippsFallbackHref)
+      let didHide = false
+      const onVisibility = () => {
+        if (document.visibilityState === "hidden") {
+          didHide = true
+          return
+        }
+        if (didHide && document.visibilityState === "visible") {
+          document.removeEventListener("visibilitychange", onVisibility)
+          window.location.href = successHref
+        }
+      }
+      document.addEventListener("visibilitychange", onVisibility)
+
+      window.location.href = deeplink
+
+      window.setTimeout(() => {
+        if (!didHide) {
+          document.removeEventListener("visibilitychange", onVisibility)
+          setKjopState((prev) =>
+            prev.type === "vipps" ? { ...prev, autoOpenFailed: true } : prev
+          )
+        }
+      }, 1200)
     } catch {
       setKjopState({ type: "error", message: "Noe gikk galt. Prøv igjen." })
     }
@@ -306,7 +354,11 @@ export default function LoddPage() {
                         </div>
                       </div>
 
-                      <Button type="submit" disabled={kjopState.type === "creating"} className="w-full">
+                      <Button
+                        type="submit"
+                        disabled={kjopState.type === "creating" || kjopState.type === "vipps"}
+                        className="w-full"
+                      >
                         {kjopState.type === "creating" ? "Oppretter…" : "Kjøp lodd nå"}
                       </Button>
 
@@ -314,39 +366,53 @@ export default function LoddPage() {
                         <div className="text-sm text-destructive">{kjopState.message}</div>
                       ) : null}
 
-                      {kjopState.type === "created" ? (
-                        <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
-                          <div className="font-medium text-foreground">Reservert!</div>
-                          <div className="mt-1">
-                            Dine lodd får nummer: {kjopState.ticketFrom} – {kjopState.ticketTo}
+                      {kjopState.type === "vipps" ? (
+                        <div className="rounded-xl border bg-muted/30 p-4 text-sm">
+                          <div className="font-medium">Åpner Vipps…</div>
+                          <div className="mt-1 text-muted-foreground">
+                            Vipps skal åpne direkte med ferdig utfylt beløp og melding.
                           </div>
-                          <div className="mt-2">
-                            Vipps-melding: <span className="font-medium text-foreground">{kjopState.vippsRef}</span>
+                          <div className="mt-3 space-y-1 text-muted-foreground">
+                            <div>
+                              <span className="font-medium text-foreground">Dine lodd:</span>{" "}
+                              {kjopState.ticketFrom}–{kjopState.ticketTo}
+                            </div>
+                            <div>
+                              <span className="font-medium text-foreground">Beløp:</span> {kjopState.amount} kr
+                            </div>
+                            <div className="break-all">
+                              <span className="font-medium text-foreground">Vippsmelding:</span> {kjopState.message}
+                            </div>
                           </div>
-                          <div className="mt-3 flex flex-wrap items-center gap-3">
-                            <div className="inline-flex rounded-xl border bg-background p-3">
-                              <Image
-                                src="/qr.png"
-                                alt="Vipps QR-kode"
-                                width={180}
-                                height={180}
-                                className="h-auto w-[160px]"
-                              />
+
+                          {kjopState.autoOpenFailed ? (
+                            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                              Vipps åpnet ikke automatisk. Bruk knappene under.
                             </div>
-                            <div className="space-y-2">
-                              <div>
-                                Vipps til <span className="font-medium text-foreground">#52387</span>
-                              </div>
-                              <div>Beløp: {kjopState.belop} kr</div>
-                              <Link
-                                className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-                                href={`/vipps?type=lodd&belop=${encodeURIComponent(
-                                  String(kjopState.belop)
-                                )}&ref=${encodeURIComponent(kjopState.vippsRef)}`}
-                              >
-                                Åpne Vipps-side
-                              </Link>
-                            </div>
+                          ) : null}
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <a
+                              href={kjopState.deeplink}
+                              className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+                            >
+                              Åpne Vipps
+                            </a>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={async () => {
+                                await safeCopyToClipboard(kjopState.message)
+                              }}
+                            >
+                              Kopier Vippsmelding
+                            </Button>
+                            <Link
+                              href={kjopState.successHref}
+                              className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
+                            >
+                              Jeg har betalt
+                            </Link>
                           </div>
                         </div>
                       ) : null}
