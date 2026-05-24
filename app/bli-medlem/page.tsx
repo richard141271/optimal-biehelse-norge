@@ -1,4 +1,5 @@
 import { MedlemskapForm } from "@/components/landing/medlemskap-form"
+import Image from "next/image"
 
 export default function BliMedlemPage() {
   return (
@@ -29,6 +30,22 @@ export default function BliMedlemPage() {
                 >
                   Åpne Vipps
                 </a>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <div className="inline-flex rounded-xl border bg-background p-3">
+                  <Image
+                    src="/QR-kode-52387.png"
+                    alt="Vipps QR-kode #52387"
+                    width={220}
+                    height={220}
+                    className="h-auto w-[160px] sm:w-[200px]"
+                    priority
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Skann QR-koden med mobilen for å åpne Vipps.
+                </div>
               </div>
 
               <div className="mt-4 space-y-1 text-sm">

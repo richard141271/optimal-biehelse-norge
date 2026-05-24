@@ -73,6 +73,9 @@ export default function RootLayout({
                 <Link href="/bli-medlem" className="hover:text-foreground">
                   Bli medlem
                 </Link>
+                <Link href="/lodd" className="hover:text-foreground">
+                  Lotteri
+                </Link>
               </nav>
               <div className="flex items-center gap-2">
                 <Link

@@ -30,16 +30,12 @@ export default function BiehelsePage() {
               det enklere å holde bifolk friske.
             </p>
           </div>
-          <div aria-disabled="true" className="group rounded-xl border bg-card p-5 opacity-70">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-medium">Mat og miljø</div>
-              <div className="text-xs text-muted-foreground">Avventer avklaring</div>
-            </div>
+          <Link href="/mat-og-miljo" className="rounded-xl border bg-card p-5 hover:bg-muted/40">
+            <div className="text-sm font-medium">Mat og miljø</div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Tilgang på variert pollen og nektar, og gode leveområder for ville
-              pollinatorer, er avgjørende.
+              Tilgang på variert pollen og nektar, og gode leveområder for ville pollinatorer, er avgjørende.
             </p>
-          </div>
+          </Link>
           <div className="rounded-xl border bg-card p-5">
             <div className="text-sm font-medium">Kunnskapsdeling</div>
             <p className="mt-2 text-sm text-muted-foreground">
