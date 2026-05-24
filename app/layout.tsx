@@ -78,6 +78,30 @@ export default function RootLayout({
                 </Link>
               </nav>
               <div className="flex items-center gap-2">
+                <details className="relative md:hidden">
+                  <summary
+                    className="inline-flex h-9 list-none items-center justify-center rounded-lg border bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted"
+                    style={{ listStyle: "none" }}
+                  >
+                    Meny
+                  </summary>
+                  <div className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border bg-background shadow-lg">
+                    <div className="flex flex-col p-1 text-sm">
+                      <Link href="/om-oss" className="rounded-lg px-3 py-2 hover:bg-muted">
+                        Om oss
+                      </Link>
+                      <Link href="/biehelse" className="rounded-lg px-3 py-2 hover:bg-muted">
+                        Biehelse
+                      </Link>
+                      <Link href="/bli-medlem" className="rounded-lg px-3 py-2 hover:bg-muted">
+                        Bli medlem
+                      </Link>
+                      <Link href="/lodd" className="rounded-lg px-3 py-2 hover:bg-muted">
+                        Lotteri
+                      </Link>
+                    </div>
+                  </div>
+                </details>
                 <Link
                   href="/min-side"
                   className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
