@@ -10,70 +10,6 @@ function normalizePhone(v: unknown) {
   return digits
 }
 
-function normalizeVippsPhoneForEpayment(phoneDigits: string) {
-  const digits = String(phoneDigits ?? "").replace(/\D+/g, "")
-  if (!digits) return null
-  if (digits.startsWith("47") && digits.length === 10) return digits
-  if (digits.length === 8) return `47${digits}`
-  if (digits.length >= 10 && digits.length <= 15) return digits
-  return null
-}
-
-function vippsBaseUrl() {
-  const env = String(process.env.VIPPS_ENV ?? "").trim().toLowerCase()
-  return env === "prod" || env === "production" ? "https://api.vipps.no" : "https://apitest.vipps.no"
-}
-
-type VippsTokenResponse = { access_token?: string; expires_in?: number }
-
-let cachedToken: { token: string; expiresAt: number } | null = null
-
-async function getVippsToken() {
-  const clientId = process.env.VIPPS_CLIENT_ID
-  const clientSecret = process.env.VIPPS_CLIENT_SECRET
-  const subscriptionKey = process.env.VIPPS_SUBSCRIPTION_KEY
-  const msn = process.env.VIPPS_MSN
-  if (!clientId || !clientSecret || !subscriptionKey || !msn) return null
-
-  const now = Date.now()
-  if (cachedToken && cachedToken.expiresAt > now + 15_000) return cachedToken.token
-
-  const res = await fetch(`${vippsBaseUrl()}/accesstoken/get`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      client_id: clientId,
-      client_secret: clientSecret,
-      "Ocp-Apim-Subscription-Key": subscriptionKey,
-      "Merchant-Serial-Number": msn,
-    },
-    body: "",
-    cache: "no-store",
-  })
-
-  const data = (await res.json().catch(() => ({}))) as VippsTokenResponse
-  const token = String(data.access_token ?? "").trim()
-  const expiresIn = Number(data.expires_in ?? 0)
-  if (!res.ok || !token) return null
-
-  cachedToken = {
-    token,
-    expiresAt: Date.now() + (Number.isFinite(expiresIn) ? expiresIn * 1000 : 60_000),
-  }
-  return token
-}
-
-function getPublicOrigin(request: Request) {
-  const url = new URL(request.url)
-  const proto =
-    (request.headers.get("x-forwarded-proto") ?? "").split(",")[0]?.trim() || url.protocol.replace(":", "")
-  const host =
-    (request.headers.get("x-forwarded-host") ?? "").split(",")[0]?.trim() ||
-    (request.headers.get("host") ?? "").trim() ||
-    url.host
-  return `${proto}://${host}`
-}
-
 function schemaFeil(msg?: string) {
   const text = String(msg ?? "")
   if (!/relation|table|column|does not exist/i.test(text)) return null
@@ -223,55 +159,6 @@ export async function POST(request: Request) {
     )
   }
 
-  const token = await getVippsToken()
-  const subscriptionKey = process.env.VIPPS_SUBSCRIPTION_KEY
-  const msn = process.env.VIPPS_MSN
-  if (!token || !subscriptionKey || !msn) {
-    return NextResponse.json({ ok: false, feil: "Vipps-betaling er ikke konfigurert." }, { status: 500 })
-  }
-
-  const phoneNumber = normalizeVippsPhoneForEpayment(telefon)
-  if (!phoneNumber) {
-    return NextResponse.json({ ok: false, feil: "Ugyldig telefonnummer for Vipps." }, { status: 400 })
-  }
-
-  const origin = getPublicOrigin(request)
-  const returnUrl = `${origin}/lodd/suksess?from=${encodeURIComponent(
-    String(ticketFrom)
-  )}&to=${encodeURIComponent(String(ticketTo))}&ref=${encodeURIComponent(vippsRef)}`
-
-  const amountOre = Math.max(0, Math.round(Number(belop) * 100))
-  const idempotencyKey = crypto.randomUUID()
-
-  const vippsRes = await fetch(`${vippsBaseUrl()}/epayment/v1/payments`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      Authorization: `Bearer ${token}`,
-      "Ocp-Apim-Subscription-Key": subscriptionKey,
-      "Merchant-Serial-Number": msn,
-      "Idempotency-Key": idempotencyKey,
-      "Vipps-System-Name": "obno",
-      "Vipps-System-Version": "1",
-    },
-    body: JSON.stringify({
-      amount: { currency: "NOK", value: amountOre },
-      customer: { phoneNumber },
-      paymentMethod: { type: "WALLET" },
-      reference: vippsRef,
-      paymentDescription: "OBNO Loddsalg",
-      returnUrl,
-      userFlow: "WEB_REDIRECT",
-    }),
-    cache: "no-store",
-  })
-
-  const vippsData = (await vippsRes.json().catch(() => ({}))) as { redirectUrl?: string; reference?: string }
-  const redirectUrl = String(vippsData.redirectUrl ?? "").trim()
-  if (!vippsRes.ok || !redirectUrl) {
-    return NextResponse.json({ ok: false, feil: "Kunne ikke opprette Vipps-betaling." }, { status: 400 })
-  }
-
   return NextResponse.json({
     ok: true,
     orderId: inserted?.id ?? null,
@@ -279,6 +166,5 @@ export async function POST(request: Request) {
     vippsRef,
     ticketFrom,
     ticketTo,
-    redirectUrl,
   })
 }

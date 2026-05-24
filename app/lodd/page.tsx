@@ -6,11 +6,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+const VIPPS_QR_BASE = "https://qr.vipps.no/28/2/01/031/52387?v=1"
+
 function normalizePhone(v: unknown) {
   const digits = String(v ?? "").replace(/\D+/g, "")
   if (!digits) return null
   if (digits.length < 8 || digits.length > 15) return "__invalid__"
   return digits
+}
+
+function buildVippsQrUrl(amountNok: number, message: string) {
+  const amountOre = Math.max(0, Math.round((Number.isFinite(amountNok) ? amountNok : 0) * 100))
+  const m = encodeURIComponent(String(message ?? "").trim())
+  return `${VIPPS_QR_BASE}&a=${encodeURIComponent(String(amountOre))}&m=${m}`
 }
 
 type Lotteri = {
@@ -68,7 +76,6 @@ type ApiKjopOk = {
   vippsRef: string
   ticketFrom: number
   ticketTo: number
-  redirectUrl: string
 }
 
 type ApiKjopErr = { ok?: false; feil?: string }
@@ -179,12 +186,10 @@ export default function LoddPage() {
       }
 
       const ok = data as ApiKjopOk
-      const redirectUrl = String(ok.redirectUrl ?? "").trim()
-      if (!redirectUrl) {
-        setKjopState({ type: "error", message: "Kunne ikke åpne Vipps." })
-        return
-      }
-      window.location.replace(redirectUrl)
+      const reference = String(ok.vippsRef ?? "").trim()
+      const amount = Number(ok.belop ?? 0)
+      const vippsUrl = buildVippsQrUrl(amount, reference)
+      window.location.replace(vippsUrl)
     } catch {
       setKjopState({ type: "error", message: "Noe gikk galt. Prøv igjen." })
     }
