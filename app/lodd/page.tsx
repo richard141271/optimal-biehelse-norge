@@ -7,6 +7,36 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+const VIPPS_RECEIVER_ID = "52387"
+
+function isMobileDevice() {
+  if (typeof navigator === "undefined") return false
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+}
+
+function buildVippsPayDeepLink(amountNok: number, message: string) {
+  const amount = Number.isFinite(amountNok) ? Math.round(amountNok) : 0
+  const msg = encodeURIComponent(String(message ?? "").trim())
+  return `vipps://pay?V=01&receiverId=${encodeURIComponent(VIPPS_RECEIVER_ID)}&amount=${encodeURIComponent(
+    String(amount)
+  )}&message=${msg}`
+}
+
+function tryOpenVippsOrFallback(deeplink: string, fallbackUrl: string) {
+  let didHide = false
+  const onVisibility = () => {
+    if (document.visibilityState === "hidden") didHide = true
+  }
+  document.addEventListener("visibilitychange", onVisibility)
+
+  window.location.href = deeplink
+
+  window.setTimeout(() => {
+    document.removeEventListener("visibilitychange", onVisibility)
+    if (!didHide) window.location.href = fallbackUrl
+  }, 1200)
+}
+
 type Lotteri = {
   id: string
   tittel?: string | null
@@ -165,12 +195,22 @@ export default function LoddPage() {
         return
       }
       const ok = data as ApiKjopOk
-      const vippsHref = `/vipps?type=lodd&belop=${encodeURIComponent(
+      const message = `OBNO Lodd ${antall}stk ${ok.vippsRef}`.trim()
+      const vippsFallbackHref = `/vipps?type=lodd&belop=${encodeURIComponent(
         String(ok.belop)
-      )}&ref=${encodeURIComponent(ok.vippsRef)}&ticketFrom=${encodeURIComponent(
-        String(ok.ticketFrom)
-      )}&ticketTo=${encodeURIComponent(String(ok.ticketTo))}&return=${encodeURIComponent("/lodd")}`
-      window.location.href = vippsHref
+      )}&message=${encodeURIComponent(message)}&ref=${encodeURIComponent(
+        ok.vippsRef
+      )}&ticketFrom=${encodeURIComponent(String(ok.ticketFrom))}&ticketTo=${encodeURIComponent(
+        String(ok.ticketTo)
+      )}&return=${encodeURIComponent("/lodd")}`
+
+      if (!isMobileDevice()) {
+        window.location.href = vippsFallbackHref
+        return
+      }
+
+      const deeplink = buildVippsPayDeepLink(ok.belop, message)
+      tryOpenVippsOrFallback(deeplink, vippsFallbackHref)
     } catch {
       setKjopState({ type: "error", message: "Noe gikk galt. Prøv igjen." })
     }

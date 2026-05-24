@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 type Status =
   | { type: "idle" }
@@ -12,11 +14,17 @@ type Status =
 export default function SkrapeloddNyPage() {
   const router = useRouter()
   const [status, setStatus] = useState<Status>({ type: "idle" })
+  const [telefon, setTelefon] = useState("")
 
   async function start() {
     setStatus({ type: "loading" })
     try {
-      const res = await fetch("/api/skrapelodd-ny/new", { method: "POST", cache: "no-store" })
+      const res = await fetch("/api/skrapelodd-ny/new", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ telefon }),
+      })
       const data = (await res.json()) as { ok?: boolean; feil?: string; redirectUrl?: string | null }
       const redirectUrl = String(data.redirectUrl ?? "").trim()
       if (!res.ok || !data.ok || !redirectUrl) {
@@ -48,6 +56,18 @@ export default function SkrapeloddNyPage() {
         </div>
       ) : null}
 
+      <div className="max-w-sm space-y-2">
+        <Label htmlFor="telefon">Telefonnummer</Label>
+        <Input
+          id="telefon"
+          value={telefon}
+          onChange={(e) => setTelefon(e.target.value)}
+          placeholder="8 siffer"
+          inputMode="tel"
+          autoComplete="tel"
+        />
+      </div>
+
       <button
         onClick={start}
         disabled={status.type === "loading"}
@@ -58,4 +78,3 @@ export default function SkrapeloddNyPage() {
     </div>
   )
 }
-

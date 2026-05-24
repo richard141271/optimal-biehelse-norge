@@ -6,6 +6,7 @@ const vippsNummer = "52387"
 function normalizeType(type: string | undefined) {
   const raw = String(type ?? "").trim().toLowerCase()
   if (raw === "lodd" || raw === "loddsalg") return "lodd"
+  if (raw === "skrapelodd" || raw === "skrape" || raw === "scratch") return "skrapelodd"
   if (raw === "donasjon" || raw === "donere" || raw === "donate") return "donasjon"
   if (raw === "stottemedlem" || raw === "støttemedlem" || raw === "stotte") {
     return "stottemedlem"
@@ -31,32 +32,47 @@ export default async function VippsPage({
   const type = normalizeType(rawType)
   const rawBelop = (getFirst(sp.belop) ?? "").trim()
   const ref = (getFirst(sp.ref) ?? "").trim()
+  const messageOverride = (getFirst(sp.message) ?? "").trim()
   const ticketFrom = (getFirst(sp.ticketFrom) ?? "").trim()
   const ticketTo = (getFirst(sp.ticketTo) ?? "").trim()
   const returnHref = (getFirst(sp.return) ?? "").trim()
+  const afterHref = (getFirst(sp.after) ?? "").trim()
   const parsedBelop = Number(rawBelop)
   const belop =
     Number.isFinite(parsedBelop) && parsedBelop > 0 ? Math.round(parsedBelop) : null
 
   const forslagMelding =
-    type === "lodd"
+    messageOverride ||
+    (type === "lodd"
       ? `OBNO Lodd ${ref || ""}`.trim()
-      : type === "donasjon"
-        ? "OBNO Donasjon"
-        : type === "stottemedlem"
-          ? "OBNO Støttemedlem"
-          : "OBNO Medlemskap"
+      : type === "skrapelodd"
+        ? `OBNO Skrapelodd ${ref || ""}`.trim()
+        : type === "donasjon"
+          ? "OBNO Donasjon"
+          : type === "stottemedlem"
+            ? "OBNO Støttemedlem"
+            : "OBNO Medlemskap")
 
   const tittel =
     type === "lodd"
       ? "Loddsalg"
+      : type === "skrapelodd"
+        ? "Skrapelodd"
       : type === "donasjon"
         ? "Donasjon"
         : type === "stottemedlem"
           ? "Støttemedlem"
           : "Medlemskap"
 
-  const tilbakeHref = returnHref || (type === "lodd" ? "/lodd" : "/bli-medlem")
+  const tilbakeHref =
+    returnHref || (type === "lodd" ? "/lodd" : type === "skrapelodd" ? "/skrapelodd" : "/bli-medlem")
+
+  const deeplink =
+    belop && forslagMelding
+      ? `vipps://pay?V=01&receiverId=${encodeURIComponent(vippsNummer)}&amount=${encodeURIComponent(
+          String(belop)
+        )}&message=${encodeURIComponent(forslagMelding)}`
+      : "vipps://"
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
@@ -119,11 +135,19 @@ export default async function VippsPage({
 
             <div className="mt-5 flex flex-wrap gap-2">
               <a
-                href="vipps://"
+                href={deeplink}
                 className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
               >
                 Åpne Vipps
               </a>
+              {afterHref ? (
+                <Link
+                  href={afterHref}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
+                >
+                  Åpne etterpå
+                </Link>
+              ) : null}
               <Link
                 href={tilbakeHref}
                 className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
