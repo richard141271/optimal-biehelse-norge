@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
 
@@ -9,11 +9,133 @@ function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+const regnskapSchemaFeil =
+  "Regnskap-tabellen i Supabase mangler felter. Kjør denne SQL-en i Supabase (SQL Editor), og prøv igjen:\n\n" +
+  "create table if not exists public.regnskap_poster (\n" +
+  "  id uuid primary key default gen_random_uuid(),\n" +
+  "  created_at timestamptz not null default now(),\n" +
+  "  dato date not null,\n" +
+  "  type text not null,\n" +
+  "  belop numeric not null,\n" +
+  "  motpart text,\n" +
+  "  vare text,\n" +
+  "  notat text,\n" +
+  "  bilag_path text,\n" +
+  "  bilag_ocr_text text,\n" +
+  "  kilde text,\n" +
+  "  utlegg_medlem_id text,\n" +
+  "  utlegg_medlem_navn text,\n" +
+  "  utlegg_medlem_epost text,\n" +
+  "  utlegg_status text,\n" +
+  "  utlegg_utbetalt_at timestamptz\n" +
+  ");\n" +
+  "alter table public.regnskap_poster add column if not exists bilag_ocr_text text;\n" +
+  "alter table public.regnskap_poster add column if not exists kilde text;\n" +
+  "alter table public.regnskap_poster add column if not exists utlegg_medlem_id text;\n" +
+  "alter table public.regnskap_poster add column if not exists utlegg_medlem_navn text;\n" +
+  "alter table public.regnskap_poster add column if not exists utlegg_medlem_epost text;\n" +
+  "alter table public.regnskap_poster add column if not exists utlegg_status text;\n" +
+  "alter table public.regnskap_poster add column if not exists utlegg_utbetalt_at timestamptz;\n"
+
 function normalizePhone(v: unknown) {
   const digits = String(v ?? "").replace(/\D+/g, "")
   if (!digits) return null
   if (digits.length < 8 || digits.length > 15) return "__invalid__"
   return digits
+}
+
+function toNumber(v: unknown) {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null
+  const s = String(v ?? "").trim()
+  if (!s) return null
+  const n = Number(s.replace(",", "."))
+  return Number.isFinite(n) ? n : null
+}
+
+function isRegnskapSchemaError(msg: string) {
+  const m = msg.toLowerCase()
+  if (m.includes("42p01")) return true
+  if (m.includes("schema cache") && m.includes("regnskap_poster")) return true
+  if (m.includes("relation") && m.includes("regnskap_poster") && m.includes("does not exist")) return true
+  if (m.includes("could not find the table") && m.includes("regnskap_poster")) return true
+  if (m.includes("column") && (m.includes("regnskap_poster") || m.includes("kilde"))) return true
+  return false
+}
+
+function formatKr(belop: number) {
+  const formatted = new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 2 }).format(belop)
+  return `${formatted} kr`
+}
+
+async function ensureRegnskapForKjop(
+  admin: SupabaseClient,
+  kjop: {
+    id: string
+    phone: string
+    antall: number
+    belop: unknown
+    ticket_from: unknown
+    ticket_to: unknown
+    vipps_ref: unknown
+    paid_at: string
+  }
+) {
+  const kilde = `lodd_kjop:${kjop.id}`
+  const { data: existing, error: existingError } = await admin
+    .from("regnskap_poster")
+    .select("id")
+    .eq("kilde", kilde)
+    .limit(1)
+    .maybeSingle()
+
+  if (existingError) {
+    const msg = String((existingError as { message?: string } | null)?.message ?? "")
+    if (isRegnskapSchemaError(msg)) {
+      return { ok: false as const, status: 500 as const, feil: regnskapSchemaFeil }
+    }
+    return { ok: false as const, status: 400 as const, feil: "Kunne ikke sjekke regnskap." }
+  }
+  if (existing?.id) return { ok: true as const }
+
+  const belop = toNumber(kjop.belop)
+  if (belop == null) {
+    return { ok: false as const, status: 400 as const, feil: "Ugyldig beløp." }
+  }
+
+  const ticketFrom = Number(kjop.ticket_from ?? 0) || null
+  const ticketTo = Number(kjop.ticket_to ?? 0) || null
+  const range =
+    ticketFrom && ticketTo ? (ticketFrom === ticketTo ? `${ticketFrom}` : `${ticketFrom}–${ticketTo}`) : null
+  const vippsRef = String(kjop.vipps_ref ?? "").trim()
+
+  const paidIso = kjop.paid_at
+  const dato = paidIso.includes("T") ? paidIso.slice(0, 10) : paidIso
+  const klokke = paidIso.includes("T") ? paidIso.slice(11, 16) : ""
+  const line1 = `${range ? `#${range}` : "Loddsalg"} · ${kjop.antall} lodd · ${formatKr(belop)} · paid`
+  const notat = [line1, vippsRef ? `Vipps ref: ${vippsRef}` : null, `Betalt: ${dato}${klokke ? `, ${klokke}` : ""}`]
+    .filter(Boolean)
+    .join("\n")
+
+  const { error: insertError } = await admin.from("regnskap_poster").insert({
+    dato,
+    type: "inntekt",
+    belop,
+    motpart: kjop.phone,
+    vare: vippsRef || (range ? `Loddsalg #${range}` : "Loddsalg"),
+    notat,
+    bilag_path: null,
+    kilde,
+  })
+
+  if (insertError) {
+    const msg = String((insertError as { message?: string } | null)?.message ?? "")
+    if (isRegnskapSchemaError(msg)) {
+      return { ok: false as const, status: 500 as const, feil: regnskapSchemaFeil }
+    }
+    return { ok: false as const, status: 400 as const, feil: "Kunne ikke opprette regnskapspost." }
+  }
+
+  return { ok: true as const }
 }
 
 async function getAuth() {
@@ -711,21 +833,72 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, feil: "Mangler kjøp." }, { status: 400 })
     }
 
-    const { error } = await gate.admin
+    const { data: kjopRow, error: kjopError } = await gate.admin
       .from("lodd_kjop")
-      .update({
-        status: "paid",
-        paid_at: new Date().toISOString(),
-        paid_by_epost: gate.email,
-      })
+      .select("id, status, phone, antall, belop, ticket_from, ticket_to, vipps_ref, paid_at, paid_by_epost")
       .eq("id", kjopId)
+      .maybeSingle()
 
-    if (error) {
-      const sf = schemaFeil((error as { message?: string } | null)?.message)
+    if (kjopError) {
+      const sf = schemaFeil((kjopError as { message?: string } | null)?.message)
       return NextResponse.json(
-        { ok: false, feil: sf ?? "Kunne ikke markere betalt." },
+        { ok: false, feil: sf ?? "Kunne ikke hente kjøp." },
         { status: sf ? 500 : 400 }
       )
+    }
+    if (!kjopRow?.id) {
+      return NextResponse.json({ ok: false, feil: "Kjøp finnes ikke." }, { status: 404 })
+    }
+
+    const prevStatus = String((kjopRow as Record<string, unknown>).status ?? "").trim()
+    const prevPaidAt = String((kjopRow as Record<string, unknown>).paid_at ?? "").trim() || null
+    const prevPaidBy = String((kjopRow as Record<string, unknown>).paid_by_epost ?? "").trim() || null
+
+    const alreadyPaid = prevStatus === "paid" && Boolean(prevPaidAt)
+    const paidAtIso = alreadyPaid ? (prevPaidAt as string) : new Date().toISOString()
+
+    if (!alreadyPaid) {
+      const { error: updateError } = await gate.admin
+        .from("lodd_kjop")
+        .update({
+          status: "paid",
+          paid_at: paidAtIso,
+          paid_by_epost: gate.email,
+        })
+        .eq("id", kjopId)
+
+      if (updateError) {
+        const sf = schemaFeil((updateError as { message?: string } | null)?.message)
+        return NextResponse.json(
+          { ok: false, feil: sf ?? "Kunne ikke markere betalt." },
+          { status: sf ? 500 : 400 }
+        )
+      }
+    }
+
+    const ensure = await ensureRegnskapForKjop(gate.admin, {
+      id: kjopId,
+      phone: String((kjopRow as Record<string, unknown>).phone ?? "").trim(),
+      antall: Math.max(1, Math.floor(Number((kjopRow as Record<string, unknown>).antall ?? 1))),
+      belop: (kjopRow as Record<string, unknown>).belop,
+      ticket_from: (kjopRow as Record<string, unknown>).ticket_from,
+      ticket_to: (kjopRow as Record<string, unknown>).ticket_to,
+      vipps_ref: (kjopRow as Record<string, unknown>).vipps_ref,
+      paid_at: paidAtIso,
+    })
+
+    if (!ensure.ok) {
+      if (!alreadyPaid) {
+        await gate.admin
+          .from("lodd_kjop")
+          .update({
+            status: prevStatus || "pending",
+            paid_at: prevPaidAt,
+            paid_by_epost: prevPaidBy,
+          })
+          .eq("id", kjopId)
+      }
+      return NextResponse.json({ ok: false, feil: ensure.feil }, { status: ensure.status })
     }
 
     return NextResponse.json({ ok: true })

@@ -1,16 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 
 export function MobileNavMenu() {
-  const pathname = usePathname()
   const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    setOpen(false)
-  }, [pathname])
 
   useEffect(() => {
     if (!open) return
@@ -51,4 +45,3 @@ export function MobileNavMenu() {
     </div>
   )
 }
-
