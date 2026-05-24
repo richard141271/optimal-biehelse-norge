@@ -20,6 +20,11 @@ function buildVippsCopyText(opts: { belop: number; vippsRef: string; ticketFrom:
   return vippsRef
 }
 
+function isMobileDevice() {
+  if (typeof navigator === "undefined") return false
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+}
+
 type Lotteri = {
   id: string
   tittel?: string | null
@@ -361,9 +366,25 @@ export default function LoddPage() {
                             </Button>
                           </div>
 
-                          <div className="mt-3 text-muted-foreground">
-                            Åpne Vipps og betal manuelt til #{VIPPS_NUMBER}. Lim inn meldingen og legg inn beløpet.
-                          </div>
+                          {!isMobileDevice() ? (
+                            <div className="mt-4 space-y-2">
+                              <div className="inline-flex rounded-xl border bg-background p-2">
+                                <img
+                                  src="/QR-kode-52387.png"
+                                  alt="Vipps QR-kode #52387"
+                                  className="h-auto w-[180px] sm:w-[220px]"
+                                />
+                              </div>
+                              <div className="text-muted-foreground">
+                                Åpne Vipps og betal manuelt til #{VIPPS_NUMBER}. Lim inn meldingen og legg inn beløpet.
+                                Du kan også skanne QR-koden med mobilen for å åpne Vipps.
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-3 text-muted-foreground">
+                              Åpne Vipps og betal manuelt til #{VIPPS_NUMBER}. Lim inn meldingen og legg inn beløpet.
+                            </div>
+                          )}
                         </div>
                       ) : null}
 
