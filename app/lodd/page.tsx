@@ -16,20 +16,8 @@ function normalizePhone(v: unknown) {
 }
 
 function buildVippsCopyText(opts: { belop: number; vippsRef: string; ticketFrom: number; ticketTo: number }) {
-  const belop = Math.round(Number(opts.belop ?? 0))
   const vippsRef = String(opts.vippsRef ?? "").trim()
-  const ticketFrom = Number(opts.ticketFrom ?? 0)
-  const ticketTo = Number(opts.ticketTo ?? 0)
-  return [
-    `Vipps til #${VIPPS_NUMBER}`,
-    belop ? `Beløp: ${belop} kr` : null,
-    vippsRef ? `Melding: ${vippsRef}` : null,
-    Number.isFinite(ticketFrom) && Number.isFinite(ticketTo) && ticketFrom > 0 && ticketTo > 0
-      ? `Dine lodd: ${ticketFrom}–${ticketTo}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("\n")
+  return vippsRef
 }
 
 type Lotteri = {
