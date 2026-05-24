@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { RegisterServiceWorker } from "@/components/pwa/register-service-worker"
+import { MobileNavMenu } from "@/components/mobile-nav-menu"
 import Link from "next/link"
 import Image from "next/image"
 
@@ -78,30 +79,7 @@ export default function RootLayout({
                 </Link>
               </nav>
               <div className="flex items-center gap-2">
-                <details className="relative md:hidden">
-                  <summary
-                    className="inline-flex h-9 list-none items-center justify-center rounded-lg border bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted"
-                    style={{ listStyle: "none" }}
-                  >
-                    Meny
-                  </summary>
-                  <div className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border bg-background shadow-lg">
-                    <div className="flex flex-col p-1 text-sm">
-                      <Link href="/om-oss" className="rounded-lg px-3 py-2 hover:bg-muted">
-                        Om oss
-                      </Link>
-                      <Link href="/biehelse" className="rounded-lg px-3 py-2 hover:bg-muted">
-                        Biehelse
-                      </Link>
-                      <Link href="/bli-medlem" className="rounded-lg px-3 py-2 hover:bg-muted">
-                        Bli medlem
-                      </Link>
-                      <Link href="/lodd" className="rounded-lg px-3 py-2 hover:bg-muted">
-                        Lotteri
-                      </Link>
-                    </div>
-                  </div>
-                </details>
+                <MobileNavMenu />
                 <Link
                   href="/min-side"
                   className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
