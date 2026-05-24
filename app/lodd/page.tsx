@@ -6,13 +6,30 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-const MANUAL_VIPPS_KEY = "obno_manual_vipps_lodd_pending"
+const VIPPS_NUMBER = "52387"
 
 function normalizePhone(v: unknown) {
   const digits = String(v ?? "").replace(/\D+/g, "")
   if (!digits) return null
   if (digits.length < 8 || digits.length > 15) return "__invalid__"
   return digits
+}
+
+function buildVippsCopyText(opts: { belop: number; vippsRef: string; ticketFrom: number; ticketTo: number }) {
+  const belop = Math.round(Number(opts.belop ?? 0))
+  const vippsRef = String(opts.vippsRef ?? "").trim()
+  const ticketFrom = Number(opts.ticketFrom ?? 0)
+  const ticketTo = Number(opts.ticketTo ?? 0)
+  return [
+    `Vipps til #${VIPPS_NUMBER}`,
+    belop ? `Beløp: ${belop} kr` : null,
+    vippsRef ? `Melding: ${vippsRef}` : null,
+    Number.isFinite(ticketFrom) && Number.isFinite(ticketTo) && ticketFrom > 0 && ticketTo > 0
+      ? `Dine lodd: ${ticketFrom}–${ticketTo}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n")
 }
 
 type Lotteri = {
@@ -51,6 +68,15 @@ type State =
 type KjopState =
   | { type: "idle" }
   | { type: "creating" }
+  | {
+      type: "reserved"
+      orderId: string
+      belop: number
+      vippsRef: string
+      ticketFrom: number
+      ticketTo: number
+      copied: boolean
+    }
   | { type: "error"; message: string }
 
 type ApiLoddOk = {
@@ -91,7 +117,6 @@ function formatCountdown(endAt: string | null | undefined, nowMs: number) {
 export default function LoddPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [kjopState, setKjopState] = useState<KjopState>({ type: "idle" })
-  const [visManuellVipps, setVisManuellVipps] = useState(false)
   const [telefon, setTelefon] = useState("")
   const [antallInput, setAntallInput] = useState("5")
   const [now, setNow] = useState(0)
@@ -117,15 +142,6 @@ export default function LoddPage() {
       hent().catch(() => setState({ type: "error", message: "Kunne ikke hente loddsalg." }))
     }, 0)
     return () => clearTimeout(id)
-  }, [])
-
-  useEffect(() => {
-    const raw = window.sessionStorage.getItem(MANUAL_VIPPS_KEY)
-    if (!raw) return
-    window.sessionStorage.removeItem(MANUAL_VIPPS_KEY)
-    setVisManuellVipps(true)
-    const id = window.setTimeout(() => setVisManuellVipps(false), 15_000)
-    return () => window.clearTimeout(id)
   }, [])
 
   useEffect(() => {
@@ -190,12 +206,15 @@ export default function LoddPage() {
       }
 
       const ok = data as ApiKjopOk
-      window.sessionStorage.setItem(MANUAL_VIPPS_KEY, "1")
-      setVisManuellVipps(true)
-      window.location.href = "vipps://"
-      window.setTimeout(() => {
-        window.location.href = "/lodd"
-      }, 2000)
+      setKjopState({
+        type: "reserved",
+        orderId: String(ok.orderId ?? ""),
+        belop: Number(ok.belop ?? 0),
+        vippsRef: String(ok.vippsRef ?? ""),
+        ticketFrom: Number(ok.ticketFrom ?? 0),
+        ticketTo: Number(ok.ticketTo ?? 0),
+        copied: false,
+      })
     } catch {
       setKjopState({ type: "error", message: "Noe gikk galt. Prøv igjen." })
     }
@@ -292,16 +311,71 @@ export default function LoddPage() {
                       </div>
 
                       <Button type="submit" disabled={kjopState.type === "creating"} className="w-full">
-                        {kjopState.type === "creating" ? "Åpner Vipps…" : "Kjøp lodd nå"}
+                        {kjopState.type === "creating"
+                          ? "Oppretter reservasjon…"
+                          : kjopState.type === "reserved"
+                            ? "Kjøp flere lodd"
+                            : "Kjøp lodd nå"}
                       </Button>
 
                       {kjopState.type === "error" ? (
                         <div className="text-sm text-destructive">{kjopState.message}</div>
                       ) : null}
 
-                      {visManuellVipps ? (
-                        <div className="text-sm text-muted-foreground">
-                          Åpne Vipps og betal manuelt til #52387
+                      {kjopState.type === "reserved" ? (
+                        <div className="rounded-xl border bg-muted/30 p-4 text-sm">
+                          <div className="font-medium">Reservert</div>
+                          <div className="mt-2 space-y-1 text-muted-foreground">
+                            <div>
+                              <span className="font-medium text-foreground">Dine lodd:</span>{" "}
+                              {kjopState.ticketFrom}–{kjopState.ticketTo}
+                            </div>
+                            <div>
+                              <span className="font-medium text-foreground">Beløp:</span>{" "}
+                              {Math.round(kjopState.belop)} kr
+                            </div>
+                            <div className="break-all">
+                              <span className="font-medium text-foreground">Vippsmelding:</span>{" "}
+                              {kjopState.vippsRef}
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={async () => {
+                                const text = buildVippsCopyText(kjopState)
+                                try {
+                                  await navigator.clipboard.writeText(text)
+                                  setKjopState((prev) =>
+                                    prev.type === "reserved" ? { ...prev, copied: true } : prev
+                                  )
+                                  window.setTimeout(() => {
+                                    setKjopState((prev) =>
+                                      prev.type === "reserved" ? { ...prev, copied: false } : prev
+                                    )
+                                  }, 2000)
+                                } catch {
+                                  setKjopState({ type: "error", message: "Kunne ikke kopiere. Prøv igjen." })
+                                }
+                              }}
+                            >
+                              {kjopState.copied ? "Kopiert" : "Kopier info"}
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                window.location.href = "vipps://"
+                              }}
+                            >
+                              Åpne Vipps
+                            </Button>
+                          </div>
+
+                          <div className="mt-3 text-muted-foreground">
+                            Åpne Vipps og betal manuelt til #{VIPPS_NUMBER}. Lim inn meldingen og legg inn beløpet.
+                          </div>
                         </div>
                       ) : null}
 
