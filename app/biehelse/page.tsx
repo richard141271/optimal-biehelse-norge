@@ -54,9 +54,9 @@ export default function BiehelsePage() {
       href: "https://frivilligsentral.no",
     },
     {
-      navn: "Botanisk hage",
+      navn: "Botanisk verden",
       tekst: "Støtter prosjektet med frøbidrag",
-      href: "https://botaniskhage.no",
+      href: "https://botaniskverden.no",
     },
     {
       navn: "Private givere",
