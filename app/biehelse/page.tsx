@@ -1,6 +1,70 @@
 import Link from "next/link"
 
+type SponsorCard = {
+  navn: string
+  tekst: string
+  href?: string
+  logoSrc?: string
+  logoAlt?: string
+  badge?: "Hovedsponsor" | "Samarbeidspartner" | "Lokal støttespiller"
+}
+
 export default function BiehelsePage() {
+  const sponsorer: SponsorCard[] = [
+    {
+      navn: "Plantasjen Svinesundsparken",
+      tekst: "Bidrar med blomsterfrø til pollinatorområdene",
+      href: "https://www.plantasjen.no",
+    },
+    {
+      navn: "Felleskjøpet",
+      tekst: "Støtter prosjektet med frø og materiell",
+      href: "https://www.felleskjopet.no",
+    },
+    {
+      navn: "Florea",
+      tekst: "Bidrar med pollinatorvennlige frøblandinger",
+      href: "https://floreagarden.com/no-no",
+    },
+    {
+      navn: "Store Bjørnstad AS",
+      tekst: "Bidrar med stein til bed og uteområder",
+      href: "https://www.proff.no/selskap/store-bj%C3%B8rnstad-as/halden/byggevare/IF8N7N10ZDB",
+    },
+    {
+      navn: "Kalesje & Industrisøm AS®",
+      tekst: "Bidrar med transport og praktisk hjelp",
+      href: "https://kalesje.com.no",
+    },
+    {
+      navn: "Fredriksten Camping",
+      tekst: "Bidrar med område og plass til pollinatorbed",
+      href: "https://www.fredrikstencamping.no",
+    },
+  ]
+
+  const samarbeidspartnere: SponsorCard[] = [
+    {
+      navn: "Halden kommune",
+      tekst: "Stiller med jord til prosjektet",
+      href: "https://www.halden.kommune.no",
+    },
+    {
+      navn: "Halden Frivilligsentral",
+      tekst: "Bidrar med utlån av utstyr",
+      href: "https://frivilligsentral.no/halden",
+    },
+    {
+      navn: "Botanisk hage",
+      tekst: "Støtter prosjektet med frøbidrag",
+      href: "https://www.nhm.uio.no/botanisk-hage",
+    },
+    {
+      navn: "Private givere",
+      tekst: "Bidrar med planter, blomster og lokalt engasjement",
+    },
+  ]
+
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
       <div className="space-y-8">
@@ -73,6 +137,97 @@ export default function BiehelsePage() {
             >
               Logg inn som medlem
             </Link>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border bg-card p-6 sm:p-8">
+          <h2 className="text-xl font-semibold tracking-tight">Sponsorer og samarbeidspartnere</h2>
+          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+            Pollinatorprosjektet hadde ikke vært mulig uten støtte fra lokale bedrifter, organisasjoner, frivillige og
+            private givere. Alle bidrag – store og små – hjelper oss med å skape bedre forhold for bier, humler og andre
+            pollinatorer.
+          </p>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border bg-background p-5">
+              <div className="text-sm font-medium">Sponsorer</div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {sponsorer.map((c) => (
+                  <a
+                    key={c.navn}
+                    href={c.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group rounded-xl border bg-card p-4 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <div className="flex items-start gap-3">
+                      {c.logoSrc ? (
+                        <img
+                          src={c.logoSrc}
+                          alt={c.logoAlt || c.navn}
+                          className="h-10 w-10 shrink-0 rounded-md object-contain"
+                        />
+                      ) : null}
+                      <div className="min-w-0">
+                        <div className="font-medium leading-snug underline-offset-4 group-hover:underline">
+                          {c.navn}
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground">{c.tekst}</div>
+                      </div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-background p-5">
+              <div className="text-sm font-medium">Samarbeidspartnere</div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {samarbeidspartnere.map((c) =>
+                  c.href ? (
+                    <a
+                      key={c.navn}
+                      href={c.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group rounded-xl border bg-card p-4 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <div className="flex items-start gap-3">
+                        {c.logoSrc ? (
+                          <img
+                            src={c.logoSrc}
+                            alt={c.logoAlt || c.navn}
+                            className="h-10 w-10 shrink-0 rounded-md object-contain"
+                          />
+                        ) : null}
+                        <div className="min-w-0">
+                          <div className="font-medium leading-snug underline-offset-4 group-hover:underline">
+                            {c.navn}
+                          </div>
+                          <div className="mt-1 text-sm text-muted-foreground">{c.tekst}</div>
+                        </div>
+                      </div>
+                    </a>
+                  ) : (
+                    <div key={c.navn} className="rounded-xl border bg-card p-4">
+                      <div className="flex items-start gap-3">
+                        {c.logoSrc ? (
+                          <img
+                            src={c.logoSrc}
+                            alt={c.logoAlt || c.navn}
+                            className="h-10 w-10 shrink-0 rounded-md object-contain"
+                          />
+                        ) : null}
+                        <div className="min-w-0">
+                          <div className="font-medium leading-snug">{c.navn}</div>
+                          <div className="mt-1 text-sm text-muted-foreground">{c.tekst}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
           </div>
         </section>
       </div>
