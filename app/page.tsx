@@ -33,6 +33,24 @@ export default function Home() {
 
       <section className="border-b">
         <div className="mx-auto max-w-6xl px-4 py-14 sm:py-20">
+          <Link
+            href="/mat-og-miljo"
+            className="group mb-6 block rounded-2xl border bg-card p-6 transition-colors hover:bg-muted/40"
+          >
+            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
+              Lokale tiltak
+            </div>
+            <div className="mt-3 text-lg font-semibold tracking-tight">
+              Vårt første pollinatorprosjekt
+            </div>
+            <div className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Se hva vi bygger lokalt – pollinatorbed for bier, humler og naturen.
+            </div>
+            <div className="mt-4 inline-flex text-sm font-medium underline underline-offset-4 group-hover:text-foreground">
+              Åpne prosjektet
+            </div>
+          </Link>
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Link
               href="/bli-medlem"
