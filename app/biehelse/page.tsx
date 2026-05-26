@@ -18,7 +18,7 @@ export default function BiehelsePage() {
     },
     {
       navn: "Felleskjøpet",
-      tekst: "Støtter prosjektet med frø og materiell",
+      tekst: "Bidrar med blomsterfrø til pollinatorområdene",
       href: "https://www.felleskjopet.no",
     },
     {
