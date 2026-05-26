@@ -34,7 +34,7 @@ export default function BiehelsePage() {
     {
       navn: "Kalesje & Industrisøm AS®",
       tekst: "Bidrar med transport og praktisk hjelp",
-      href: "https://kalesje.com.no",
+      href: "https://kias.no",
     },
     {
       navn: "Fredriksten Camping",
