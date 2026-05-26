@@ -29,7 +29,6 @@ export default function BiehelsePage() {
     {
       navn: "Store Bjørnstad AS",
       tekst: "Bidrar med stein til bed og uteområder",
-      href: "https://www.proff.no/selskap/store-bj%C3%B8rnstad-as/halden/byggevare/IF8N7N10ZDB",
     },
     {
       navn: "Kalesje & Industrisøm AS®",
@@ -52,12 +51,12 @@ export default function BiehelsePage() {
     {
       navn: "Halden Frivilligsentral",
       tekst: "Bidrar med utlån av utstyr",
-      href: "https://frivilligsentral.no/halden",
+      href: "https://frivilligsentral.no",
     },
     {
       navn: "Botanisk hage",
       tekst: "Støtter prosjektet med frøbidrag",
-      href: "https://www.nhm.uio.no/botanisk-hage",
+      href: "https://botaniskhage.no",
     },
     {
       navn: "Private givere",
@@ -152,31 +151,49 @@ export default function BiehelsePage() {
             <div className="rounded-xl border bg-background p-5">
               <div className="text-sm font-medium">Sponsorer</div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {sponsorer.map((c) => (
-                  <a
-                    key={c.navn}
-                    href={c.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group rounded-xl border bg-card p-4 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <div className="flex items-start gap-3">
-                      {c.logoSrc ? (
-                        <img
-                          src={c.logoSrc}
-                          alt={c.logoAlt || c.navn}
-                          className="h-10 w-10 shrink-0 rounded-md object-contain"
-                        />
-                      ) : null}
-                      <div className="min-w-0">
-                        <div className="font-medium leading-snug underline-offset-4 group-hover:underline">
-                          {c.navn}
+                {sponsorer.map((c) =>
+                  c.href ? (
+                    <a
+                      key={c.navn}
+                      href={c.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group rounded-xl border bg-card p-4 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <div className="flex items-start gap-3">
+                        {c.logoSrc ? (
+                          <img
+                            src={c.logoSrc}
+                            alt={c.logoAlt || c.navn}
+                            className="h-10 w-10 shrink-0 rounded-md object-contain"
+                          />
+                        ) : null}
+                        <div className="min-w-0">
+                          <div className="font-medium leading-snug underline-offset-4 group-hover:underline">
+                            {c.navn}
+                          </div>
+                          <div className="mt-1 text-sm text-muted-foreground">{c.tekst}</div>
                         </div>
-                        <div className="mt-1 text-sm text-muted-foreground">{c.tekst}</div>
+                      </div>
+                    </a>
+                  ) : (
+                    <div key={c.navn} className="rounded-xl border bg-card p-4">
+                      <div className="flex items-start gap-3">
+                        {c.logoSrc ? (
+                          <img
+                            src={c.logoSrc}
+                            alt={c.logoAlt || c.navn}
+                            className="h-10 w-10 shrink-0 rounded-md object-contain"
+                          />
+                        ) : null}
+                        <div className="min-w-0">
+                          <div className="font-medium leading-snug">{c.navn}</div>
+                          <div className="mt-1 text-sm text-muted-foreground">{c.tekst}</div>
+                        </div>
                       </div>
                     </div>
-                  </a>
-                ))}
+                  )
+                )}
               </div>
             </div>
 
