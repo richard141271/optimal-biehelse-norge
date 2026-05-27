@@ -987,20 +987,25 @@ export async function POST(request: Request) {
         : null
 
     const note = metode === "kontant" ? "Kontant" : metode === "vipps" ? "Vipps" : metode || null
+    const paidAtIso = paid ? new Date().toISOString() : null
 
-    const { error: insertError } = await gate.admin.from("lodd_kjop").insert({
-      lotteri_id: lotteriId,
-      phone: telefon,
-      antall,
-      belop,
-      status: paid ? "paid" : "pending",
-      ticket_from: ticketFrom,
-      ticket_to: ticketTo,
-      vipps_ref: vippsRef,
-      paid_at: paid ? new Date().toISOString() : null,
-      paid_by_epost: paid ? gate.email : null,
-      note,
-    })
+    const { data: insertedRow, error: insertError } = await gate.admin
+      .from("lodd_kjop")
+      .insert({
+        lotteri_id: lotteriId,
+        phone: telefon,
+        antall,
+        belop,
+        status: paid ? "paid" : "pending",
+        ticket_from: ticketFrom,
+        ticket_to: ticketTo,
+        vipps_ref: vippsRef,
+        paid_at: paidAtIso,
+        paid_by_epost: paid ? gate.email : null,
+        note,
+      })
+      .select("id, phone, antall, belop, ticket_from, ticket_to, vipps_ref, paid_at")
+      .maybeSingle()
 
     if (insertError) {
       const sf = schemaFeil((insertError as { message?: string } | null)?.message)
@@ -1008,6 +1013,32 @@ export async function POST(request: Request) {
         { ok: false, feil: sf ?? "Kunne ikke opprette kjøp." },
         { status: sf ? 500 : 400 }
       )
+    }
+
+    const insertedId = String((insertedRow as Record<string, unknown> | null)?.id ?? "").trim()
+    if (paid && insertedId && paidAtIso) {
+      const ensure = await ensureRegnskapForKjop(gate.admin, {
+        id: insertedId,
+        phone: String((insertedRow as Record<string, unknown> | null)?.phone ?? "").trim(),
+        antall: Math.max(1, Math.floor(Number((insertedRow as Record<string, unknown> | null)?.antall ?? 1))),
+        belop: (insertedRow as Record<string, unknown> | null)?.belop,
+        ticket_from: (insertedRow as Record<string, unknown> | null)?.ticket_from,
+        ticket_to: (insertedRow as Record<string, unknown> | null)?.ticket_to,
+        vipps_ref: (insertedRow as Record<string, unknown> | null)?.vipps_ref,
+        paid_at: paidAtIso,
+      })
+
+      if (!ensure.ok) {
+        await gate.admin
+          .from("lodd_kjop")
+          .update({
+            status: "pending",
+            paid_at: null,
+            paid_by_epost: null,
+          })
+          .eq("id", insertedId)
+        return NextResponse.json({ ok: false, feil: ensure.feil }, { status: ensure.status })
+      }
     }
 
     return NextResponse.json({ ok: true })
