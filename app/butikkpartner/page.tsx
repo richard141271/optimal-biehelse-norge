@@ -86,9 +86,16 @@ export default function ButikkpartnerPage() {
               <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
                 Plassholder for bilder
               </div>
-              <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
-                Plassholder for sponsorlogoer
-              </div>
+              <Link
+                href="/biehelse#sponsorer"
+                className="group rounded-2xl border bg-background p-4 text-sm text-muted-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <div className="font-medium text-foreground">Sponsorer og samarbeidspartnere</div>
+                <div className="mt-1">
+                  Se hvem som støtter prosjektet
+                  <span className="ml-1 underline underline-offset-4 group-hover:text-foreground">på Biehelse</span>
+                </div>
+              </Link>
             </div>
           </div>
 

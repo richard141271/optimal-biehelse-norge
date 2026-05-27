@@ -139,7 +139,7 @@ export default function BiehelsePage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border bg-card p-6 sm:p-8">
+        <section id="sponsorer" className="rounded-2xl border bg-card p-6 sm:p-8">
           <h2 className="text-xl font-semibold tracking-tight">Sponsorer og samarbeidspartnere</h2>
           <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
             Pollinatorprosjektet hadde ikke vært mulig uten støtte fra lokale bedrifter, organisasjoner, frivillige og
