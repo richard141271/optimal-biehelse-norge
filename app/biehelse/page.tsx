@@ -25,6 +25,8 @@ export default function BiehelsePage() {
       navn: "Florea",
       tekst: "Bidrar med pollinatorvennlige frøblandinger",
       href: "https://floreagarden.com/no-no",
+      logoSrc: "/sponsor-logos/florea.png",
+      logoAlt: "Florea",
     },
     {
       navn: "Store Bjørnstad AS",
@@ -34,6 +36,8 @@ export default function BiehelsePage() {
       navn: "Kalesje & Industrisøm AS®",
       tekst: "Bidrar med transport og praktisk hjelp",
       href: "https://kias.no",
+      logoSrc: "/sponsor-logos/kalesje-industrisom.png",
+      logoAlt: "Kalesje & Industrisøm",
     },
     {
       navn: "Fredriksten Camping",
@@ -57,6 +61,8 @@ export default function BiehelsePage() {
       navn: "Botanisk verden",
       tekst: "Støtter prosjektet med frøbidrag",
       href: "https://botaniskverden.no",
+      logoSrc: "/sponsor-logos/botanisk-verden.png",
+      logoAlt: "Botanisk verden",
     },
     {
       navn: "Private givere",
