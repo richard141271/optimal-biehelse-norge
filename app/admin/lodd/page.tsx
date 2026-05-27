@@ -153,6 +153,7 @@ export default function AdminLoddPage() {
   const [kjopVippsRef, setKjopVippsRef] = useState("")
   const [kjopBetalt, setKjopBetalt] = useState(true)
   const [creatingKjop, setCreatingKjop] = useState(false)
+  const [payingKjop, setPayingKjop] = useState<Record<string, boolean>>({})
 
   const selectedPremieSet = useMemo(() => {
     if (state.type !== "ready") return new Set<string>()
@@ -402,7 +403,17 @@ export default function AdminLoddPage() {
   }
 
   async function markPaid(kjopId: string) {
-    await doAction({ action: "markPaid", kjopId })
+    if (payingKjop[kjopId]) return
+    setPayingKjop((prev) => ({ ...prev, [kjopId]: true }))
+    try {
+      await doAction({ action: "markPaid", kjopId })
+    } finally {
+      setPayingKjop((prev) => {
+        const next = { ...prev }
+        delete next[kjopId]
+        return next
+      })
+    }
   }
 
   async function createKjop() {
@@ -1061,8 +1072,12 @@ export default function AdminLoddPage() {
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {k.status !== "paid" ? (
-                                  <Button variant="outline" onClick={() => markPaid(k.id)}>
-                                    Marker betalt
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => markPaid(k.id)}
+                                    disabled={Boolean(payingKjop[k.id])}
+                                  >
+                                    {payingKjop[k.id] ? "Markerer…" : "Marker betalt"}
                                   </Button>
                                 ) : null}
                                 {state.role === "superadmin" ? (
