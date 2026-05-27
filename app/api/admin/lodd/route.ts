@@ -37,8 +37,6 @@ const regnskapSchemaFeil =
   "alter table public.regnskap_poster add column if not exists utlegg_status text;\n" +
   "alter table public.regnskap_poster add column if not exists utlegg_utbetalt_at timestamptz;\n"
 
-const regnskapMotpartForLoddsalg = "4747372406"
-
 function normalizePhone(v: unknown) {
   const digits = String(v ?? "").replace(/\D+/g, "")
   if (!digits) return null
@@ -97,7 +95,22 @@ async function ensureRegnskapForKjop(
     }
     return { ok: false as const, status: 400 as const, feil: "Kunne ikke sjekke regnskap." }
   }
-  if (existing?.id) return { ok: true as const }
+  if (existing?.id) {
+    const { error: updateError } = await admin
+      .from("regnskap_poster")
+      .update({ motpart: kjop.phone })
+      .eq("id", existing.id)
+
+    if (updateError) {
+      const msg = String((updateError as { message?: string } | null)?.message ?? "")
+      if (isRegnskapSchemaError(msg)) {
+        return { ok: false as const, status: 500 as const, feil: regnskapSchemaFeil }
+      }
+      return { ok: false as const, status: 400 as const, feil: "Kunne ikke oppdatere regnskap." }
+    }
+
+    return { ok: true as const }
+  }
 
   const belop = toNumber(kjop.belop)
   if (belop == null) {
@@ -114,12 +127,7 @@ async function ensureRegnskapForKjop(
   const dato = paidIso.includes("T") ? paidIso.slice(0, 10) : paidIso
   const klokke = paidIso.includes("T") ? paidIso.slice(11, 16) : ""
   const line1 = `${range ? `#${range}` : "Loddsalg"} · ${kjop.antall} lodd · ${formatKr(belop)} · paid`
-  const notat = [
-    line1,
-    `Telefon: ${kjop.phone}`,
-    vippsRef ? `Vipps ref: ${vippsRef}` : null,
-    `Betalt: ${dato}${klokke ? `, ${klokke}` : ""}`,
-  ]
+  const notat = [line1, vippsRef ? `Vipps ref: ${vippsRef}` : null, `Betalt: ${dato}${klokke ? `, ${klokke}` : ""}`]
     .filter(Boolean)
     .join("\n")
 
@@ -127,7 +135,7 @@ async function ensureRegnskapForKjop(
     dato,
     type: "inntekt",
     belop,
-    motpart: regnskapMotpartForLoddsalg,
+    motpart: kjop.phone,
     vare: vippsRef || (range ? `Loddsalg #${range}` : "Loddsalg"),
     notat,
     bilag_path: null,
