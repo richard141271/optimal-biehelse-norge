@@ -55,7 +55,7 @@ export default function BiehelsePage() {
     {
       navn: "Halden Frivilligsentral",
       tekst: "Bidrar med utlån av utstyr",
-      href: "https://frivilligsentral.no",
+      href: "https://halden.frivilligsentral.no/",
     },
     {
       navn: "Botanisk verden",
