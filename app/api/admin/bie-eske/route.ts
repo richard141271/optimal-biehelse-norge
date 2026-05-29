@@ -9,6 +9,7 @@ const bucket = "bie-eske"
 
 const schemaFeil =
   "Bie-eske-modulen mangler tabeller i Supabase. Kjør denne SQL-en i Supabase (SQL Editor), og prøv igjen:\n\n" +
+  "create extension if not exists \"pgcrypto\";\n" +
   "create table if not exists public.lek_bie_esker (\n" +
   "  id uuid primary key default gen_random_uuid(),\n" +
   "  created_at timestamptz not null default now(),\n" +
@@ -406,4 +407,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true })
 }
-

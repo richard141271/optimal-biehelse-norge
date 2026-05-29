@@ -81,12 +81,19 @@ function clampInt(v: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.trunc(v)))
 }
 
+function splitSchemaMessage(message: string) {
+  const parts = String(message ?? "").split("\n\n")
+  if (parts.length < 2) return { intro: String(message ?? ""), sql: "" }
+  return { intro: parts[0], sql: parts.slice(1).join("\n\n") }
+}
+
 export default function Redd1BieEskeAdminPage() {
   const router = useRouter()
   const [api, setApi] = useState<ApiState>({ type: "idle" })
   const [mode, setMode] = useState<Mode>("home")
   const [busy, setBusy] = useState(false)
   const [okMsg, setOkMsg] = useState<string | null>(null)
+  const [copiedSql, setCopiedSql] = useState(false)
 
   const [boxCode, setBoxCode] = useState("")
   const [internalId, setInternalId] = useState("")
@@ -305,7 +312,43 @@ export default function Redd1BieEskeAdminPage() {
 
         {api.type === "error" ? (
           <div className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-            {api.message}
+            {(() => {
+              const { intro, sql } = splitSchemaMessage(api.message)
+              const showCopy = Boolean(sql.trim())
+              return (
+                <div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-sm font-semibold">{intro}</div>
+                    {showCopy ? (
+                      <button
+                        type="button"
+                        className="shrink-0 rounded-full border border-rose-200/20 bg-white/10 px-3 py-1 text-xs text-rose-50 hover:bg-white/15"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(sql.trim())
+                            setCopiedSql(true)
+                            setTimeout(() => setCopiedSql(false), 1200)
+                          } catch {
+                            setCopiedSql(false)
+                          }
+                        }}
+                      >
+                        {copiedSql ? "Kopiert" : "Kopier SQL"}
+                      </button>
+                    ) : null}
+                  </div>
+                  {showCopy ? (
+                    <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-rose-50/90">
+                      {sql.trim()}
+                    </pre>
+                  ) : (
+                    <pre className="mt-3 whitespace-pre-wrap break-words text-xs text-rose-50/90">
+                      {api.message}
+                    </pre>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         ) : null}
 
