@@ -170,9 +170,55 @@ async function requireBieEskeAccess() {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const gate = await requireBieEskeAccess()
   if (!gate.ok) return NextResponse.json({ ok: false, feil: gate.feil }, { status: gate.status })
+
+  const url = new URL(request.url)
+  const action = String(url.searchParams.get("action") ?? "").trim()
+  if (action === "searchPlace") {
+    const q = String(url.searchParams.get("q") ?? "").trim()
+    if (q.length < 3) {
+      return NextResponse.json({ ok: false, feil: "Skriv minst 3 tegn." }, { status: 400 })
+    }
+    if (q.length > 120) {
+      return NextResponse.json({ ok: false, feil: "Søketekst er for lang." }, { status: 400 })
+    }
+
+    const searchUrl = new URL("https://nominatim.openstreetmap.org/search")
+    searchUrl.searchParams.set("format", "jsonv2")
+    searchUrl.searchParams.set("q", q)
+    searchUrl.searchParams.set("limit", "8")
+    searchUrl.searchParams.set("countrycodes", "no")
+    searchUrl.searchParams.set("addressdetails", "1")
+
+    try {
+      const res = await fetch(searchUrl, {
+        headers: {
+          "user-agent": "obno.no (admin bie-eske)",
+          accept: "application/json",
+          "accept-language": "no-NO,no;q=0.9,en;q=0.7",
+        },
+        cache: "no-store",
+      })
+      if (!res.ok) {
+        return NextResponse.json({ ok: false, feil: "Kunne ikke søke i kart." }, { status: 400 })
+      }
+      const rows = (await res.json()) as Array<{ display_name?: unknown; lat?: unknown; lon?: unknown }>
+      const results = (rows ?? [])
+        .map((r) => {
+          const name = String(r.display_name ?? "").trim()
+          const lat = Number(String(r.lat ?? "").trim())
+          const lng = Number(String(r.lon ?? "").trim())
+          if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return null
+          return { name, lat, lng }
+        })
+        .filter(Boolean)
+      return NextResponse.json({ ok: true, results })
+    } catch {
+      return NextResponse.json({ ok: false, feil: "Kunne ikke søke i kart." }, { status: 400 })
+    }
+  }
 
   const { data: boxes, error: boxError } = await gate.admin
     .from("lek_bie_esker")

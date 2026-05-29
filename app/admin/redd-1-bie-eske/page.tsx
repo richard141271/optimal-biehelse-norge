@@ -108,6 +108,13 @@ export default function Redd1BieEskeAdminPage() {
   const [images, setImages] = useState<File[]>([])
   const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null)
   const [gpsStatus, setGpsStatus] = useState<"idle" | "loading" | "ok" | "fail">("idle")
+  const [mapOpen, setMapOpen] = useState(false)
+  const [placeQuery, setPlaceQuery] = useState("")
+  const [placeResults, setPlaceResults] = useState<Array<{ name: string; lat: number; lng: number }>>([])
+  const [placeBusy, setPlaceBusy] = useState(false)
+  const [placeError, setPlaceError] = useState<string | null>(null)
+  const [manualLat, setManualLat] = useState("")
+  const [manualLng, setManualLng] = useState("")
 
   const codeRef = useRef<HTMLInputElement | null>(null)
 
@@ -125,6 +132,12 @@ export default function Redd1BieEskeAdminPage() {
     setImages([])
     setGps(null)
     setGpsStatus("idle")
+    setMapOpen(false)
+    setPlaceQuery("")
+    setPlaceResults([])
+    setPlaceError(null)
+    setManualLat("")
+    setManualLng("")
   }, [])
 
   const fetchOverview = useCallback(async () => {
@@ -163,11 +176,16 @@ export default function Redd1BieEskeAdminPage() {
     setGpsStatus("loading")
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        const next = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        setGps(next)
+        setManualLat(String(next.lat))
+        setManualLng(String(next.lng))
         setGpsStatus("ok")
       },
       () => {
         setGps(null)
+        setManualLat("")
+        setManualLng("")
         setGpsStatus("fail")
       },
       { enableHighAccuracy: true, timeout: 9000, maximumAge: 60_000 }
@@ -223,6 +241,45 @@ export default function Redd1BieEskeAdminPage() {
     if (!files) return
     const arr = Array.from(files).filter((f) => f.size > 0).slice(0, 3)
     setImages(arr)
+  }, [])
+
+  const onSearchPlace = useCallback(async () => {
+    const q = placeQuery.trim()
+    if (q.length < 3) {
+      setPlaceError("Skriv minst 3 tegn.")
+      setPlaceResults([])
+      return
+    }
+    setPlaceBusy(true)
+    setPlaceError(null)
+    try {
+      const res = await fetch(`/api/admin/bie-eske?action=searchPlace&q=${encodeURIComponent(q)}`, {
+        cache: "no-store",
+      })
+      const json = (await res.json()) as { ok?: boolean; feil?: string; results?: Array<{ name: string; lat: number; lng: number }> }
+      if (!res.ok || !json.ok) {
+        setPlaceBusy(false)
+        setPlaceResults([])
+        setPlaceError(String(json.feil ?? "Kunne ikke søke i kart."))
+        return
+      }
+      setPlaceBusy(false)
+      setPlaceResults(Array.isArray(json.results) ? json.results : [])
+    } catch {
+      setPlaceBusy(false)
+      setPlaceResults([])
+      setPlaceError("Kunne ikke søke i kart.")
+    }
+  }, [placeQuery])
+
+  const applyManualCoords = useCallback((nextLat: string, nextLng: string) => {
+    const lat = Number(nextLat.replace(",", "."))
+    const lng = Number(nextLng.replace(",", "."))
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return
+    const next = { lat, lng }
+    setGps(next)
+    setGpsStatus("ok")
   }, [])
 
   const onSave = useCallback(async () => {
@@ -599,24 +656,131 @@ export default function Redd1BieEskeAdminPage() {
 
               <div>
                 <Label className="text-slate-200">GPS</Label>
-                <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
-                  <div className="text-sm text-slate-200">
-                    {gpsStatus === "loading"
-                      ? "Henter…"
-                      : gpsStatus === "ok" && gps
-                        ? `${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}`
-                        : gpsStatus === "fail"
-                          ? "Kunne ikke hente GPS"
-                          : "Ikke hentet"}
+                <div className="mt-2 rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm text-slate-200">
+                      {gpsStatus === "loading"
+                        ? "Henter GPS…"
+                        : gpsStatus === "ok" && gps
+                          ? `${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}`
+                          : gpsStatus === "fail"
+                            ? "Kunne ikke hente GPS"
+                            : "Ikke hentet"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {gps ? (
+                        <a
+                          href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(
+                            String(gps.lat)
+                          )}&mlon=${encodeURIComponent(String(gps.lng))}#map=18/${encodeURIComponent(
+                            String(gps.lat)
+                          )}/${encodeURIComponent(String(gps.lng))}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="h-10 rounded-full border border-white/10 bg-white/5 px-3 text-sm font-semibold text-white hover:bg-white/10 inline-flex items-center"
+                        >
+                          Åpne kart
+                        </a>
+                      ) : null}
+                      <Button
+                        variant="secondary"
+                        className="h-10 rounded-full bg-white/10 text-white hover:bg-white/15"
+                        onClick={requestGps}
+                        disabled={gpsStatus === "loading" || busy}
+                      >
+                        GPS
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        className="h-10 rounded-full bg-white/10 text-white hover:bg-white/15"
+                        onClick={() => setMapOpen((v) => !v)}
+                        disabled={busy}
+                      >
+                        🌍 Kart
+                      </Button>
+                    </div>
                   </div>
-                  <Button
-                    variant="secondary"
-                    className="h-10 rounded-full bg-white/10 text-white hover:bg-white/15"
-                    onClick={requestGps}
-                    disabled={gpsStatus === "loading" || busy}
-                  >
-                    Oppdater
-                  </Button>
+
+                  {mapOpen ? (
+                    <div className="mt-3 space-y-3">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                        <Input
+                          value={placeQuery}
+                          onChange={(e) => setPlaceQuery(e.target.value)}
+                          placeholder="Søk sted (f.eks. Tistasenteret, Halden)"
+                          className="h-12 rounded-2xl border-white/10 bg-black/20 text-white placeholder:text-slate-500"
+                        />
+                        <Button
+                          className="h-12 rounded-2xl bg-white/10 text-white hover:bg-white/15"
+                          variant="secondary"
+                          onClick={onSearchPlace}
+                          disabled={placeBusy || busy}
+                        >
+                          {placeBusy ? "Søker…" : "Søk"}
+                        </Button>
+                      </div>
+
+                      {placeError ? <div className="text-sm text-rose-200">{placeError}</div> : null}
+
+                      {placeResults.length ? (
+                        <div className="grid grid-cols-1 gap-2">
+                          {placeResults.map((r) => (
+                            <button
+                              key={`${r.lat}:${r.lng}:${r.name}`}
+                              type="button"
+                              className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-left hover:bg-black/20"
+                              onClick={() => {
+                                const next = { lat: r.lat, lng: r.lng }
+                                setGps(next)
+                                setManualLat(String(next.lat))
+                                setManualLng(String(next.lng))
+                                setGpsStatus("ok")
+                              }}
+                            >
+                              <div className="text-sm font-semibold text-slate-50">{r.name}</div>
+                              <div className="mt-0.5 text-xs text-slate-300">
+                                {r.lat.toFixed(5)}, {r.lng.toFixed(5)}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div>
+                          <Label className="text-slate-200">Lat</Label>
+                          <Input
+                            value={manualLat}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              setManualLat(v)
+                              applyManualCoords(v, manualLng)
+                            }}
+                            placeholder="59.12"
+                            className="mt-2 h-12 rounded-2xl border-white/10 bg-black/20 text-white placeholder:text-slate-500"
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-slate-200">Lng</Label>
+                          <Input
+                            value={manualLng}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              setManualLng(v)
+                              applyManualCoords(manualLat, v)
+                            }}
+                            placeholder="11.38"
+                            className="mt-2 h-12 rounded-2xl border-white/10 bg-black/20 text-white placeholder:text-slate-500"
+                            inputMode="decimal"
+                          />
+                        </div>
+                      </div>
+                      <div className="text-xs text-slate-300">
+                        Bruk kart-søk hvis GPS ikke treffer riktig. Du kan også skrive inn koordinater manuelt.
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
