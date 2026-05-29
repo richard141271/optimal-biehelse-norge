@@ -50,6 +50,15 @@ export default function AdminHomePage() {
           </div>
         </Link>
         <Link
+          href="/admin/redd-1-bie-eske"
+          className="rounded-xl border bg-card p-5 hover:bg-muted/40"
+        >
+          <div className="text-sm font-medium">🐝 Redd 1 Bie-Eske</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Registrer runder, påfylling, bilder og GPS ute i felt.
+          </div>
+        </Link>
+        <Link
           href="/admin/skrapelodd"
           className="rounded-xl border bg-card p-5 hover:bg-muted/40"
         >
