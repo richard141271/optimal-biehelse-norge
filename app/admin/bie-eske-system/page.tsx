@@ -132,6 +132,12 @@ export default function BieEskeSystemPage() {
         setApi({ type: "error", message: String(json.feil ?? "Kunne ikke hente oversikt.") })
         return
       }
+      const warning = String(json.warning ?? "").trim()
+      if (warning) {
+        setMsg(warning)
+      } else {
+        setMsg(null)
+      }
       setApi({
         type: "ready",
         role: String(json.role ?? ""),

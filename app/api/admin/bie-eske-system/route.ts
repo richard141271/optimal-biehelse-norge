@@ -175,7 +175,6 @@ async function fetchOperativeMembers(admin: AdminClient) {
   const { data, error } = await admin
     .from("medlemmer")
     .select("id, user_id, navn, epost, role, aktiv")
-    .or("aktiv.is.null,aktiv.eq.true")
     .order("navn", { ascending: true })
     .limit(2000)
 
@@ -225,7 +224,16 @@ async function syncPersonWarehousesFromMembers(admin: AdminClient, members: Medl
   const { error } = await admin.from("lek_v2_lager").upsert(rows as unknown as never, { onConflict: "dedupe_key" })
   if (error) {
     const msg = String((error as { message?: string } | null)?.message ?? "")
-    return { ok: false as const, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke synke personlager." }
+    if (isSchemaError(msg)) return { ok: false as const, feil: schemaFeil }
+    if (/unique|exclusion|on conflict/i.test(msg) && /dedupe_key|conflict/i.test(msg)) {
+      return {
+        ok: false as const,
+        feil:
+          "Bie-Eske System: mangler unik indeks på dedupe_key i lek_v2_lager. Kjør dette i Supabase (SQL Editor):\n\n" +
+          "create unique index if not exists lek_v2_lager_dedupe_key_uq on public.lek_v2_lager (dedupe_key);",
+      }
+    }
+    return { ok: false as const, feil: msg ? `Kunne ikke synke personlager: ${msg}` : "Kunne ikke synke personlager." }
   }
   return { ok: true as const }
 }
@@ -458,14 +466,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, location: location ?? null, balances, events: events ?? [], signed })
   }
 
+  let warning: string | null = null
   const membersRes = await fetchOperativeMembers(admin)
+  const membersList = membersRes.ok ? membersRes.members : []
   if (!membersRes.ok) {
-    return NextResponse.json({ ok: false, feil: membersRes.feil }, { status: 400 })
-  }
-  const syncRes = await syncPersonWarehousesFromMembers(admin, membersRes.members)
-  if (!syncRes.ok) {
-    const msg = String(syncRes.feil ?? "")
-    return NextResponse.json({ ok: false, feil: msg }, { status: msg === schemaFeil ? 500 : 400 })
+    warning = String(membersRes.feil ?? "Kunne ikke hente medlemmer.")
+  } else {
+    const syncRes = await syncPersonWarehousesFromMembers(admin, membersRes.members)
+    if (!syncRes.ok) {
+      warning = String(syncRes.feil ?? "Kunne ikke synke personlager.")
+    }
   }
 
   const { data: lagre, error: lagreErr } = await admin
@@ -501,7 +511,7 @@ export async function GET(request: Request) {
     if (dk) personByDedupe.set(dk, p)
   }
 
-  const members = membersRes.members
+  const members = membersList
     .map((m) => {
       const dk = personDedupeKeyFromMember(m)
       const wh = dk ? personByDedupe.get(dk) : null
@@ -519,7 +529,7 @@ export async function GET(request: Request) {
     })
     .filter((m) => Boolean(m.lagerId))
 
-  return NextResponse.json({ ok: true, role: gate.role, lagre: enriched, locations, totals, members })
+  return NextResponse.json({ ok: true, role: gate.role, lagre: enriched, locations, totals, members, warning })
 }
 
 export async function POST(request: Request) {
