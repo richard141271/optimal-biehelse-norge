@@ -108,6 +108,7 @@ export default function BieEskeSystemPage() {
   const [deployGlasses, setDeployGlasses] = useState(15)
   const [deployComment, setDeployComment] = useState("")
   const [deployImages, setDeployImages] = useState<File[]>([])
+  const lastAutoDeployGlasses = useRef(15)
 
   const [selectedLocationId, setSelectedLocationId] = useState<string>("")
   const [locationDetails, setLocationDetails] = useState<LocationDetails | null>(null)
@@ -149,6 +150,14 @@ export default function BieEskeSystemPage() {
       fetchOverview()
     }, 0)
   }, [fetchOverview])
+
+  useEffect(() => {
+    const auto = clampInt(deployBoxes, 1, 1000) * 15
+    if (deployGlasses === lastAutoDeployGlasses.current) {
+      setTimeout(() => setDeployGlasses(auto), 0)
+    }
+    lastAutoDeployGlasses.current = auto
+  }, [deployBoxes, deployGlasses])
 
   const requestGps = useCallback(() => {
     if (!("geolocation" in navigator)) {
@@ -628,6 +637,7 @@ export default function BieEskeSystemPage() {
                 <div>
                   <Label>Glass (start)</Label>
                   <Input value={String(deployGlasses)} onChange={(e) => setDeployGlasses(clampInt(Number(e.target.value), 0, 1000))} inputMode="numeric" />
+                  <div className="mt-1 text-xs text-muted-foreground">Standard: 15 glass per eske.</div>
                 </div>
                 <div>
                   <Label>Kommentar</Label>
