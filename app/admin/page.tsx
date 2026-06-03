@@ -50,12 +50,12 @@ export default function AdminHomePage() {
           </div>
         </Link>
         <Link
-          href="/admin/redd-1-bie-eske"
+          href="/admin/bie-eske-system"
           className="rounded-xl border bg-card p-5 hover:bg-muted/40"
         >
-          <div className="text-sm font-medium">🐝 Redd 1 Bie-Eske</div>
+          <div className="text-sm font-medium">📦 Bie-Eske System</div>
           <div className="mt-1 text-sm text-muted-foreground">
-            Registrer runder, påfylling, bilder og GPS ute i felt.
+            Lager · personlager · lokasjoner · oppfølging.
           </div>
         </Link>
         <Link

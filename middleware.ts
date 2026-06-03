@@ -16,6 +16,10 @@ function isBieEskePath(pathname: string) {
   return pathname === "/admin/redd-1-bie-eske" || pathname.startsWith("/admin/redd-1-bie-eske/")
 }
 
+function isBieEskeSystemPath(pathname: string) {
+  return pathname === "/admin/bie-eske-system" || pathname.startsWith("/admin/bie-eske-system/")
+}
+
 function isMemberPath(pathname: string) {
   if (!pathname.startsWith("/min-side")) return false
   if (pathname === "/min-side/login") return false
@@ -81,7 +85,11 @@ export async function middleware(request: NextRequest) {
       })
       const medlemRows = (await medlemRes.json()) as Array<{ role?: string | null }>
       const role = String(medlemRows?.[0]?.role ?? "")
-      if (role !== "admin" && role !== "superadmin" && !(role === "frivillig" && isBieEskePath(request.nextUrl.pathname))) {
+      if (
+        role !== "admin" &&
+        role !== "superadmin" &&
+        !(role === "frivillig" && (isBieEskePath(request.nextUrl.pathname) || isBieEskeSystemPath(request.nextUrl.pathname)))
+      ) {
         const url = request.nextUrl.clone()
         url.pathname = "/min-side"
         return NextResponse.redirect(url)
