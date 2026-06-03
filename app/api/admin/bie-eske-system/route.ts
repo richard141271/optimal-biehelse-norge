@@ -98,6 +98,15 @@ const schemaFeil =
   "create index if not exists lek_v2_lokasjon_hendelser_created_at_idx on public.lek_v2_lokasjon_hendelser (created_at desc);\n" +
   "create index if not exists lek_v2_lokasjon_hendelser_location_created_at_idx on public.lek_v2_lokasjon_hendelser (location_lager_id, created_at desc);\n"
 
+type Medlem = {
+  id: string
+  user_id: string | null
+  navn: string | null
+  epost: string | null
+  role: string | null
+  aktiv: boolean | null
+}
+
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
@@ -146,6 +155,79 @@ function makeDedupeKey(kind: string, name: string, lat: number | null, lng: numb
     return `${k}|${n}|${roundCoord(lat)},${roundCoord(lng)}`
   }
   return `${k}|${n}`
+}
+
+function personKeyFromMember(m: Medlem) {
+  const uid = String(m.user_id ?? "").trim()
+  if (uid) return `user:${uid}`
+  const email = String(m.epost ?? "").trim().toLowerCase()
+  if (email) return `email:${email}`
+  return ""
+}
+
+function personDedupeKeyFromMember(m: Medlem) {
+  const key = personKeyFromMember(m)
+  return key ? `person|${key}` : ""
+}
+
+async function fetchOperativeMembers(admin: AdminClient) {
+  const { data, error } = await admin
+    .from("medlemmer")
+    .select("id, user_id, navn, epost, role, aktiv")
+    .eq("aktiv", true)
+    .in("role", ["frivillig", "admin", "superadmin"])
+    .order("navn", { ascending: true })
+    .limit(2000)
+
+  if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    return { ok: false as const, feil: msg ? `Kunne ikke hente medlemmer: ${msg}` : "Kunne ikke hente medlemmer." }
+  }
+
+  const members = (data ?? []) as Array<Partial<Medlem>>
+  const cleaned: Medlem[] = members
+    .map((m) => ({
+      id: String(m.id ?? "").trim(),
+      user_id: m.user_id ? String(m.user_id).trim() : null,
+      navn: m.navn ? String(m.navn).trim() : null,
+      epost: m.epost ? String(m.epost).trim().toLowerCase() : null,
+      role: m.role ? String(m.role).trim().toLowerCase() : null,
+      aktiv: typeof m.aktiv === "boolean" ? m.aktiv : null,
+    }))
+    .filter((m) => Boolean(m.id))
+
+  return { ok: true as const, members: cleaned }
+}
+
+async function syncPersonWarehousesFromMembers(admin: AdminClient, members: Medlem[]) {
+  const nowIso = new Date().toISOString()
+  const rows = members
+    .map((m) => {
+      const dedupe = personDedupeKeyFromMember(m)
+      if (!dedupe) return null
+      const name = String(m.navn ?? m.epost ?? "").trim()
+      if (!name) return null
+      return {
+        id: crypto.randomUUID(),
+        created_at: nowIso,
+        updated_at: nowIso,
+        kind: "person",
+        name,
+        person_name: name,
+        dedupe_key: dedupe,
+        active: true,
+      }
+    })
+    .filter(Boolean) as Array<Record<string, unknown>>
+
+  if (!rows.length) return { ok: true as const }
+
+  const { error } = await admin.from("lek_v2_lager").upsert(rows as unknown as never, { onConflict: "dedupe_key" })
+  if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    return { ok: false as const, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke synke personlager." }
+  }
+  return { ok: true as const }
 }
 
 function toSafeStorageKey(v: string) {
@@ -329,9 +411,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, location: location ?? null, balances, events: events ?? [], signed })
   }
 
+  const membersRes = await fetchOperativeMembers(admin)
+  if (!membersRes.ok) {
+    return NextResponse.json({ ok: false, feil: membersRes.feil }, { status: 400 })
+  }
+  const syncRes = await syncPersonWarehousesFromMembers(admin, membersRes.members)
+  if (!syncRes.ok) {
+    const msg = String(syncRes.feil ?? "")
+    return NextResponse.json({ ok: false, feil: msg }, { status: msg === schemaFeil ? 500 : 400 })
+  }
+
   const { data: lagre, error: lagreErr } = await admin
     .from("lek_v2_lager")
-    .select("id, kind, name, person_name, location_type, address, lat, lng, responsible_lager_id, updated_at, active")
+    .select("id, kind, name, person_name, dedupe_key, location_type, address, lat, lng, responsible_lager_id, updated_at, active")
     .order("updated_at", { ascending: false })
     .limit(600)
   if (lagreErr) {
@@ -353,7 +445,32 @@ export async function GET(request: Request) {
     totalLokasjoner: locations.length,
   }
 
-  return NextResponse.json({ ok: true, role: gate.role, lagre: enriched, locations, totals })
+  const personWarehouses = (enriched as Array<Record<string, unknown>>).filter((l) => String(l.kind ?? "") === "person")
+  const personByDedupe = new Map<string, Record<string, unknown>>()
+  for (const p of personWarehouses) {
+    const dk = String(p.dedupe_key ?? "").trim()
+    if (dk) personByDedupe.set(dk, p)
+  }
+
+  const members = membersRes.members
+    .map((m) => {
+      const dk = personDedupeKeyFromMember(m)
+      const wh = dk ? personByDedupe.get(dk) : null
+      const lagerId = String(wh?.id ?? "").trim() || null
+      const balances = (wh?.balances ?? {}) as Record<string, number>
+      return {
+        id: m.id,
+        userId: m.user_id,
+        navn: m.navn,
+        epost: m.epost,
+        role: m.role,
+        lagerId,
+        balances,
+      }
+    })
+    .filter((m) => Boolean(m.lagerId))
+
+  return NextResponse.json({ ok: true, role: gate.role, lagre: enriched, locations, totals, members })
 }
 
 export async function POST(request: Request) {
@@ -392,34 +509,6 @@ export async function POST(request: Request) {
     if (error) {
       const msg = String((error as { message?: string } | null)?.message ?? "")
       return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke opprette lager." }, { status: isSchemaError(msg) ? 500 : 400 })
-    }
-    return NextResponse.json({ ok: true, id, reused: false })
-  }
-
-  if (action === "createPerson") {
-    const person = String(form.get("person") ?? "").trim()
-    if (!person) return NextResponse.json({ ok: false, feil: "Mangler navn." }, { status: 400 })
-    const dedupe = makeDedupeKey("person", person, null, null)
-    const { data: existing, error: exErr } = await admin.from("lek_v2_lager").select("id").eq("dedupe_key", dedupe).maybeSingle()
-    if (exErr) {
-      const msg = String((exErr as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke opprette personlager." }, { status: isSchemaError(msg) ? 500 : 400 })
-    }
-    if (existing) return NextResponse.json({ ok: true, id: String((existing as { id?: unknown }).id ?? ""), reused: true })
-    const id = crypto.randomUUID()
-    const { error } = await admin.from("lek_v2_lager").insert({
-      id,
-      created_at: nowIso,
-      updated_at: nowIso,
-      kind: "person",
-      name: person,
-      person_name: person,
-      dedupe_key: dedupe,
-      active: true,
-    } as unknown as never)
-    if (error) {
-      const msg = String((error as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke opprette personlager." }, { status: isSchemaError(msg) ? 500 : 400 })
     }
     return NextResponse.json({ ok: true, id, reused: false })
   }

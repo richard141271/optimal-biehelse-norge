@@ -11,6 +11,7 @@ type Lager = {
   kind?: string | null
   name?: string | null
   person_name?: string | null
+  dedupe_key?: string | null
   location_type?: string | null
   address?: string | null
   lat?: number | null
@@ -18,6 +19,16 @@ type Lager = {
   responsible_lager_id?: string | null
   updated_at?: string | null
   active?: boolean | null
+  balances?: Record<string, number> | null
+}
+
+type MedlemPersonlager = {
+  id: string
+  userId?: string | null
+  navn?: string | null
+  epost?: string | null
+  role?: string | null
+  lagerId: string
   balances?: Record<string, number> | null
 }
 
@@ -42,7 +53,14 @@ type LocationDetails = {
 type ApiState =
   | { type: "idle" }
   | { type: "loading" }
-  | { type: "ready"; role: string; lagre: Lager[]; locations: Lager[]; totals: { totalLagere: number; totalLokasjoner: number } }
+  | {
+      type: "ready"
+      role: string
+      lagre: Lager[]
+      locations: Lager[]
+      members: MedlemPersonlager[]
+      totals: { totalLagere: number; totalLokasjoner: number }
+    }
   | { type: "error"; message: string }
 
 function splitSchemaMessage(message: string) {
@@ -70,8 +88,6 @@ export default function BieEskeSystemPage() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [copiedSql, setCopiedSql] = useState(false)
-
-  const [personName, setPersonName] = useState("")
 
   const [adjustLagerId, setAdjustLagerId] = useState("")
   const [adjustItem, setAdjustItem] = useState<"bie_eske" | "glass">("bie_eske")
@@ -120,6 +136,7 @@ export default function BieEskeSystemPage() {
         role: String(json.role ?? ""),
         lagre: (json.lagre as Lager[]) ?? [],
         locations: (json.locations as Lager[]) ?? [],
+        members: (json.members as MedlemPersonlager[]) ?? [],
         totals: (json.totals as { totalLagere: number; totalLokasjoner: number }) ?? { totalLagere: 0, totalLokasjoner: 0 },
       })
     } catch {
@@ -232,30 +249,6 @@ export default function BieEskeSystemPage() {
     await fetchOverview()
     setTimeout(() => setMsg(null), 1400)
   }, [busy, fetchOverview, postForm])
-
-  const onCreatePerson = useCallback(async () => {
-    if (busy) return
-    const person = personName.trim()
-    if (!person) {
-      setMsg("Mangler navn.")
-      return
-    }
-    setBusy(true)
-    setMsg(null)
-    const fd = new FormData()
-    fd.set("action", "createPerson")
-    fd.set("person", person)
-    const out = await postForm(fd)
-    setBusy(false)
-    if (!out.ok) {
-      setMsg(out.feil)
-      return
-    }
-    setPersonName("")
-    setMsg("✅ Personlager opprettet.")
-    await fetchOverview()
-    setTimeout(() => setMsg(null), 1400)
-  }, [busy, fetchOverview, personName, postForm])
 
   const onAdjust = useCallback(async () => {
     if (busy) return
@@ -397,6 +390,11 @@ export default function BieEskeSystemPage() {
   const selectedLocationName = String(locationDetails?.location?.name ?? "").trim()
   const selectedLocationMeta = `${String(locationDetails?.location?.location_type ?? "").trim() || "Ukjent type"} · ${String(locationDetails?.location?.address ?? "").trim() || "Ukjent adresse"}`
 
+  const memberOptions = useMemo(() => {
+    if (api.type !== "ready") return [] as MedlemPersonlager[]
+    return (api.members ?? []).filter((m) => Boolean(String(m.lagerId ?? "").trim()))
+  }, [api])
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -484,12 +482,7 @@ export default function BieEskeSystemPage() {
                   Opprett hovedlager
                 </Button>
               </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-                <Input value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="Nytt personlager (navn)" />
-                <Button onClick={onCreatePerson} disabled={busy}>
-                  Opprett
-                </Button>
-              </div>
+            <div className="mt-3 text-sm text-muted-foreground">Personlager hentes automatisk fra medlemsregisteret (aktive frivillige/admin).</div>
             </div>
 
             <div className="rounded-xl border bg-card p-5">
@@ -598,11 +591,18 @@ export default function BieEskeSystemPage() {
                     <option value="" disabled>
                       Velg…
                     </option>
-                    {warehouses.people.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {String(l.name ?? "")} ({balancesText(l)})
-                      </option>
-                    ))}
+                    {memberOptions.map((m) => {
+                      const b = m.balances ?? {}
+                      const boxes = Number(b["bie_eske"] ?? 0)
+                      const glasses = Number(b["glass"] ?? 0)
+                      const labelName = String(m.navn ?? m.epost ?? "").trim()
+                      const role = String(m.role ?? "").trim()
+                      return (
+                        <option key={m.lagerId} value={m.lagerId}>
+                          {labelName || "Ukjent"}{role ? ` (${role})` : ""} · {Number.isFinite(boxes) ? boxes : 0} esker · {Number.isFinite(glasses) ? glasses : 0} glass
+                        </option>
+                      )
+                    })}
                   </select>
                 </div>
                 <div>
