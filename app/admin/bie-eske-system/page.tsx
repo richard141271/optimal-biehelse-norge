@@ -112,6 +112,7 @@ export default function BieEskeSystemPage() {
   const [msg, setMsg] = useState<string | null>(null)
   const [copiedSql, setCopiedSql] = useState(false)
   const [locationsOpen, setLocationsOpen] = useState(false)
+  const [includeInactiveLocations, setIncludeInactiveLocations] = useState(false)
   const [locQuery, setLocQuery] = useState("")
   const [locSort, setLocSort] = useState<LocationSort>("updated")
   const [locSortDir, setLocSortDir] = useState<SortDir>("desc")
@@ -142,6 +143,11 @@ export default function BieEskeSystemPage() {
 
   const [selectedLocationId, setSelectedLocationId] = useState<string>("")
   const [locationDetails, setLocationDetails] = useState<LocationDetails | null>(null)
+  const [editingLocation, setEditingLocation] = useState(false)
+  const [editLocName, setEditLocName] = useState("")
+  const [editLocType, setEditLocType] = useState("")
+  const [editLocAddress, setEditLocAddress] = useState("")
+  const [editLocResponsible, setEditLocResponsible] = useState("")
   const [controlGlassesLeft, setControlGlassesLeft] = useState(0)
   const [controlFilledAdded, setControlFilledAdded] = useState(0)
   const [controlFromLagerId, setControlFromLagerId] = useState("")
@@ -268,6 +274,11 @@ export default function BieEskeSystemPage() {
       setControlImages([])
       const responsible = String((json.location as Lager | null)?.responsible_lager_id ?? "").trim()
       setControlFromLagerId(responsible)
+      setEditingLocation(false)
+      setEditLocName(String((json.location as Lager | null)?.name ?? ""))
+      setEditLocType(String((json.location as Lager | null)?.location_type ?? ""))
+      setEditLocAddress(String((json.location as Lager | null)?.address ?? ""))
+      setEditLocResponsible(responsible)
       setBusy(false)
       setTimeout(() => requestGps(), 0)
     } catch {
@@ -454,6 +465,58 @@ export default function BieEskeSystemPage() {
     selectedLocationId,
   ])
 
+  const onUpdateLocation = useCallback(async () => {
+    if (busy) return
+    if (!selectedLocationId) return
+    const name = editLocName.trim()
+    const type = editLocType.trim()
+    if (!name) return setMsg("Mangler lokasjonsnavn.")
+    if (!type) return setMsg("Mangler type sted.")
+    setBusy(true)
+    setMsg(null)
+    const fd = new FormData()
+    fd.set("action", "updateLocation")
+    fd.set("locationId", selectedLocationId)
+    fd.set("name", name)
+    fd.set("locationType", type)
+    if (editLocAddress.trim()) fd.set("address", editLocAddress.trim())
+    if (editLocResponsible.trim()) fd.set("responsibleLagerId", editLocResponsible.trim())
+    const out = await postForm(fd)
+    setBusy(false)
+    if (!out.ok) {
+      setMsg(out.feil)
+      return
+    }
+    setEditingLocation(false)
+    setMsg("✅ Lokasjon oppdatert.")
+    await fetchOverview()
+    await openLocation(selectedLocationId)
+    setTimeout(() => setMsg(null), 1400)
+  }, [busy, editLocAddress, editLocName, editLocResponsible, editLocType, fetchOverview, openLocation, postForm, selectedLocationId])
+
+  const onDeactivateLocation = useCallback(async () => {
+    if (busy) return
+    if (!selectedLocationId) return
+    if (!confirm("Deaktivere lokasjonen? (Den forsvinner fra listen.)")) return
+    setBusy(true)
+    setMsg(null)
+    const fd = new FormData()
+    fd.set("action", "deactivateLocation")
+    fd.set("locationId", selectedLocationId)
+    const out = await postForm(fd)
+    setBusy(false)
+    if (!out.ok) {
+      setMsg(out.feil)
+      return
+    }
+    setSelectedLocationId("")
+    setLocationDetails(null)
+    setEditingLocation(false)
+    setMsg("✅ Lokasjon deaktivert.")
+    await fetchOverview()
+    setTimeout(() => setMsg(null), 1400)
+  }, [busy, fetchOverview, postForm, selectedLocationId])
+
   const balancesText = useCallback((l: Lager) => {
     const b = l.balances ?? {}
     const boxes = Number(b["bie_eske"] ?? 0)
@@ -515,6 +578,7 @@ export default function BieEskeSystemPage() {
 
     const q = normalize(locQuery.trim())
     const out = api.locations.filter((l) => {
+      if (!includeInactiveLocations && l.active === false) return false
       const type = String(l.location_type ?? "").trim()
       if (locTypeFilter && type !== locTypeFilter) return false
       const resp = String(l.responsible_lager_id ?? "").trim()
@@ -560,7 +624,7 @@ export default function BieEskeSystemPage() {
     })
 
     return out
-  }, [api, lagerNameById, locQuery, locResponsibleFilter, locSort, locSortDir, locStockFilter, locTypeFilter])
+  }, [api, includeInactiveLocations, lagerNameById, locQuery, locResponsibleFilter, locSort, locSortDir, locStockFilter, locTypeFilter])
 
   return (
     <div className="space-y-6">
@@ -807,11 +871,18 @@ export default function BieEskeSystemPage() {
                 <input
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   multiple
-                  onChange={(e) => pickImages(e.target.files, setDeployImages)}
+                  onChange={(e) => {
+                    pickImages(e.currentTarget.files, setDeployImages)
+                    e.currentTarget.value = ""
+                  }}
                   className="mt-2 block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-muted file:px-4 file:py-2 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
                 />
+                {deployImages.length ? (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Valgt: {deployImages.slice(0, 3).map((f) => f.name).join(", ")}
+                  </div>
+                ) : null}
               </div>
               <div className="mt-4">
                 <Button onClick={onDeploy} disabled={busy}>
@@ -849,8 +920,13 @@ export default function BieEskeSystemPage() {
                 <div className="mt-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm text-muted-foreground">
-                      Viser {filteredSortedLocations.length} av {api.locations.length}
+                      Viser {filteredSortedLocations.length} av{" "}
+                      {includeInactiveLocations ? api.locations.length : api.locations.filter((l) => l.active !== false).length}
                     </div>
+                    <label className="inline-flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={includeInactiveLocations} onChange={(e) => setIncludeInactiveLocations(e.target.checked)} />
+                      Vis inaktive
+                    </label>
                     <Button
                       variant="secondary"
                       onClick={() => {
@@ -968,7 +1044,10 @@ export default function BieEskeSystemPage() {
 
               {!selectedLocationId ? (
                 <div className="mt-3 grid gap-2">
-                  {api.locations.slice(0, 12).map((l) => (
+                  {api.locations
+                    .filter((l) => l.active !== false)
+                    .slice(0, 12)
+                    .map((l) => (
                     <button
                       key={l.id}
                       type="button"
@@ -989,12 +1068,66 @@ export default function BieEskeSystemPage() {
               ) : (
                 <div className="mt-4 space-y-4">
                   <div className="rounded-lg border bg-background p-4">
-                    <div className="text-base font-semibold">{selectedLocationName || "Lokasjon"}</div>
-                    <div className="mt-1 text-sm text-muted-foreground">{selectedLocationMeta}</div>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-base font-semibold">{selectedLocationName || "Lokasjon"}</div>
+                        <div className="mt-1 text-sm text-muted-foreground">{selectedLocationMeta}</div>
+                      </div>
+                      {api.role !== "frivillig" ? (
+                        <div className="flex flex-wrap gap-2">
+                          {!editingLocation ? (
+                            <Button variant="outline" onClick={() => setEditingLocation(true)} disabled={busy}>
+                              Rediger
+                            </Button>
+                          ) : (
+                            <>
+                              <Button variant="outline" onClick={() => setEditingLocation(false)} disabled={busy}>
+                                Avbryt
+                              </Button>
+                              <Button onClick={onUpdateLocation} disabled={busy}>
+                                Lagre
+                              </Button>
+                            </>
+                          )}
+                          <Button variant="destructive" onClick={onDeactivateLocation} disabled={busy}>
+                            Deaktiver
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
                     <div className="mt-3 text-sm">
                       <span className="font-medium">Beholdning:</span> {Number(locationDetails?.balances?.["bie_eske"] ?? 0)} esker ·{" "}
                       {Number(locationDetails?.balances?.["glass"] ?? 0)} glass
                     </div>
+                    {editingLocation && api.role !== "frivillig" ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label>Butikknavn / lokasjon</Label>
+                          <Input value={editLocName} onChange={(e) => setEditLocName(e.target.value)} />
+                        </div>
+                        <div>
+                          <Label>Type sted</Label>
+                          <Input value={editLocType} onChange={(e) => setEditLocType(e.target.value)} />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label>Adresse</Label>
+                          <Input value={editLocAddress} onChange={(e) => setEditLocAddress(e.target.value)} placeholder="Valgfri" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label>Ansvarlig personlager</Label>
+                          <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={editLocResponsible} onChange={(e) => setEditLocResponsible(e.target.value)}>
+                            <option value="">—</option>
+                            {api.lagre
+                              .filter((l) => String(l.kind ?? "") !== "location")
+                              .map((l) => (
+                                <option key={l.id} value={l.id}>
+                                  {String(l.name ?? "")}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="rounded-lg border bg-background p-4">
@@ -1061,11 +1194,18 @@ export default function BieEskeSystemPage() {
                       <input
                         type="file"
                         accept="image/*"
-                        capture="environment"
                         multiple
-                        onChange={(e) => pickImages(e.target.files, setControlImages)}
+                        onChange={(e) => {
+                          pickImages(e.currentTarget.files, setControlImages)
+                          e.currentTarget.value = ""
+                        }}
                         className="mt-2 block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-muted file:px-4 file:py-2 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
                       />
+                      {controlImages.length ? (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Valgt: {controlImages.slice(0, 3).map((f) => f.name).join(", ")}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="mt-4">
                       <Button onClick={onControl} disabled={busy}>
@@ -1097,7 +1237,15 @@ export default function BieEskeSystemPage() {
                                     const url = locationDetails.signed?.[p] ?? ""
                                     return (
                                       <div key={p} className="overflow-hidden rounded-md border bg-background">
-                                        {url ? <img src={url} alt="" className="h-20 w-full object-cover" /> : <div className="h-20 bg-muted/30" />}
+                                        {url ? (
+                                          <a href={url} target="_blank" rel="noreferrer" className="block">
+                                            <img src={url} alt="Bilde" className="h-20 w-full object-cover" />
+                                          </a>
+                                        ) : (
+                                          <div className="flex h-20 items-center justify-center bg-muted/30 text-[10px] text-muted-foreground" title={p}>
+                                            Mangler bilde
+                                          </div>
+                                        )}
                                       </div>
                                     )
                                   })}

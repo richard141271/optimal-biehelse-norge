@@ -139,7 +139,10 @@ export async function GET(request: Request) {
     const path = String(url.searchParams.get("path") ?? "").trim()
     if (!path) return NextResponse.json({ ok: false, feil: "Mangler path." }, { status: 400 })
     const { data, error } = await admin.storage.from(bucket).createSignedUrl(path, 60 * 15)
-    if (error) return NextResponse.json({ ok: false, feil: "Kunne ikke lage lenke." }, { status: 400 })
+    if (error) {
+      const msg = String((error as { message?: unknown } | null)?.message ?? "").trim()
+      return NextResponse.json({ ok: false, feil: msg ? `Kunne ikke lage lenke: ${msg}` : "Kunne ikke lage lenke." }, { status: 400 })
+    }
     const signedUrl = String((data as { signedUrl?: unknown } | null)?.signedUrl ?? "")
     if (!signedUrl) return NextResponse.json({ ok: false, feil: "Kunne ikke lage lenke." }, { status: 400 })
     return NextResponse.json({ ok: true, signedUrl })

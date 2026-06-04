@@ -291,6 +291,20 @@ function toSafeStorageKey(v: string) {
   return cleaned || "x"
 }
 
+function extFromNameAndType(filename: string, type: string) {
+  const name = String(filename ?? "").trim()
+  const last = name.lastIndexOf(".")
+  const ext = last > 0 ? name.slice(last + 1).trim().toLowerCase() : ""
+  if (ext && ext.length <= 10) return ext
+  const t = String(type ?? "").toLowerCase()
+  if (t.includes("png")) return "png"
+  if (t.includes("webp")) return "webp"
+  if (t.includes("jpeg") || t.includes("jpg")) return "jpg"
+  if (t.includes("heic")) return "heic"
+  if (t.includes("heif")) return "heif"
+  return "bin"
+}
+
 async function getAuth() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -665,6 +679,99 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true })
   }
 
+  if (action === "updateLocation") {
+    if (gate.role === "frivillig") return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+    const locationId = String(form.get("locationId") ?? "").trim()
+    const name = String(form.get("name") ?? "").trim()
+    const locationType = String(form.get("locationType") ?? "").trim()
+    const address = String(form.get("address") ?? "").trim()
+    const responsibleLagerId = String(form.get("responsibleLagerId") ?? "").trim()
+    if (!locationId) return NextResponse.json({ ok: false, feil: "Mangler lokasjon." }, { status: 400 })
+    if (!name) return NextResponse.json({ ok: false, feil: "Mangler lokasjonsnavn." }, { status: 400 })
+    if (!locationType) return NextResponse.json({ ok: false, feil: "Mangler type sted." }, { status: 400 })
+
+    const { data: loc, error: locErr } = await admin
+      .from("lek_v2_lager")
+      .select("id, kind, lat, lng")
+      .eq("id", locationId)
+      .maybeSingle()
+    if (locErr) {
+      const msg = String((locErr as { message?: string } | null)?.message ?? "")
+      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente lokasjon." }, { status: isSchemaError(msg) ? 500 : 400 })
+    }
+    const locRow = loc as unknown as Record<string, unknown> | null
+    const locId = String(locRow?.id ?? "").trim()
+    const locKind = String(locRow?.kind ?? "").trim()
+    if (!locId || locKind !== "location") {
+      return NextResponse.json({ ok: false, feil: "Lokasjon finnes ikke." }, { status: 404 })
+    }
+
+    const lat = toNumber(locRow?.lat)
+    const lng = toNumber(locRow?.lng)
+    const dedupe = makeDedupeKey("location", name, lat, lng) || makeDedupeKey("location", name, null, null)
+
+    const { error: updErr } = await admin
+      .from("lek_v2_lager")
+      .update({
+        updated_at: nowIso,
+        name,
+        location_type: locationType,
+        address: address || null,
+        responsible_lager_id: responsibleLagerId || null,
+        dedupe_key: dedupe,
+      } as unknown as never)
+      .eq("id", locationId)
+    if (updErr) {
+      const msg = String((updErr as { message?: string } | null)?.message ?? "")
+      if (/dedupe_key/i.test(msg) && /(duplicate|already|unique)/i.test(msg)) {
+        return NextResponse.json({ ok: false, feil: "Det finnes allerede en lokasjon med samme nøkkel (navn/gps)." }, { status: 400 })
+      }
+      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke oppdatere lokasjon." }, { status: isSchemaError(msg) ? 500 : 400 })
+    }
+
+    await admin.from("lek_v2_lokasjon_hendelser").insert({
+      id: crypto.randomUUID(),
+      created_at: nowIso,
+      location_lager_id: locationId,
+      type: "oppdatert",
+      comment: `Oppdatert: ${name} · ${locationType}${address ? ` · ${address}` : ""}`,
+      actor_epost: gate.email,
+      actor_role: gate.role,
+    } as unknown as never)
+
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === "deactivateLocation") {
+    if (gate.role === "frivillig") return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+    const locationId = String(form.get("locationId") ?? "").trim()
+    if (!locationId) return NextResponse.json({ ok: false, feil: "Mangler lokasjon." }, { status: 400 })
+    const saldo = await getSaldo(admin, [locationId])
+    const boxes = Math.max(0, Math.trunc(Number((saldo.get(locationId) ?? {})["bie_eske"] ?? 0)))
+    const glass = Math.max(0, Math.trunc(Number((saldo.get(locationId) ?? {})["glass"] ?? 0)))
+    if (boxes > 0 || glass > 0) {
+      return NextResponse.json({ ok: false, feil: "Lokasjonen kan ikke deaktiveres før beholdningen er 0 (esker og glass)." }, { status: 400 })
+    }
+
+    const { error } = await admin.from("lek_v2_lager").update({ active: false, updated_at: nowIso } as unknown as never).eq("id", locationId)
+    if (error) {
+      const msg = String((error as { message?: string } | null)?.message ?? "")
+      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke deaktivere lokasjon." }, { status: isSchemaError(msg) ? 500 : 400 })
+    }
+
+    await admin.from("lek_v2_lokasjon_hendelser").insert({
+      id: crypto.randomUUID(),
+      created_at: nowIso,
+      location_lager_id: locationId,
+      type: "deaktivert",
+      comment: "Lokasjon deaktivert",
+      actor_epost: gate.email,
+      actor_role: gate.role,
+    } as unknown as never)
+
+    return NextResponse.json({ ok: true })
+  }
+
   if (action === "deploy") {
     const fromPersonId = String(form.get("fromPersonId") ?? "").trim()
     const locationName = String(form.get("locationName") ?? "").trim()
@@ -745,7 +852,7 @@ export async function POST(request: Request) {
     const images = files.slice(0, 3)
     for (const f of images) {
       if (String(f.type || "").startsWith("video/")) return NextResponse.json({ ok: false, feil: "Bilde må være et bilde (ikke video)." }, { status: 400 })
-      if (f.size > 4 * 1024 * 1024) return NextResponse.json({ ok: false, feil: "Bilde er for stort (maks 4 MB)." }, { status: 400 })
+      if (f.size > 12 * 1024 * 1024) return NextResponse.json({ ok: false, feil: "Bilde er for stort (maks 12 MB)." }, { status: 400 })
     }
 
     const eventId = crypto.randomUUID()
@@ -753,7 +860,7 @@ export async function POST(request: Request) {
     const paths: Array<string | null> = [null, null, null]
     for (let i = 0; i < images.length; i++) {
       const f = images[i]
-      const ext = (f.type || "").toLowerCase().includes("png") ? "png" : (f.type || "").toLowerCase().includes("webp") ? "webp" : "jpg"
+      const ext = extFromNameAndType(f.name, f.type)
       const path = `${toSafeStorageKey(locationId)}/utsetting/${eventId}-${i + 1}.${ext}`
       const body = await f.arrayBuffer()
       const { error: uploadError } = await admin.storage.from(bucket).upload(path, body, { upsert: false, contentType: f.type || undefined })
@@ -917,7 +1024,7 @@ export async function POST(request: Request) {
     const images = files.slice(0, 3)
     for (const f of images) {
       if (String(f.type || "").startsWith("video/")) return NextResponse.json({ ok: false, feil: "Bilde må være et bilde (ikke video)." }, { status: 400 })
-      if (f.size > 4 * 1024 * 1024) return NextResponse.json({ ok: false, feil: "Bilde er for stort (maks 4 MB)." }, { status: 400 })
+      if (f.size > 12 * 1024 * 1024) return NextResponse.json({ ok: false, feil: "Bilde er for stort (maks 12 MB)." }, { status: 400 })
     }
 
     const eventId = crypto.randomUUID()
@@ -925,7 +1032,7 @@ export async function POST(request: Request) {
     const paths: Array<string | null> = [null, null, null]
     for (let i = 0; i < images.length; i++) {
       const f = images[i]
-      const ext = (f.type || "").toLowerCase().includes("png") ? "png" : (f.type || "").toLowerCase().includes("webp") ? "webp" : "jpg"
+      const ext = extFromNameAndType(f.name, f.type)
       const path = `${toSafeStorageKey(locationId)}/kontroll/${eventId}-${i + 1}.${ext}`
       const body = await f.arrayBuffer()
       const { error: uploadError } = await admin.storage.from(bucket).upload(path, body, { upsert: false, contentType: f.type || undefined })

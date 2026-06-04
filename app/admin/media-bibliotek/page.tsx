@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -170,29 +170,30 @@ export default function MediaBibliotekPage() {
   const getSignedUrl = useCallback(async (path: string) => {
     const res = await fetch(`/api/admin/media-bibliotek?action=signed&path=${encodeURIComponent(path)}`, { cache: "no-store" })
     const data = (await res.json()) as { ok?: boolean; feil?: string; signedUrl?: string }
-    if (!res.ok || !data.ok || !data.signedUrl) return null
-    return data.signedUrl
+    if (!res.ok || !data.ok || !data.signedUrl) return { ok: false as const, feil: data.feil ?? "Kunne ikke lage lenke." }
+    return { ok: true as const, url: data.signedUrl }
   }, [])
 
   const openFile = useCallback(async (path: string) => {
     setMsg(null)
-    const url = await getSignedUrl(path)
-    if (!url) {
-      setMsg("Kunne ikke åpne fil.")
+    const signed = await getSignedUrl(path)
+    if (!signed.ok) {
+      setMsg(signed.feil)
       return
     }
-    window.open(url, "_blank", "noopener,noreferrer")
+    const w = window.open(signed.url, "_blank", "noopener,noreferrer")
+    if (!w) window.location.href = signed.url
   }, [getSignedUrl])
 
   const downloadFile = useCallback(async (path: string) => {
     setMsg(null)
-    const url = await getSignedUrl(path)
-    if (!url) {
-      setMsg("Kunne ikke laste ned.")
+    const signed = await getSignedUrl(path)
+    if (!signed.ok) {
+      setMsg(signed.feil)
       return
     }
     const a = document.createElement("a")
-    a.href = url
+    a.href = signed.url
     a.download = path.split("/").pop() || "fil"
     document.body.appendChild(a)
     a.click()
@@ -201,13 +202,13 @@ export default function MediaBibliotekPage() {
 
   const copyLink = useCallback(async (path: string) => {
     setMsg(null)
-    const url = await getSignedUrl(path)
-    if (!url) {
-      setMsg("Kunne ikke kopiere lenke.")
+    const signed = await getSignedUrl(path)
+    if (!signed.ok) {
+      setMsg(signed.feil)
       return
     }
     try {
-      await navigator.clipboard.writeText(url)
+      await navigator.clipboard.writeText(signed.url)
       setMsg("✅ Lenke kopiert (gyldig i 15 min).")
       setTimeout(() => setMsg(null), 1400)
     } catch {
@@ -249,6 +250,7 @@ export default function MediaBibliotekPage() {
               <div className="mt-3">
                 <input
                   ref={fileInputRef}
+                  id="media_files"
                   type="file"
                   accept="image/*,video/*"
                   multiple
@@ -257,13 +259,21 @@ export default function MediaBibliotekPage() {
                 />
               </div>
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                <label htmlFor="media_files" className={buttonVariants({ variant: "outline" })}>
                   Velg filer
-                </Button>
+                </label>
                 <Button onClick={onUpload} disabled={uploading || !selectedFiles.length}>
                   {uploading ? "Laster opp…" : `Last opp (${selectedFiles.length})`}
                 </Button>
               </div>
+              {selectedFiles.length ? (
+                <div className="mt-3 text-left text-xs text-muted-foreground">
+                  {selectedFiles.slice(0, 6).map((f) => (
+                    <div key={`${f.name}-${f.size}`}>{f.name} · {formatBytes(f.size)}</div>
+                  ))}
+                  {selectedFiles.length > 6 ? <div>+ {selectedFiles.length - 6} til…</div> : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
