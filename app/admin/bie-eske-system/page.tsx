@@ -149,6 +149,8 @@ export default function BieEskeSystemPage() {
   const [editLocAddress, setEditLocAddress] = useState("")
   const [editLocResponsible, setEditLocResponsible] = useState("")
   const [controlGlassesLeft, setControlGlassesLeft] = useState(0)
+  const [controlBaseGlasses, setControlBaseGlasses] = useState(0)
+  const [controlGlassesManual, setControlGlassesManual] = useState(false)
   const [controlFilledAdded, setControlFilledAdded] = useState(0)
   const [controlFromLagerId, setControlFromLagerId] = useState("")
   const [controlCollectedGlasses, setControlCollectedGlasses] = useState(0)
@@ -266,7 +268,10 @@ export default function BieEskeSystemPage() {
       setLocationDetails({ location: json.location ?? null, balances: json.balances ?? {}, events: json.events ?? [], signed: json.signed ?? {} })
       locationOpenRef.current = nextId
       const currentGlass = Number((json.balances ?? {})["glass"] ?? 0)
-      setControlGlassesLeft(Number.isFinite(currentGlass) ? Math.max(0, Math.trunc(currentGlass)) : 0)
+      const safeGlass = Number.isFinite(currentGlass) ? Math.max(0, Math.trunc(currentGlass)) : 0
+      setControlGlassesLeft(safeGlass)
+      setControlBaseGlasses(safeGlass)
+      setControlGlassesManual(false)
       setControlFilledAdded(0)
       setControlCollectedGlasses(0)
       setControlPickedUp(false)
@@ -705,7 +710,7 @@ export default function BieEskeSystemPage() {
 
       {api.type === "ready" ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="space-y-4">
+          <div className="order-2 space-y-4 lg:order-1">
             <div className="rounded-xl border bg-card p-5">
               <div className="text-sm font-medium">Oppsett</div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -812,7 +817,7 @@ export default function BieEskeSystemPage() {
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="order-1 space-y-4 lg:order-2">
             <div className="rounded-xl border bg-card p-5">
               <div className="text-sm font-medium">Utsetting (ny lokasjon)</div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -1135,11 +1140,28 @@ export default function BieEskeSystemPage() {
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       <div>
                         <Label>Glass igjen</Label>
-                        <Input value={String(controlGlassesLeft)} onChange={(e) => setControlGlassesLeft(clampInt(Number(e.target.value), 0, 1_000_000))} inputMode="numeric" />
+                        <Input
+                          value={String(controlGlassesLeft)}
+                          onChange={(e) => {
+                            setControlGlassesManual(true)
+                            setControlGlassesLeft(clampInt(Number(e.target.value), 0, 1_000_000))
+                          }}
+                          inputMode="numeric"
+                        />
                       </div>
                       <div>
                         <Label>Påfylt (antall)</Label>
-                        <Input value={String(controlFilledAdded)} onChange={(e) => setControlFilledAdded(clampInt(Number(e.target.value), 0, 1000))} inputMode="numeric" />
+                        <Input
+                          value={String(controlFilledAdded)}
+                          onChange={(e) => {
+                            const nextFilled = clampInt(Number(e.target.value), 0, 1000)
+                            setControlFilledAdded(nextFilled)
+                            if (!controlGlassesManual) {
+                              setControlGlassesLeft(clampInt(controlBaseGlasses + nextFilled - clampInt(controlCollectedGlasses, 0, 1_000_000), 0, 1_000_000))
+                            }
+                          }}
+                          inputMode="numeric"
+                        />
                       </div>
                       <div>
                         <Label>Lager/person (besøk)</Label>
@@ -1158,7 +1180,17 @@ export default function BieEskeSystemPage() {
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       <div>
                         <Label>Glass hentes inn</Label>
-                        <Input value={String(controlCollectedGlasses)} onChange={(e) => setControlCollectedGlasses(clampInt(Number(e.target.value), 0, 1_000_000))} inputMode="numeric" />
+                        <Input
+                          value={String(controlCollectedGlasses)}
+                          onChange={(e) => {
+                            const nextCollected = clampInt(Number(e.target.value), 0, 1_000_000)
+                            setControlCollectedGlasses(nextCollected)
+                            if (!controlGlassesManual) {
+                              setControlGlassesLeft(clampInt(controlBaseGlasses + clampInt(controlFilledAdded, 0, 1000) - nextCollected, 0, 1_000_000))
+                            }
+                          }}
+                          inputMode="numeric"
+                        />
                       </div>
                       <div className="sm:col-span-2">
                         <Label>Eske</Label>

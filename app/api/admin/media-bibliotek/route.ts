@@ -113,15 +113,12 @@ function extFromNameAndType(filename: string, type: string) {
   if (t.includes("png")) return "png"
   if (t.includes("webp")) return "webp"
   if (t.includes("jpeg") || t.includes("jpg")) return "jpg"
+  if (t.includes("heic")) return "heic"
+  if (t.includes("heif")) return "heif"
   if (t.includes("mp4")) return "mp4"
   if (t.includes("quicktime") || t.includes("mov")) return "mov"
   if (t.includes("webm")) return "webm"
   return "bin"
-}
-
-function stampKey() {
-  const iso = new Date().toISOString()
-  return iso.slice(0, 19).replace(/[-:]/g, "").replace("T", "_")
 }
 
 export async function GET(request: Request) {
@@ -214,9 +211,12 @@ export async function POST(request: Request) {
   const uploaded: string[] = []
   try {
     for (const f of files) {
-      const base = toSafeStorageKey(String(f.name ?? "fil"))
+      const originalName = String(f.name ?? "fil").trim()
+      const dot = originalName.lastIndexOf(".")
+      const baseName = dot > 0 ? originalName.slice(0, dot) : originalName
+      const base = toSafeStorageKey(baseName || "fil")
       const ext = extFromNameAndType(f.name, f.type)
-      const path = `${stampKey()}_${crypto.randomUUID()}_${base}.${ext}`
+      const path = `${base}__${Math.trunc(f.size)}.${ext}`
       const body = await f.arrayBuffer()
       const { error } = await admin.storage.from(bucket).upload(path, body, {
         upsert: false,
@@ -224,6 +224,9 @@ export async function POST(request: Request) {
       })
       if (error) {
         const msg = String((error as { message?: unknown } | null)?.message ?? "")
+        if (/(exists|already|duplicate|conflict|409)/i.test(msg)) {
+          continue
+        }
         throw new Error(msg || "Kunne ikke laste opp.")
       }
       uploaded.push(path)
@@ -235,4 +238,25 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true, uploaded })
+}
+
+export async function DELETE(request: Request) {
+  const gate = await requireAdmin()
+  if (!gate.ok) return NextResponse.json({ ok: false, feil: gate.feil }, { status: gate.status })
+  const admin = gate.admin as AdminClient
+
+  const bucketOk = await ensureBucket(admin)
+  if (!bucketOk.ok) return NextResponse.json({ ok: false, feil: "Storage er ikke satt opp." }, { status: 500 })
+
+  const url = new URL(request.url)
+  const path = String(url.searchParams.get("path") ?? "").trim()
+  if (!path) return NextResponse.json({ ok: false, feil: "Mangler path." }, { status: 400 })
+  if (path.includes("..")) return NextResponse.json({ ok: false, feil: "Ugyldig path." }, { status: 400 })
+
+  const { error } = await admin.storage.from(bucket).remove([path])
+  if (error) {
+    const msg = String((error as { message?: unknown } | null)?.message ?? "")
+    return NextResponse.json({ ok: false, feil: msg ? `Kunne ikke slette: ${msg}` : "Kunne ikke slette." }, { status: 400 })
+  }
+  return NextResponse.json({ ok: true })
 }

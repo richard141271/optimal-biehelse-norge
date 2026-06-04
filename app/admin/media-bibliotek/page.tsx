@@ -216,6 +216,23 @@ export default function MediaBibliotekPage() {
     }
   }, [getSignedUrl])
 
+  const deleteFile = useCallback(
+    async (path: string) => {
+      if (!confirm("Slette filen?")) return
+      setMsg(null)
+      const res = await fetch(`/api/admin/media-bibliotek?path=${encodeURIComponent(path)}`, { method: "DELETE" })
+      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      if (!res.ok || !data.ok) {
+        setMsg(data.feil ?? "Kunne ikke slette.")
+        return
+      }
+      setMsg("✅ Slettet.")
+      await load()
+      setTimeout(() => setMsg(null), 1400)
+    },
+    [load]
+  )
+
   const loadAll = useCallback(async () => {
     setMsg(null)
     for (let i = 0; i < 50; i++) {
@@ -247,17 +264,7 @@ export default function MediaBibliotekPage() {
               onDrop={onDrop}
             >
               Dra og slipp bilder/video her
-              <div className="mt-3">
-                <input
-                  ref={fileInputRef}
-                  id="media_files"
-                  type="file"
-                  accept="image/*,video/*"
-                  multiple
-                  onChange={(e) => pickFiles(e.target.files)}
-                  className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-muted file:px-4 file:py-2 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
-                />
-              </div>
+              <input ref={fileInputRef} id="media_files" type="file" accept="image/*,video/*" multiple onChange={(e) => pickFiles(e.target.files)} className="sr-only" />
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                 <label htmlFor="media_files" className={buttonVariants({ variant: "outline" })}>
                   Velg filer
@@ -360,6 +367,9 @@ export default function MediaBibliotekPage() {
                               </Button>
                               <Button variant="outline" onClick={() => copyLink(f.path)} disabled={uploading}>
                                 Kopier lenke
+                              </Button>
+                              <Button variant="destructive" onClick={() => deleteFile(f.path)} disabled={uploading}>
+                                Slett
                               </Button>
                             </div>
                           </div>

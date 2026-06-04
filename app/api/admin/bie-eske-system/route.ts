@@ -206,8 +206,6 @@ async function syncPersonWarehousesFromMembers(admin: AdminClient, members: Medl
       const name = String(m.navn ?? m.epost ?? "").trim()
       if (!name) return null
       return {
-        id: crypto.randomUUID(),
-        created_at: nowIso,
         updated_at: nowIso,
         kind: "person",
         name,
