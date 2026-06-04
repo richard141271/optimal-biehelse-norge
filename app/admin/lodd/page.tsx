@@ -59,6 +59,8 @@ type Kjop = {
   ticket_to?: number | null
   vipps_ref?: string | null
   paid_at?: string | null
+  deleted_at?: string | null
+  deleted_by_epost?: string | null
 }
 
 type Winner = {
@@ -135,6 +137,7 @@ export default function AdminLoddPage() {
   const [ticketPrice, setTicketPrice] = useState("20")
   const [durationDays, setDurationDays] = useState("7")
   const [selectedLotteriId, setSelectedLotteriId] = useState<string>("")
+  const [showDeletedKjop, setShowDeletedKjop] = useState(false)
   const [editLotteriTittel, setEditLotteriTittel] = useState("")
   const [editLotteriBeskrivelse, setEditLotteriBeskrivelse] = useState("")
   const [editLotteriTicketPrice, setEditLotteriTicketPrice] = useState("")
@@ -478,7 +481,11 @@ export default function AdminLoddPage() {
   async function deleteRow(type: "premie" | "kjop" | "lotteri", id: string) {
     if (state.type !== "ready") return
     if (state.role !== "superadmin") return
-    if (!confirm("Slette dette?")) return
+    const ok =
+      type === "kjop"
+        ? confirm("Slette kjøpet? (Kjøpet blir skjult og kan gjenopprettes.)")
+        : confirm("Slette dette?")
+    if (!ok) return
 
     setActionError(null)
     const res = await fetch("/api/admin/lodd", {
@@ -492,6 +499,19 @@ export default function AdminLoddPage() {
       return
     }
     await hent()
+  }
+
+  async function removeOneLodd(kjopId: string) {
+    if (state.type !== "ready") return
+    if (state.role !== "superadmin") return
+    if (!confirm("Slette 1 lodd fra kjøpet? (Fjerner siste lodd i rekke.)")) return
+    await doAction({ action: "removeOneLoddFromKjop", kjopId })
+  }
+
+  async function restoreKjop(kjopId: string) {
+    if (state.type !== "ready") return
+    if (state.role !== "superadmin") return
+    await doAction({ action: "restoreKjop", kjopId })
   }
 
   return (
@@ -978,6 +998,14 @@ export default function AdminLoddPage() {
                   ) : (
                     <p className="text-sm text-muted-foreground">Velg et lotteri for å se salg.</p>
                   )}
+                  {state.role === "superadmin" ? (
+                    <div className="mt-3">
+                      <label className="inline-flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={showDeletedKjop} onChange={(e) => setShowDeletedKjop(e.target.checked)} />
+                        Vis slettede kjøp
+                      </label>
+                    </div>
+                  ) : null}
 
                   <div className="mt-4 space-y-3">
                     {selectedLotteriId ? (
@@ -1043,8 +1071,8 @@ export default function AdminLoddPage() {
                         </div>
                       </div>
                     ) : null}
-                    {state.kjop.length ? (
-                      state.kjop.map((k) => {
+                    {(showDeletedKjop ? state.kjop : state.kjop.filter((k) => k.status !== "deleted")).length ? (
+                      (showDeletedKjop ? state.kjop : state.kjop.filter((k) => k.status !== "deleted")).map((k) => {
                         const from = Number(k.ticket_from ?? 0)
                         const to = Number(k.ticket_to ?? 0)
                         const hasWinnerInRange =
@@ -1071,7 +1099,7 @@ export default function AdminLoddPage() {
                                 </span>
                               </div>
                               <div className="flex flex-wrap gap-2">
-                                {k.status !== "paid" ? (
+                                {k.status !== "paid" && k.status !== "deleted" ? (
                                   <Button
                                     variant="outline"
                                     onClick={() => markPaid(k.id)}
@@ -1081,9 +1109,22 @@ export default function AdminLoddPage() {
                                   </Button>
                                 ) : null}
                                 {state.role === "superadmin" ? (
-                                  <Button variant="destructive" onClick={() => deleteRow("kjop", k.id)}>
-                                    Slett
-                                  </Button>
+                                  <>
+                                    {k.status !== "deleted" && Number(k.antall ?? 0) > 1 ? (
+                                      <Button variant="outline" onClick={() => removeOneLodd(k.id)}>
+                                        Slett 1 lodd
+                                      </Button>
+                                    ) : null}
+                                    {k.status === "deleted" ? (
+                                      <Button variant="outline" onClick={() => restoreKjop(k.id)}>
+                                        Gjenopprett
+                                      </Button>
+                                    ) : (
+                                      <Button variant="destructive" onClick={() => deleteRow("kjop", k.id)}>
+                                        Slett kjøp
+                                      </Button>
+                                    )}
+                                  </>
                                 ) : null}
                               </div>
                             </div>
@@ -1093,6 +1134,11 @@ export default function AdminLoddPage() {
                             {k.paid_at ? (
                               <div className="mt-1 text-xs text-muted-foreground">
                                 Betalt: {formatDateTime(k.paid_at)}
+                              </div>
+                            ) : null}
+                            {k.status === "deleted" ? (
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                Slettet: {formatDateTime(k.deleted_at)} {k.deleted_by_epost ? `· ${k.deleted_by_epost}` : ""}
                               </div>
                             ) : null}
                           </div>

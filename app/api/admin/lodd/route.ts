@@ -96,9 +96,34 @@ async function ensureRegnskapForKjop(
     return { ok: false as const, status: 400 as const, feil: "Kunne ikke sjekke regnskap." }
   }
   if (existing?.id) {
+    const belop = toNumber(kjop.belop)
+    if (belop == null) {
+      return { ok: false as const, status: 400 as const, feil: "Ugyldig beløp." }
+    }
+
+    const ticketFrom = Number(kjop.ticket_from ?? 0) || null
+    const ticketTo = Number(kjop.ticket_to ?? 0) || null
+    const range =
+      ticketFrom && ticketTo ? (ticketFrom === ticketTo ? `${ticketFrom}` : `${ticketFrom}–${ticketTo}`) : null
+    const vippsRef = String(kjop.vipps_ref ?? "").trim()
+
+    const paidIso = kjop.paid_at
+    const dato = paidIso.includes("T") ? paidIso.slice(0, 10) : paidIso
+    const klokke = paidIso.includes("T") ? paidIso.slice(11, 16) : ""
+    const line1 = `${range ? `#${range}` : "Loddsalg"} · ${kjop.antall} lodd · ${formatKr(belop)} · paid`
+    const notat = [line1, vippsRef ? `Vipps ref: ${vippsRef}` : null, `Betalt: ${dato}${klokke ? `, ${klokke}` : ""}`]
+      .filter(Boolean)
+      .join("\n")
+
     const { error: updateError } = await admin
       .from("regnskap_poster")
-      .update({ motpart: kjop.phone })
+      .update({
+        dato,
+        belop,
+        motpart: kjop.phone,
+        vare: vippsRef || (range ? `Loddsalg #${range}` : "Loddsalg"),
+        notat,
+      })
       .eq("id", existing.id)
 
     if (updateError) {
@@ -249,8 +274,16 @@ function schemaFeil(msg?: string) {
     "  vipps_ref text,\n" +
     "  paid_at timestamptz,\n" +
     "  paid_by_epost text,\n" +
+    "  deleted_at timestamptz,\n" +
+    "  deleted_by_epost text,\n" +
     "  note text\n" +
     ");\n" +
+    "do $$ begin\n" +
+    "  if to_regclass('public.lodd_kjop') is not null then\n" +
+    "    alter table public.lodd_kjop add column if not exists deleted_at timestamptz;\n" +
+    "    alter table public.lodd_kjop add column if not exists deleted_by_epost text;\n" +
+    "  end if;\n" +
+    "end $$;\n" +
     "create table if not exists public.lodd_winners (\n" +
     "  id uuid primary key default gen_random_uuid(),\n" +
     "  created_at timestamptz not null default now(),\n" +
@@ -399,7 +432,7 @@ export async function GET(request: Request) {
   const { data: kjop, error: kjopError } = selectedLotteriId
     ? await gate.admin
         .from("lodd_kjop")
-        .select("id, created_at, phone, antall, belop, status, ticket_from, ticket_to, vipps_ref, paid_at")
+        .select("id, created_at, phone, antall, belop, status, ticket_from, ticket_to, vipps_ref, paid_at, deleted_at, deleted_by_epost")
         .eq("lotteri_id", selectedLotteriId)
         .order("created_at", { ascending: false })
         .limit(500)
@@ -850,7 +883,7 @@ export async function POST(request: Request) {
 
     const { data: kjopRow, error: kjopError } = await gate.admin
       .from("lodd_kjop")
-      .select("id, status, phone, antall, belop, ticket_from, ticket_to, vipps_ref, paid_at, paid_by_epost")
+      .select("id, status, phone, antall, belop, ticket_from, ticket_to, vipps_ref, paid_at, paid_by_epost, deleted_at")
       .eq("id", kjopId)
       .maybeSingle()
 
@@ -863,6 +896,10 @@ export async function POST(request: Request) {
     }
     if (!kjopRow?.id) {
       return NextResponse.json({ ok: false, feil: "Kjøp finnes ikke." }, { status: 404 })
+    }
+    const deletedAt = String((kjopRow as Record<string, unknown>).deleted_at ?? "").trim()
+    if (deletedAt) {
+      return NextResponse.json({ ok: false, feil: "Kjøpet er slettet." }, { status: 400 })
     }
 
     const prevStatus = String((kjopRow as Record<string, unknown>).status ?? "").trim()
@@ -1047,6 +1084,133 @@ export async function POST(request: Request) {
           .eq("id", insertedId)
         return NextResponse.json({ ok: false, feil: ensure.feil }, { status: ensure.status })
       }
+    }
+
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === "removeOneLoddFromKjop") {
+    if (gate.role !== "superadmin") return NextResponse.json({ ok: false, feil: "Kun superbruker kan endre salg." }, { status: 403 })
+    const kjopId = String(body.kjopId ?? "").trim()
+    if (!kjopId) return NextResponse.json({ ok: false, feil: "Mangler kjøp." }, { status: 400 })
+
+    const { data: row, error } = await gate.admin
+      .from("lodd_kjop")
+      .select("id, lotteri_id, phone, antall, belop, status, ticket_from, ticket_to, vipps_ref, paid_at, deleted_at")
+      .eq("id", kjopId)
+      .maybeSingle()
+    if (error) {
+      const sf = schemaFeil((error as { message?: string } | null)?.message)
+      return NextResponse.json({ ok: false, feil: sf ?? "Kunne ikke hente kjøp." }, { status: sf ? 500 : 400 })
+    }
+    if (!row?.id) return NextResponse.json({ ok: false, feil: "Kjøp finnes ikke." }, { status: 404 })
+    if (String((row as Record<string, unknown>).deleted_at ?? "").trim()) {
+      return NextResponse.json({ ok: false, feil: "Kjøpet er slettet." }, { status: 400 })
+    }
+
+    const antall = Math.max(0, Math.floor(Number((row as Record<string, unknown>).antall ?? 0)))
+    if (antall <= 1) {
+      return NextResponse.json({ ok: false, feil: "Kjøpet har kun 1 lodd. Bruk 'Slett kjøp'." }, { status: 400 })
+    }
+
+    const from = Math.floor(Number((row as Record<string, unknown>).ticket_from ?? 0))
+    const to = Math.floor(Number((row as Record<string, unknown>).ticket_to ?? 0))
+    if (!Number.isFinite(from) || from <= 0 || !Number.isFinite(to) || to < from) {
+      return NextResponse.json({ ok: false, feil: "Kjøpet har ugyldig loddnummer-range." }, { status: 400 })
+    }
+
+    const removedNumber = to
+    const { data: winnerRow } = await gate.admin.from("lodd_lotteri").select("winner_loddnr").eq("id", String((row as Record<string, unknown>).lotteri_id ?? "")).maybeSingle()
+    const mainWinner = Math.floor(Number((winnerRow as Record<string, unknown> | null)?.winner_loddnr ?? 0))
+    const { data: extraWinners } = await gate.admin
+      .from("lodd_winners")
+      .select("winner_loddnr")
+      .eq("lotteri_id", String((row as Record<string, unknown>).lotteri_id ?? ""))
+      .limit(500)
+    const extra = (extraWinners ?? []).map((w) => Math.floor(Number((w as Record<string, unknown>).winner_loddnr ?? 0))).filter((n) => Number.isFinite(n) && n > 0)
+    if ((Number.isFinite(mainWinner) && mainWinner === removedNumber) || extra.includes(removedNumber)) {
+      return NextResponse.json({ ok: false, feil: `Kan ikke fjerne lodd #${removedNumber} fordi det er trukket som vinner.` }, { status: 400 })
+    }
+
+    const belop = toNumber((row as Record<string, unknown>).belop)
+    if (belop == null) return NextResponse.json({ ok: false, feil: "Ugyldig beløp." }, { status: 400 })
+    const unit = belop / antall
+    const newAntall = antall - 1
+    const newTo = from + newAntall - 1
+    const newBelop = Number.isFinite(unit) ? Number((unit * newAntall).toFixed(2)) : null
+    if (newBelop == null) return NextResponse.json({ ok: false, feil: "Kunne ikke beregne nytt beløp." }, { status: 400 })
+
+    const { error: updError } = await gate.admin
+      .from("lodd_kjop")
+      .update({ antall: newAntall, belop: newBelop, ticket_to: newTo })
+      .eq("id", kjopId)
+    if (updError) {
+      const sf = schemaFeil((updError as { message?: string } | null)?.message)
+      return NextResponse.json({ ok: false, feil: sf ?? "Kunne ikke oppdatere kjøp." }, { status: sf ? 500 : 400 })
+    }
+
+    const status = String((row as Record<string, unknown>).status ?? "").trim()
+    const paidAt = String((row as Record<string, unknown>).paid_at ?? "").trim() || null
+    if (status === "paid" && paidAt) {
+      const ensure = await ensureRegnskapForKjop(gate.admin, {
+        id: kjopId,
+        phone: String((row as Record<string, unknown>).phone ?? "").trim(),
+        antall: newAntall,
+        belop: newBelop,
+        ticket_from: from,
+        ticket_to: newTo,
+        vipps_ref: (row as Record<string, unknown>).vipps_ref,
+        paid_at: paidAt,
+      })
+      if (!ensure.ok) return NextResponse.json({ ok: false, feil: ensure.feil }, { status: ensure.status })
+    }
+
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === "restoreKjop") {
+    if (gate.role !== "superadmin") return NextResponse.json({ ok: false, feil: "Kun superbruker kan gjenopprette." }, { status: 403 })
+    const kjopId = String(body.kjopId ?? "").trim()
+    if (!kjopId) return NextResponse.json({ ok: false, feil: "Mangler kjøp." }, { status: 400 })
+
+    const { data: row, error } = await gate.admin
+      .from("lodd_kjop")
+      .select("id, phone, antall, belop, status, ticket_from, ticket_to, vipps_ref, paid_at, deleted_at")
+      .eq("id", kjopId)
+      .maybeSingle()
+    if (error) {
+      const sf = schemaFeil((error as { message?: string } | null)?.message)
+      return NextResponse.json({ ok: false, feil: sf ?? "Kunne ikke hente kjøp." }, { status: sf ? 500 : 400 })
+    }
+    if (!row?.id) return NextResponse.json({ ok: false, feil: "Kjøp finnes ikke." }, { status: 404 })
+    const deletedAt = String((row as Record<string, unknown>).deleted_at ?? "").trim()
+    if (!deletedAt) return NextResponse.json({ ok: false, feil: "Kjøpet er ikke slettet." }, { status: 400 })
+
+    const paidAt = String((row as Record<string, unknown>).paid_at ?? "").trim() || null
+    const nextStatus = paidAt ? "paid" : "pending"
+    const { error: updError } = await gate.admin
+      .from("lodd_kjop")
+      .update({ status: nextStatus, deleted_at: null, deleted_by_epost: null })
+      .eq("id", kjopId)
+    if (updError) {
+      const sf = schemaFeil((updError as { message?: string } | null)?.message)
+      return NextResponse.json({ ok: false, feil: sf ?? "Kunne ikke gjenopprette." }, { status: sf ? 500 : 400 })
+    }
+
+    if (paidAt) {
+      const ensure = await ensureRegnskapForKjop(gate.admin, {
+        id: kjopId,
+        phone: String((row as Record<string, unknown>).phone ?? "").trim(),
+        antall: Math.max(1, Math.floor(Number((row as Record<string, unknown>).antall ?? 1))),
+        belop: (row as Record<string, unknown>).belop,
+        ticket_from: (row as Record<string, unknown>).ticket_from,
+        ticket_to: (row as Record<string, unknown>).ticket_to,
+        vipps_ref: (row as Record<string, unknown>).vipps_ref,
+        paid_at: paidAt,
+      })
+      if (!ensure.ok) return NextResponse.json({ ok: false, feil: ensure.feil }, { status: ensure.status })
+    } else {
+      await gate.admin.from("regnskap_poster").delete().eq("kilde", `lodd_kjop:${kjopId}`)
     }
 
     return NextResponse.json({ ok: true })
@@ -1431,7 +1595,11 @@ export async function DELETE(request: Request) {
   }
 
   if (type === "kjop") {
-    const { error } = await gate.admin.from("lodd_kjop").delete().eq("id", id)
+    const nowIso = new Date().toISOString()
+    const { error } = await gate.admin
+      .from("lodd_kjop")
+      .update({ status: "deleted", deleted_at: nowIso, deleted_by_epost: gate.email })
+      .eq("id", id)
     if (error) {
       const sf = schemaFeil((error as { message?: string } | null)?.message)
       return NextResponse.json(
@@ -1439,6 +1607,7 @@ export async function DELETE(request: Request) {
         { status: sf ? 500 : 400 }
       )
     }
+    await gate.admin.from("regnskap_poster").delete().eq("kilde", `lodd_kjop:${id}`)
     return NextResponse.json({ ok: true })
   }
 
