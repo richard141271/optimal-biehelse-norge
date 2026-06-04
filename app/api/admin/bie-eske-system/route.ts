@@ -524,7 +524,7 @@ export async function GET(request: Request) {
   }
   const totals = {
     totalLagere: (enriched as Array<unknown>).length,
-    totalLokasjoner: locations.length,
+    totalLokasjoner: locations.filter((l) => l.active !== false).length,
   }
 
   const personWarehouses = (enriched as Array<Record<string, unknown>>).filter((l) => String(l.kind ?? "") === "person")
@@ -641,12 +641,24 @@ export async function POST(request: Request) {
     const qty = toInt(form.get("qty"))
     const note = String(form.get("note") ?? "").trim()
     if (!fromId || !toId) return NextResponse.json({ ok: false, feil: "Mangler lager." }, { status: 400 })
-    if (!item) return NextResponse.json({ ok: false, feil: "Mangler vare." }, { status: 400 })
+    if (item !== "bie_eske" && item !== "glass") return NextResponse.json({ ok: false, feil: "Ugyldig vare." }, { status: 400 })
     if (!qty || qty <= 0) return NextResponse.json({ ok: false, feil: "Ugyldig antall." }, { status: 400 })
 
-    const fromSaldo = await getSaldo(admin, [fromId])
-    const curr = Number((fromSaldo.get(fromId) ?? {})[item] ?? 0)
-    if (!Number.isFinite(curr) || curr < qty) return NextResponse.json({ ok: false, feil: "Ikke nok på lager." }, { status: 400 })
+    const { data: kinds, error: kindErr } = await admin.from("lek_v2_lager").select("id, kind").in("id", [fromId, toId]).limit(2)
+    if (kindErr) {
+      const msg = String((kindErr as { message?: string } | null)?.message ?? "")
+      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente lager." }, { status: isSchemaError(msg) ? 500 : 400 })
+    }
+    const rows = (kinds ?? []) as Array<Record<string, unknown>>
+    const fromKind = String(rows.find((r) => String(r.id ?? "") === fromId)?.kind ?? "")
+    const toKind = String(rows.find((r) => String(r.id ?? "") === toId)?.kind ?? "")
+    if (!fromKind || !toKind) return NextResponse.json({ ok: false, feil: "Lager finnes ikke." }, { status: 404 })
+
+    const saldo = await getSaldo(admin, [fromId, toId])
+    const currFromItem = Number((saldo.get(fromId) ?? {})[item] ?? 0)
+    if (!Number.isFinite(currFromItem) || currFromItem < qty) return NextResponse.json({ ok: false, feil: "Ikke nok på lager." }, { status: 400 })
+
+    const movements: Array<Record<string, unknown>> = []
 
     const dec = await applyDelta(admin, fromId, item, -qty)
     if (!dec.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
@@ -655,8 +667,7 @@ export async function POST(request: Request) {
       await applyDelta(admin, fromId, item, qty)
       return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
     }
-
-    const { error } = await admin.from("lek_v2_lager_bevegelser").insert({
+    movements.push({
       id: crypto.randomUUID(),
       created_at: nowIso,
       from_lager_id: fromId,
@@ -667,7 +678,68 @@ export async function POST(request: Request) {
       note: note || null,
       actor_epost: gate.email,
       actor_role: gate.role,
-    } as unknown as never)
+    })
+
+    if (item === "bie_eske") {
+      const currFromGlass = Math.max(0, Math.trunc(Number((saldo.get(fromId) ?? {})["glass"] ?? 0)))
+      const assumeFull = fromKind !== "location" && toKind !== "location"
+      const desired = qty * 15
+      const autoGlass = assumeFull ? desired : Math.min(currFromGlass, desired)
+      if (autoGlass > 0) {
+        let toppedUp = 0
+        if (assumeFull && currFromGlass < autoGlass) {
+          const missing = autoGlass - currFromGlass
+          const topup = await applyDelta(admin, fromId, "glass", missing)
+          if (!topup.ok) {
+            await applyDelta(admin, fromId, "bie_eske", qty)
+            await applyDelta(admin, toId, "bie_eske", -qty)
+            return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere glass for esker." }, { status: 400 })
+          }
+          toppedUp = missing
+          movements.push({
+            id: crypto.randomUUID(),
+            created_at: nowIso,
+            from_lager_id: null,
+            to_lager_id: fromId,
+            item: "glass",
+            qty: missing,
+            reason: "box_includes_glass",
+            note: "Eske inkluderer glass",
+            actor_epost: gate.email,
+            actor_role: gate.role,
+          })
+        }
+        const decG = await applyDelta(admin, fromId, "glass", -autoGlass)
+        if (!decG.ok) {
+          if (toppedUp > 0) await applyDelta(admin, fromId, "glass", -toppedUp)
+          await applyDelta(admin, fromId, "bie_eske", qty)
+          await applyDelta(admin, toId, "bie_eske", -qty)
+          return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere glass for esker." }, { status: 400 })
+        }
+        const incG = await applyDelta(admin, toId, "glass", autoGlass)
+        if (!incG.ok) {
+          await applyDelta(admin, fromId, "glass", autoGlass)
+          if (toppedUp > 0) await applyDelta(admin, fromId, "glass", -toppedUp)
+          await applyDelta(admin, fromId, "bie_eske", qty)
+          await applyDelta(admin, toId, "bie_eske", -qty)
+          return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere glass for esker." }, { status: 400 })
+        }
+        movements.push({
+          id: crypto.randomUUID(),
+          created_at: nowIso,
+          from_lager_id: fromId,
+          to_lager_id: toId,
+          item: "glass",
+          qty: autoGlass,
+          reason: "transfer_in_box",
+          note: "Flytt med eske",
+          actor_epost: gate.email,
+          actor_role: gate.role,
+        })
+      }
+    }
+
+    const { error } = await admin.from("lek_v2_lager_bevegelser").insert(movements as unknown as never)
     if (error) {
       const msg = String((error as { message?: string } | null)?.message ?? "")
       return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke logge flytting." }, { status: isSchemaError(msg) ? 500 : 400 })
@@ -826,21 +898,39 @@ export async function POST(request: Request) {
     const fromSaldo = await getSaldo(admin, [fromPersonId])
     const currBoxes = Number((fromSaldo.get(fromPersonId) ?? {})["bie_eske"] ?? 0)
     if (!Number.isFinite(currBoxes) || currBoxes < initialBoxes) return NextResponse.json({ ok: false, feil: "Ikke nok esker på personlager." }, { status: 400 })
+    const currGlass = Math.max(0, Math.trunc(Number((fromSaldo.get(fromPersonId) ?? {})["glass"] ?? 0)))
+    const desiredGlass = Math.max(0, Math.trunc(initialGlasses))
 
     const decBoxes = await applyDelta(admin, fromPersonId, "bie_eske", -initialBoxes)
     if (!decBoxes.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
     const incBoxes = await applyDelta(admin, locationId, "bie_eske", initialBoxes)
     if (!incBoxes.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-    if (initialGlasses > 0) {
-      const incGlass = await applyDelta(admin, locationId, "glass", initialGlasses)
-      if (!incGlass.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+    if (desiredGlass > 0) {
+      let toppedUp = 0
+      if (currGlass < desiredGlass) {
+        const missing = desiredGlass - currGlass
+        const topup = await applyDelta(admin, fromPersonId, "glass", missing)
+        if (!topup.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+        toppedUp = missing
+      }
+      const decGlass = await applyDelta(admin, fromPersonId, "glass", -desiredGlass)
+      if (!decGlass.ok) {
+        if (toppedUp > 0) await applyDelta(admin, fromPersonId, "glass", -toppedUp)
+        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+      }
+      const incGlass = await applyDelta(admin, locationId, "glass", desiredGlass)
+      if (!incGlass.ok) {
+        await applyDelta(admin, fromPersonId, "glass", desiredGlass)
+        if (toppedUp > 0) await applyDelta(admin, fromPersonId, "glass", -toppedUp)
+        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+      }
     }
 
     await admin.from("lek_v2_lager_bevegelser").insert(
       [
         { id: crypto.randomUUID(), created_at: nowIso, from_lager_id: fromPersonId, to_lager_id: locationId, item: "bie_eske", qty: initialBoxes, reason: "deploy", note: comment || null, actor_epost: gate.email, actor_role: gate.role },
-        ...(initialGlasses > 0
-          ? [{ id: crypto.randomUUID(), created_at: nowIso, from_lager_id: null, to_lager_id: locationId, item: "glass", qty: initialGlasses, reason: "deploy", note: "Startbeholdning i esken", actor_epost: gate.email, actor_role: gate.role }]
+        ...(desiredGlass > 0
+          ? [{ id: crypto.randomUUID(), created_at: nowIso, from_lager_id: fromPersonId, to_lager_id: locationId, item: "glass", qty: desiredGlass, reason: "deploy", note: "Startbeholdning i esken", actor_epost: gate.email, actor_role: gate.role }]
           : []),
       ] as unknown as never
     )

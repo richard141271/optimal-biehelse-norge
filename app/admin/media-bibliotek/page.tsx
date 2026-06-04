@@ -69,6 +69,7 @@ export default function MediaBibliotekPage() {
   const stateRef = useRef<LoadState>(state)
   const [msg, setMsg] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadCount, setUploadCount] = useState(0)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [q, setQ] = useState("")
   const [typeFilter, setTypeFilter] = useState<"alle" | "bilder" | "video">("alle")
@@ -133,6 +134,7 @@ export default function MediaBibliotekPage() {
     if (!files) return
     const arr = Array.from(files).filter((f) => f.size > 0)
     setSelectedFiles(arr)
+    setUploadCount(0)
   }, [])
 
   const onDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -147,15 +149,20 @@ export default function MediaBibliotekPage() {
       return
     }
     setUploading(true)
+    setUploadCount(0)
     setMsg(null)
     try {
-      const fd = new FormData()
-      for (const f of selectedFiles) fd.append("files", f)
-      const res = await fetch("/api/admin/media-bibliotek", { method: "POST", body: fd })
-      const data = (await res.json()) as { ok?: boolean; feil?: string }
-      if (!res.ok || !data.ok) {
-        setMsg(data.feil ?? "Kunne ikke laste opp.")
-        return
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const f = selectedFiles[i]
+        const fd = new FormData()
+        fd.append("files", f)
+        const res = await fetch("/api/admin/media-bibliotek", { method: "POST", body: fd })
+        const data = (await res.json()) as { ok?: boolean; feil?: string }
+        if (!res.ok || !data.ok) {
+          setMsg(data.feil ? `${f.name}: ${data.feil}` : `${f.name}: Kunne ikke laste opp.`)
+          return
+        }
+        setUploadCount(i + 1)
       }
       setSelectedFiles([])
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -256,7 +263,7 @@ export default function MediaBibliotekPage() {
           <div className="text-lg font-semibold">Last opp</div>
           <div className="mt-3 grid gap-4">
             <div
-              className="rounded-xl border border-dashed bg-background p-6 text-center text-sm text-muted-foreground"
+              className="rounded-xl border border-dashed bg-background p-4 text-center text-sm text-muted-foreground sm:p-6"
               onDragOver={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -265,18 +272,20 @@ export default function MediaBibliotekPage() {
             >
               Dra og slipp bilder/video her
               <input ref={fileInputRef} id="media_files" type="file" accept="image/*,video/*" multiple onChange={(e) => pickFiles(e.target.files)} className="sr-only" />
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <div className="mt-3 flex flex-col items-center justify-center gap-2 sm:flex-row">
                 <label htmlFor="media_files" className={buttonVariants({ variant: "outline" })}>
                   Velg filer
                 </label>
                 <Button onClick={onUpload} disabled={uploading || !selectedFiles.length}>
-                  {uploading ? "Laster opp…" : `Last opp (${selectedFiles.length})`}
+                  {uploading ? `Laster opp ${uploadCount}/${selectedFiles.length}` : `Last opp (${selectedFiles.length})`}
                 </Button>
               </div>
               {selectedFiles.length ? (
                 <div className="mt-3 text-left text-xs text-muted-foreground">
                   {selectedFiles.slice(0, 6).map((f) => (
-                    <div key={`${f.name}-${f.size}`}>{f.name} · {formatBytes(f.size)}</div>
+                    <div key={`${f.name}-${f.size}`} className="truncate">
+                      {f.name} · {formatBytes(f.size)}
+                    </div>
                   ))}
                   {selectedFiles.length > 6 ? <div>+ {selectedFiles.length - 6} til…</div> : null}
                 </div>

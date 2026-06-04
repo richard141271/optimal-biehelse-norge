@@ -127,7 +127,7 @@ export default function BieEskeSystemPage() {
 
   const [transferFrom, setTransferFrom] = useState("")
   const [transferTo, setTransferTo] = useState("")
-  const [transferItem, setTransferItem] = useState<"bie_eske" | "glass">("glass")
+  const [transferItem, setTransferItem] = useState<"bie_eske" | "glass">("bie_eske")
   const [transferQty, setTransferQty] = useState(1)
   const [transferNote, setTransferNote] = useState("")
 
