@@ -59,6 +59,15 @@ export default function AdminHomePage() {
           </div>
         </Link>
         <Link
+          href="/admin/media-bibliotek"
+          className="rounded-xl border bg-card p-5 hover:bg-muted/40"
+        >
+          <div className="text-sm font-medium">🖼️ Felles bildebibliotek</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Bilder og videoer · last opp · søk · last ned.
+          </div>
+        </Link>
+        <Link
           href="/admin/skrapelodd"
           className="rounded-xl border bg-card p-5 hover:bg-muted/40"
         >
