@@ -20,6 +20,10 @@ type Lager = {
   updated_at?: string | null
   active?: boolean | null
   balances?: Record<string, number> | null
+  last_event_at?: string | null
+  last_event_type?: string | null
+  last_comment?: string | null
+  last_actor_epost?: string | null
 }
 
 type MedlemPersonlager = {
@@ -30,6 +34,25 @@ type MedlemPersonlager = {
   role?: string | null
   lagerId: string
   balances?: Record<string, number> | null
+}
+
+type StockFilter = "" | "tom" | "lav" | "ok" | "full"
+type LocationSort = "updated" | "name" | "type" | "address" | "responsible" | "comment" | "glass" | "boxes"
+type SortDir = "desc" | "asc"
+
+function asStockFilter(v: string): StockFilter {
+  if (v === "tom" || v === "lav" || v === "ok" || v === "full") return v
+  return ""
+}
+
+function asLocationSort(v: string): LocationSort {
+  if (v === "updated" || v === "name" || v === "type" || v === "address" || v === "responsible" || v === "comment" || v === "glass" || v === "boxes") return v
+  return "updated"
+}
+
+function asSortDir(v: string): SortDir {
+  if (v === "asc" || v === "desc") return v
+  return "desc"
 }
 
 type LocationDetails = {
@@ -88,6 +111,13 @@ export default function BieEskeSystemPage() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [copiedSql, setCopiedSql] = useState(false)
+  const [locationsOpen, setLocationsOpen] = useState(false)
+  const [locQuery, setLocQuery] = useState("")
+  const [locSort, setLocSort] = useState<LocationSort>("updated")
+  const [locSortDir, setLocSortDir] = useState<SortDir>("desc")
+  const [locTypeFilter, setLocTypeFilter] = useState<string>("")
+  const [locResponsibleFilter, setLocResponsibleFilter] = useState<string>("")
+  const [locStockFilter, setLocStockFilter] = useState<StockFilter>("")
 
   const [adjustLagerId, setAdjustLagerId] = useState("")
   const [adjustItem, setAdjustItem] = useState<"bie_eske" | "glass">("bie_eske")
@@ -115,8 +145,11 @@ export default function BieEskeSystemPage() {
   const [controlGlassesLeft, setControlGlassesLeft] = useState(0)
   const [controlFilledAdded, setControlFilledAdded] = useState(0)
   const [controlFromLagerId, setControlFromLagerId] = useState("")
+  const [controlCollectedGlasses, setControlCollectedGlasses] = useState(0)
+  const [controlPickedUp, setControlPickedUp] = useState(false)
   const [controlComment, setControlComment] = useState("")
   const [controlImages, setControlImages] = useState<File[]>([])
+
 
   const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null)
   const [gpsStatus, setGpsStatus] = useState<"idle" | "loading" | "ok" | "fail">("idle")
@@ -229,6 +262,8 @@ export default function BieEskeSystemPage() {
       const currentGlass = Number((json.balances ?? {})["glass"] ?? 0)
       setControlGlassesLeft(Number.isFinite(currentGlass) ? Math.max(0, Math.trunc(currentGlass)) : 0)
       setControlFilledAdded(0)
+      setControlCollectedGlasses(0)
+      setControlPickedUp(false)
       setControlComment("")
       setControlImages([])
       const responsible = String((json.location as Lager | null)?.responsible_lager_id ?? "").trim()
@@ -372,6 +407,14 @@ export default function BieEskeSystemPage() {
     fd.set("glassesLeft", String(clampInt(controlGlassesLeft, 0, 1_000_000)))
     if (controlFilledAdded > 0) {
       fd.set("filledAdded", String(clampInt(controlFilledAdded, 0, 1000)))
+    }
+    if (controlCollectedGlasses > 0) {
+      fd.set("collectedGlasses", String(clampInt(controlCollectedGlasses, 0, 1_000_000)))
+    }
+    if (controlPickedUp) {
+      fd.set("pickedUp", "1")
+    }
+    if (controlFilledAdded > 0 || controlCollectedGlasses > 0 || controlPickedUp) {
       fd.set("fromLagerId", controlFromLagerId)
     }
     if (controlComment.trim()) fd.set("comment", controlComment.trim())
@@ -387,13 +430,29 @@ export default function BieEskeSystemPage() {
       return
     }
     setControlFilledAdded(0)
+    setControlCollectedGlasses(0)
+    setControlPickedUp(false)
     setControlComment("")
     setControlImages([])
     setMsg("✅ Kontroll lagret.")
     await fetchOverview()
     if (locationOpenRef.current) await openLocation(locationOpenRef.current)
     setTimeout(() => setMsg(null), 1400)
-  }, [busy, controlComment, controlFilledAdded, controlFromLagerId, controlGlassesLeft, controlImages, fetchOverview, gps, openLocation, postForm, selectedLocationId])
+  }, [
+    busy,
+    controlCollectedGlasses,
+    controlComment,
+    controlFilledAdded,
+    controlFromLagerId,
+    controlGlassesLeft,
+    controlImages,
+    controlPickedUp,
+    fetchOverview,
+    gps,
+    openLocation,
+    postForm,
+    selectedLocationId,
+  ])
 
   const balancesText = useCallback((l: Lager) => {
     const b = l.balances ?? {}
@@ -409,6 +468,99 @@ export default function BieEskeSystemPage() {
     if (api.type !== "ready") return [] as MedlemPersonlager[]
     return (api.members ?? []).filter((m) => Boolean(String(m.lagerId ?? "").trim()))
   }, [api])
+
+  const lagerNameById = useMemo(() => {
+    const m = new Map<string, string>()
+    if (api.type !== "ready") return m
+    for (const l of api.lagre) {
+      const id = String(l.id ?? "").trim()
+      const name = String(l.name ?? "").trim()
+      if (id && name) m.set(id, name)
+    }
+    return m
+  }, [api])
+
+  const typeOptions = useMemo(() => {
+    if (api.type !== "ready") return [] as string[]
+    const s = new Set<string>()
+    for (const l of api.locations) {
+      const t = String(l.location_type ?? "").trim()
+      if (t) s.add(t)
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b, "no"))
+  }, [api])
+
+  const responsibleOptions = useMemo(() => {
+    if (api.type !== "ready") return [] as Array<{ id: string; name: string }>
+    const s = new Map<string, string>()
+    for (const l of api.locations) {
+      const id = String(l.responsible_lager_id ?? "").trim()
+      if (!id) continue
+      const name = lagerNameById.get(id) ?? ""
+      s.set(id, name || id)
+    }
+    return Array.from(s.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "no"))
+  }, [api, lagerNameById])
+
+  const filteredSortedLocations = useMemo(() => {
+    if (api.type !== "ready") return [] as Lager[]
+
+    const normalize = (v: string) =>
+      v
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+
+    const q = normalize(locQuery.trim())
+    const out = api.locations.filter((l) => {
+      const type = String(l.location_type ?? "").trim()
+      if (locTypeFilter && type !== locTypeFilter) return false
+      const resp = String(l.responsible_lager_id ?? "").trim()
+      if (locResponsibleFilter && resp !== locResponsibleFilter) return false
+
+      const b = l.balances ?? {}
+      const glass = Math.max(0, Math.trunc(Number(b["glass"] ?? 0)))
+      if (locStockFilter === "tom" && glass !== 0) return false
+      if (locStockFilter === "lav" && !(glass >= 1 && glass <= 5)) return false
+      if (locStockFilter === "ok" && !(glass >= 6 && glass <= 14)) return false
+      if (locStockFilter === "full" && glass < 15) return false
+
+      if (!q) return true
+      const name = normalize(String(l.name ?? ""))
+      const addr = normalize(String(l.address ?? ""))
+      const comm = normalize(String(l.last_comment ?? ""))
+      const respName = normalize(lagerNameById.get(resp) ?? "")
+      return name.includes(q) || addr.includes(q) || normalize(type).includes(q) || comm.includes(q) || respName.includes(q)
+    })
+
+    const getSortVal = (l: Lager) => {
+      const b = l.balances ?? {}
+      const boxes = Math.max(0, Math.trunc(Number(b["bie_eske"] ?? 0)))
+      const glass = Math.max(0, Math.trunc(Number(b["glass"] ?? 0)))
+      const resp = String(l.responsible_lager_id ?? "").trim()
+      const respName = lagerNameById.get(resp) ?? ""
+      if (locSort === "updated") return String(l.updated_at ?? "")
+      if (locSort === "name") return String(l.name ?? "")
+      if (locSort === "type") return String(l.location_type ?? "")
+      if (locSort === "address") return String(l.address ?? "")
+      if (locSort === "responsible") return respName
+      if (locSort === "comment") return String(l.last_comment ?? "")
+      if (locSort === "glass") return glass
+      return boxes
+    }
+
+    const dir = locSortDir === "asc" ? 1 : -1
+    out.sort((a, b) => {
+      const av = getSortVal(a)
+      const bv = getSortVal(b)
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir
+      return String(av).localeCompare(String(bv), "no", { sensitivity: "base" }) * dir
+    })
+
+    return out
+  }, [api, lagerNameById, locQuery, locResponsibleFilter, locSort, locSortDir, locStockFilter, locTypeFilter])
 
   return (
     <div className="space-y-6">
@@ -674,6 +826,10 @@ export default function BieEskeSystemPage() {
                   <div className="text-sm font-medium">Lokasjoner</div>
                   <div className="mt-1 text-sm text-muted-foreground">Åpne eksisterende lokasjon for oppfølging</div>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" onClick={() => setLocationsOpen(true)} disabled={busy || api.type !== "ready"}>
+                    Vis alle
+                  </Button>
                 {selectedLocationId ? (
                   <Button
                     variant="secondary"
@@ -686,7 +842,129 @@ export default function BieEskeSystemPage() {
                     Lukk
                   </Button>
                 ) : null}
+                </div>
               </div>
+
+              {locationsOpen && api.type === "ready" ? (
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm text-muted-foreground">
+                      Viser {filteredSortedLocations.length} av {api.locations.length}
+                    </div>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setLocationsOpen(false)
+                      }}
+                      disabled={busy}
+                    >
+                      Lukk liste
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Søk</Label>
+                      <Input value={locQuery} onChange={(e) => setLocQuery(e.target.value)} placeholder="Lokasjon / adresse / type / kommentar / ansvarlig" className="mt-2" />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <Label>Type sted</Label>
+                        <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={locTypeFilter} onChange={(e) => setLocTypeFilter(e.target.value)}>
+                          <option value="">Alle</option>
+                          {typeOptions.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <Label>Beholdning (glass)</Label>
+                        <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={locStockFilter} onChange={(e) => setLocStockFilter(asStockFilter(e.target.value))}>
+                          <option value="">Alle</option>
+                          <option value="tom">Tom (0)</option>
+                          <option value="lav">Lav (1–5)</option>
+                          <option value="ok">OK (6–14)</option>
+                          <option value="full">Full (15+)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <Label>Utsatt av</Label>
+                      <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={locResponsibleFilter} onChange={(e) => setLocResponsibleFilter(e.target.value)}>
+                        <option value="">Alle</option>
+                        {responsibleOptions.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Sorter på</Label>
+                      <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={locSort} onChange={(e) => setLocSort(asLocationSort(e.target.value))}>
+                        <option value="updated">Sist oppdatert</option>
+                        <option value="name">Lokasjon</option>
+                        <option value="type">Type sted</option>
+                        <option value="responsible">Utsatt av</option>
+                        <option value="address">Adresse</option>
+                        <option value="comment">Kommentar</option>
+                        <option value="glass">Glass</option>
+                        <option value="boxes">Esker</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Rekkefølge</Label>
+                      <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={locSortDir} onChange={(e) => setLocSortDir(asSortDir(e.target.value))}>
+                        <option value="desc">Synkende</option>
+                        <option value="asc">Stigende</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="max-h-[70vh] overflow-auto rounded-lg border bg-background">
+                    <div className="grid gap-2 p-3">
+                      {filteredSortedLocations.map((l) => {
+                        const b = l.balances ?? {}
+                        const boxes = Math.max(0, Math.trunc(Number(b["bie_eske"] ?? 0)))
+                        const glass = Math.max(0, Math.trunc(Number(b["glass"] ?? 0)))
+                        const respId = String(l.responsible_lager_id ?? "").trim()
+                        const respName = respId ? lagerNameById.get(respId) ?? respId : "—"
+                        const comment = String(l.last_comment ?? "").trim()
+                        return (
+                          <button
+                            key={l.id}
+                            type="button"
+                            className="rounded-lg border bg-card p-3 text-left hover:bg-muted/40"
+                            onClick={() => {
+                              setLocationsOpen(false)
+                              openLocation(l.id)
+                            }}
+                            disabled={busy}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="text-sm font-medium">{String(l.name ?? "")}</div>
+                              <div className="text-xs text-muted-foreground">{formatWhen(l.updated_at)}</div>
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {String(l.location_type ?? "").trim() || "Ukjent type"} · {boxes} esker · {glass} glass
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {respName} · {String(l.address ?? "").trim() || "Ukjent adresse"}
+                            </div>
+                            {comment ? <div className="mt-2 text-sm">{comment}</div> : null}
+                          </button>
+                        )
+                      })}
+                      {!filteredSortedLocations.length ? <div className="p-3 text-sm text-muted-foreground">Ingen treff.</div> : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {!selectedLocationId ? (
                 <div className="mt-3 grid gap-2">
@@ -731,7 +1009,7 @@ export default function BieEskeSystemPage() {
                         <Input value={String(controlFilledAdded)} onChange={(e) => setControlFilledAdded(clampInt(Number(e.target.value), 0, 1000))} inputMode="numeric" />
                       </div>
                       <div>
-                        <Label>Glass tas fra</Label>
+                        <Label>Lager/person (besøk)</Label>
                         <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={controlFromLagerId} onChange={(e) => setControlFromLagerId(e.target.value)}>
                           <option value="">Velg…</option>
                           {api.lagre
@@ -742,6 +1020,36 @@ export default function BieEskeSystemPage() {
                               </option>
                             ))}
                         </select>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <Label>Glass hentes inn</Label>
+                        <Input value={String(controlCollectedGlasses)} onChange={(e) => setControlCollectedGlasses(clampInt(Number(e.target.value), 0, 1_000_000))} inputMode="numeric" />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Label>Eske</Label>
+                        <div className="mt-2 flex items-center gap-2">
+                          <input
+                            id="pickedUp"
+                            type="checkbox"
+                            checked={controlPickedUp}
+                            onChange={(e) => {
+                              const next = Boolean(e.target.checked)
+                              setControlPickedUp(next)
+                              if (next) {
+                                const prevLeft = clampInt(controlGlassesLeft, 0, 1_000_000)
+                                if (controlCollectedGlasses === 0 && prevLeft > 0) setControlCollectedGlasses(prevLeft)
+                                setControlGlassesLeft(0)
+                              }
+                            }}
+                            className="h-4 w-4 rounded border"
+                          />
+                          <label htmlFor="pickedUp" className="text-sm">
+                            Hentet inn (esken tas med)
+                          </label>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">Når hentet inn settes glass igjen automatisk til 0.</div>
                       </div>
                     </div>
                     <div className="mt-3">

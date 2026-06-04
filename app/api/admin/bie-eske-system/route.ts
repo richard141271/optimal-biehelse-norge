@@ -6,7 +6,6 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 export const dynamic = "force-dynamic"
 
 const bucket = "bie-eske-system"
-const GLASS_PER_ESKE = 15
 
 type Db = {
   public: {
@@ -238,51 +237,48 @@ async function syncPersonWarehousesFromMembers(admin: AdminClient, members: Medl
   return { ok: true as const }
 }
 
-function derivedBalances(kind: string, balances: Record<string, number>) {
-  const b = { ...balances }
-  if (kind === "main" || kind === "person") {
-    const boxes = Math.max(0, Math.trunc(Number(b["bie_eske"] ?? 0)))
-    const glasses = Math.max(0, Math.trunc(Number(b["glass"] ?? 0)))
-    const minGlasses = boxes * GLASS_PER_ESKE
-    b["glass"] = Math.max(glasses, minGlasses)
-  }
-  return b
+function derivedBalances(_kind: string, balances: Record<string, number>) {
+  return balances
 }
 
-async function materializeMinGlassForBoxes(params: {
-  admin: AdminClient
-  lagerId: string
-  boxes: number
-  currentGlasses: number
-  actorEmail: string
-  actorRole: string
-}) {
-  const boxes = Math.max(0, Math.trunc(params.boxes))
-  const currentGlasses = Math.max(0, Math.trunc(params.currentGlasses))
-  const minGlasses = boxes * GLASS_PER_ESKE
-  if (currentGlasses >= minGlasses) return { ok: true as const, glasses: currentGlasses }
+function chunk<T>(arr: T[], size: number) {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
 
-  const delta = minGlasses - currentGlasses
-  const nowIso = new Date().toISOString()
-  const inc = await applyDelta(params.admin, params.lagerId, "glass", delta)
-  if (!inc.ok) return { ok: false as const, feil: "Kunne ikke oppdatere lager." }
+async function fetchLatestEventsForLocations(admin: AdminClient, locationIds: string[]) {
+  const latest = new Map<string, { at: string | null; type: string | null; comment: string | null; actor: string | null }>()
+  const ids = locationIds.map((v) => String(v ?? "").trim()).filter(Boolean)
+  if (!ids.length) return { ok: true as const, latest }
 
-  const { error } = await params.admin.from("lek_v2_lager_bevegelser").insert({
-    id: crypto.randomUUID(),
-    created_at: nowIso,
-    from_lager_id: null,
-    to_lager_id: params.lagerId,
-    item: "glass",
-    qty: delta,
-    reason: "auto_reconcile",
-    note: `Auto: ${GLASS_PER_ESKE} glass per eske.`,
-    actor_epost: params.actorEmail,
-    actor_role: params.actorRole,
-  } as unknown as never)
-  if (error) return { ok: false as const, feil: "Kunne ikke logge lagerjustering." }
+  for (const part of chunk(ids, 800)) {
+    const { data, error } = await admin
+      .from("lek_v2_lokasjon_hendelser")
+      .select("location_lager_id, created_at, type, comment, actor_epost")
+      .in("location_lager_id", part)
+      .order("created_at", { ascending: false })
+      .limit(8000)
 
-  await params.admin.from("lek_v2_lager").update({ updated_at: nowIso } as unknown as never).eq("id", params.lagerId)
-  return { ok: true as const, glasses: minGlasses }
+    if (error) {
+      const msg = String((error as { message?: string } | null)?.message ?? "")
+      if (isSchemaError(msg)) return { ok: false as const, feil: schemaFeil }
+      return { ok: false as const, feil: "Kunne ikke hente lokasjonshistorikk." }
+    }
+
+    for (const r of (data ?? []) as Array<Record<string, unknown>>) {
+      const id = String(r.location_lager_id ?? "").trim()
+      if (!id || latest.has(id)) continue
+      latest.set(id, {
+        at: String(r.created_at ?? "").trim() || null,
+        type: String(r.type ?? "").trim() || null,
+        comment: String(r.comment ?? "").trim() || null,
+        actor: String(r.actor_epost ?? "").trim() || null,
+      })
+    }
+  }
+
+  return { ok: true as const, latest }
 }
 
 function toSafeStorageKey(v: string) {
@@ -482,7 +478,7 @@ export async function GET(request: Request) {
     .from("lek_v2_lager")
     .select("id, kind, name, person_name, dedupe_key, location_type, address, lat, lng, responsible_lager_id, updated_at, active")
     .order("updated_at", { ascending: false })
-    .limit(600)
+    .limit(5000)
   if (lagreErr) {
     const msg = String((lagreErr as { message?: string } | null)?.message ?? "")
     return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente oversikt." }, { status: isSchemaError(msg) ? 500 : 400 })
@@ -499,6 +495,21 @@ export async function GET(request: Request) {
   })
 
   const locations = (enriched as Array<Record<string, unknown>>).filter((l) => String(l.kind ?? "") === "location")
+  const locationIds = locations.map((l) => String(l.id ?? "").trim()).filter(Boolean)
+  const latestRes = await fetchLatestEventsForLocations(admin, locationIds)
+  if (!latestRes.ok) {
+    const w = String((latestRes as { feil?: unknown }).feil ?? "")
+    warning = warning ? `${warning}\n${w}` : w
+  } else {
+    for (const l of locations) {
+      const id = String(l.id ?? "").trim()
+      const ev = latestRes.latest.get(id) ?? null
+      l.last_event_at = ev?.at ?? null
+      l.last_event_type = ev?.type ?? null
+      l.last_comment = ev?.comment ?? null
+      l.last_actor_epost = ev?.actor ?? null
+    }
+  }
   const totals = {
     totalLagere: (enriched as Array<unknown>).length,
     totalLokasjoner: locations.length,
@@ -582,64 +593,14 @@ export async function POST(request: Request) {
     if (qty == null || qty < 0) return NextResponse.json({ ok: false, feil: "Ugyldig antall." }, { status: 400 })
 
     const saldo = await getSaldo(admin, [lagerId])
-    const currBoxes = Number((saldo.get(lagerId) ?? {})["bie_eske"] ?? 0)
-    let currGlass = Number((saldo.get(lagerId) ?? {})["glass"] ?? 0)
-    if (item === "bie_eske") {
-      const materialized = await materializeMinGlassForBoxes({
-        admin,
-        lagerId,
-        boxes: Number.isFinite(currBoxes) ? Math.trunc(currBoxes) : 0,
-        currentGlasses: Number.isFinite(currGlass) ? Math.trunc(currGlass) : 0,
-        actorEmail: gate.email,
-        actorRole: gate.role,
-      })
-      if (!materialized.ok) return NextResponse.json({ ok: false, feil: String(materialized.feil ?? "Kunne ikke oppdatere lager.") }, { status: 400 })
-      currGlass = materialized.glasses
-    }
-
     const curr = Number((saldo.get(lagerId) ?? {})[item] ?? 0)
     const next = Math.trunc(qty)
     const delta = next - (Number.isFinite(curr) ? Math.trunc(curr) : 0)
     if (delta !== 0) {
-      const movements: Array<Record<string, unknown>> = []
-
-      if (item === "bie_eske") {
-        const glassDelta = delta * GLASS_PER_ESKE
-        if (glassDelta < 0 && (!Number.isFinite(currGlass) || currGlass < Math.abs(glassDelta))) {
-          return NextResponse.json(
-            { ok: false, feil: `For få glass registrert i lageret til å redusere esker. Juster glass først (auto-regel: ${GLASS_PER_ESKE} glass per eske).` },
-            { status: 400 }
-          )
-        }
-
-        if (glassDelta !== 0) {
-          const updGlass = await applyDelta(admin, lagerId, "glass", glassDelta)
-          if (!updGlass.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-          movements.push({
-            id: crypto.randomUUID(),
-            created_at: nowIso,
-            from_lager_id: glassDelta < 0 ? lagerId : null,
-            to_lager_id: glassDelta > 0 ? lagerId : null,
-            item: "glass",
-            qty: Math.abs(glassDelta),
-            reason: "adjust",
-            note: `Auto: ${GLASS_PER_ESKE} glass per eske.`,
-            actor_epost: gate.email,
-            actor_role: gate.role,
-          })
-        }
-      }
-
       const updItem = await applyDelta(admin, lagerId, item, delta)
-      if (!updItem.ok) {
-        if (item === "bie_eske") {
-          const glassDelta = delta * GLASS_PER_ESKE
-          if (glassDelta !== 0) await applyDelta(admin, lagerId, "glass", -glassDelta)
-        }
-        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-      }
+      if (!updItem.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
 
-      movements.push({
+      const { error } = await admin.from("lek_v2_lager_bevegelser").insert({
         id: crypto.randomUUID(),
         created_at: nowIso,
         from_lager_id: delta < 0 ? lagerId : null,
@@ -650,9 +611,7 @@ export async function POST(request: Request) {
         note: note || null,
         actor_epost: gate.email,
         actor_role: gate.role,
-      })
-
-      const { error } = await admin.from("lek_v2_lager_bevegelser").insert(movements as unknown as never)
+      } as unknown as never)
       if (error) {
         const msg = String((error as { message?: string } | null)?.message ?? "")
         return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke logge justering." }, { status: isSchemaError(msg) ? 500 : 400 })
@@ -674,73 +633,18 @@ export async function POST(request: Request) {
     if (!qty || qty <= 0) return NextResponse.json({ ok: false, feil: "Ugyldig antall." }, { status: 400 })
 
     const fromSaldo = await getSaldo(admin, [fromId])
-    const currFromBoxes = Number((fromSaldo.get(fromId) ?? {})["bie_eske"] ?? 0)
-    let currFromGlass = Number((fromSaldo.get(fromId) ?? {})["glass"] ?? 0)
-    if (item === "bie_eske") {
-      const materialized = await materializeMinGlassForBoxes({
-        admin,
-        lagerId: fromId,
-        boxes: Number.isFinite(currFromBoxes) ? Math.trunc(currFromBoxes) : 0,
-        currentGlasses: Number.isFinite(currFromGlass) ? Math.trunc(currFromGlass) : 0,
-        actorEmail: gate.email,
-        actorRole: gate.role,
-      })
-      if (!materialized.ok) return NextResponse.json({ ok: false, feil: String(materialized.feil ?? "Kunne ikke oppdatere lager.") }, { status: 400 })
-      currFromGlass = materialized.glasses
-    }
-
     const curr = Number((fromSaldo.get(fromId) ?? {})[item] ?? 0)
     if (!Number.isFinite(curr) || curr < qty) return NextResponse.json({ ok: false, feil: "Ikke nok på lager." }, { status: 400 })
 
-    const movements: Array<Record<string, unknown>> = []
-
-    if (item === "bie_eske") {
-      const glassQty = qty * GLASS_PER_ESKE
-      if (!Number.isFinite(currFromGlass) || currFromGlass < glassQty) {
-        return NextResponse.json({ ok: false, feil: `Ikke nok glass på lager (auto-regel: ${GLASS_PER_ESKE} glass per eske).` }, { status: 400 })
-      }
-      const decGlass = await applyDelta(admin, fromId, "glass", -glassQty)
-      if (!decGlass.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-      const incGlass = await applyDelta(admin, toId, "glass", glassQty)
-      if (!incGlass.ok) {
-        await applyDelta(admin, fromId, "glass", glassQty)
-        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-      }
-      movements.push({
-        id: crypto.randomUUID(),
-        created_at: nowIso,
-        from_lager_id: fromId,
-        to_lager_id: toId,
-        item: "glass",
-        qty: glassQty,
-        reason: "transfer",
-        note: `Auto: ${GLASS_PER_ESKE} glass per eske.`,
-        actor_epost: gate.email,
-        actor_role: gate.role,
-      })
-    }
-
     const dec = await applyDelta(admin, fromId, item, -qty)
-    if (!dec.ok) {
-      if (item === "bie_eske") {
-        const glassQty = qty * GLASS_PER_ESKE
-        await applyDelta(admin, toId, "glass", -glassQty)
-        await applyDelta(admin, fromId, "glass", glassQty)
-      }
-      return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-    }
+    if (!dec.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
     const inc = await applyDelta(admin, toId, item, qty)
     if (!inc.ok) {
       await applyDelta(admin, fromId, item, qty)
-      if (item === "bie_eske") {
-        const glassQty = qty * GLASS_PER_ESKE
-        await applyDelta(admin, toId, "glass", -glassQty)
-        await applyDelta(admin, fromId, "glass", glassQty)
-      }
       return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
     }
 
-    movements.push({
+    const { error } = await admin.from("lek_v2_lager_bevegelser").insert({
       id: crypto.randomUUID(),
       created_at: nowIso,
       from_lager_id: fromId,
@@ -751,9 +655,7 @@ export async function POST(request: Request) {
       note: note || null,
       actor_epost: gate.email,
       actor_role: gate.role,
-    })
-
-    const { error } = await admin.from("lek_v2_lager_bevegelser").insert(movements as unknown as never)
+    } as unknown as never)
     if (error) {
       const msg = String((error as { message?: string } | null)?.message ?? "")
       return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke logge flytting." }, { status: isSchemaError(msg) ? 500 : 400 })
@@ -818,26 +720,12 @@ export async function POST(request: Request) {
 
     const fromSaldo = await getSaldo(admin, [fromPersonId])
     const currBoxes = Number((fromSaldo.get(fromPersonId) ?? {})["bie_eske"] ?? 0)
-    let currGlasses = Number((fromSaldo.get(fromPersonId) ?? {})["glass"] ?? 0)
     if (!Number.isFinite(currBoxes) || currBoxes < initialBoxes) return NextResponse.json({ ok: false, feil: "Ikke nok esker på personlager." }, { status: 400 })
-    const materialized = await materializeMinGlassForBoxes({
-      admin,
-      lagerId: fromPersonId,
-      boxes: Number.isFinite(currBoxes) ? Math.trunc(currBoxes) : 0,
-      currentGlasses: Number.isFinite(currGlasses) ? Math.trunc(currGlasses) : 0,
-      actorEmail: gate.email,
-      actorRole: gate.role,
-    })
-    if (!materialized.ok) return NextResponse.json({ ok: false, feil: String(materialized.feil ?? "Kunne ikke oppdatere lager.") }, { status: 400 })
-    currGlasses = materialized.glasses
-    if (!Number.isFinite(currGlasses) || currGlasses < initialGlasses) return NextResponse.json({ ok: false, feil: "Ikke nok glass på personlager." }, { status: 400 })
 
     const decBoxes = await applyDelta(admin, fromPersonId, "bie_eske", -initialBoxes)
     if (!decBoxes.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
     const incBoxes = await applyDelta(admin, locationId, "bie_eske", initialBoxes)
     if (!incBoxes.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-    const decGlass = await applyDelta(admin, fromPersonId, "glass", -initialGlasses)
-    if (!decGlass.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
     if (initialGlasses > 0) {
       const incGlass = await applyDelta(admin, locationId, "glass", initialGlasses)
       if (!incGlass.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
@@ -846,7 +734,9 @@ export async function POST(request: Request) {
     await admin.from("lek_v2_lager_bevegelser").insert(
       [
         { id: crypto.randomUUID(), created_at: nowIso, from_lager_id: fromPersonId, to_lager_id: locationId, item: "bie_eske", qty: initialBoxes, reason: "deploy", note: comment || null, actor_epost: gate.email, actor_role: gate.role },
-        { id: crypto.randomUUID(), created_at: nowIso, from_lager_id: fromPersonId, to_lager_id: locationId, item: "glass", qty: initialGlasses, reason: "deploy", note: comment || null, actor_epost: gate.email, actor_role: gate.role },
+        ...(initialGlasses > 0
+          ? [{ id: crypto.randomUUID(), created_at: nowIso, from_lager_id: null, to_lager_id: locationId, item: "glass", qty: initialGlasses, reason: "deploy", note: "Startbeholdning i esken", actor_epost: gate.email, actor_role: gate.role }]
+          : []),
       ] as unknown as never
     )
 
@@ -907,49 +797,35 @@ export async function POST(request: Request) {
     const glassesLeft = toInt(form.get("glassesLeft"))
     const filledAdded = toInt(form.get("filledAdded"))
     const fromLagerId = String(form.get("fromLagerId") ?? "").trim()
+    const collectedGlasses = toInt(form.get("collectedGlasses"))
+    const pickedUp = String(form.get("pickedUp") ?? "").trim() === "1"
     const comment = String(form.get("comment") ?? "").trim()
     const lat = toNumber(form.get("lat"))
     const lng = toNumber(form.get("lng"))
     if (!locationId) return NextResponse.json({ ok: false, feil: "Mangler lokasjon." }, { status: 400 })
     if (glassesLeft == null || glassesLeft < 0) return NextResponse.json({ ok: false, feil: "Ugyldig glass igjen." }, { status: 400 })
+    if (collectedGlasses != null && collectedGlasses < 0) return NextResponse.json({ ok: false, feil: "Ugyldig glass hentes inn." }, { status: 400 })
 
-    const saldo = await getSaldo(admin, [locationId])
-    const curr = Number((saldo.get(locationId) ?? {})["glass"] ?? 0)
-    const delta = Math.trunc(glassesLeft - (Number.isFinite(curr) ? curr : 0))
-    if (delta !== 0) {
-      if (delta > 0) {
-        const inc = await applyDelta(admin, locationId, "glass", delta)
-        if (!inc.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-      } else {
-        const dec = await applyDelta(admin, locationId, "glass", delta)
-        if (!dec.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-      }
-      await admin.from("lek_v2_lager_bevegelser").insert({
-        id: crypto.randomUUID(),
-        created_at: nowIso,
-        from_lager_id: delta < 0 ? locationId : null,
-        to_lager_id: delta > 0 ? locationId : null,
-        item: "glass",
-        qty: Math.abs(delta),
-        reason: "count_adjust",
-        note: "Kontroll: justering til telt antall",
-        actor_epost: gate.email,
-        actor_role: gate.role,
-      } as unknown as never)
-    }
+    const needsLager = (filledAdded != null && filledAdded > 0) || (collectedGlasses != null && collectedGlasses > 0) || pickedUp
+    if (needsLager && !fromLagerId) return NextResponse.json({ ok: false, feil: "Velg lager/person." }, { status: 400 })
+
+    const saldo = await getSaldo(admin, needsLager ? [locationId, fromLagerId] : [locationId])
+    const currLocGlass = Math.max(0, Math.trunc(Number((saldo.get(locationId) ?? {})["glass"] ?? 0)))
+    const currLocBoxes = Math.max(0, Math.trunc(Number((saldo.get(locationId) ?? {})["bie_eske"] ?? 0)))
+    const currFromGlass = needsLager ? Math.max(0, Math.trunc(Number((saldo.get(fromLagerId) ?? {})["glass"] ?? 0))) : 0
+
+    let locGlass = currLocGlass
+    const movements: Array<Record<string, unknown>> = []
 
     if (filledAdded != null && filledAdded > 0) {
-      if (!fromLagerId) return NextResponse.json({ ok: false, feil: "Velg hvilket lager glass tas fra." }, { status: 400 })
-      const fromSaldo = await getSaldo(admin, [fromLagerId])
-      const currFrom = Number((fromSaldo.get(fromLagerId) ?? {})["glass"] ?? 0)
-      if (!Number.isFinite(currFrom) || currFrom < filledAdded) return NextResponse.json({ ok: false, feil: "Ikke nok glass på valgt lager." }, { status: 400 })
+      if (currFromGlass < filledAdded) return NextResponse.json({ ok: false, feil: "Ikke nok glass på valgt lager." }, { status: 400 })
 
       const dec = await applyDelta(admin, fromLagerId, "glass", -filledAdded)
       if (!dec.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
       const inc = await applyDelta(admin, locationId, "glass", filledAdded)
       if (!inc.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-
-      await admin.from("lek_v2_lager_bevegelser").insert({
+      locGlass += filledAdded
+      movements.push({
         id: crypto.randomUUID(),
         created_at: nowIso,
         from_lager_id: fromLagerId,
@@ -960,7 +836,80 @@ export async function POST(request: Request) {
         note: comment || null,
         actor_epost: gate.email,
         actor_role: gate.role,
-      } as unknown as never)
+      })
+    }
+
+    if (collectedGlasses != null && collectedGlasses > 0) {
+      if (locGlass < collectedGlasses) return NextResponse.json({ ok: false, feil: "Ikke nok glass på lokasjonen til å hente inn." }, { status: 400 })
+      const dec = await applyDelta(admin, locationId, "glass", -collectedGlasses)
+      if (!dec.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+      const inc = await applyDelta(admin, fromLagerId, "glass", collectedGlasses)
+      if (!inc.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+      locGlass -= collectedGlasses
+      movements.push({
+        id: crypto.randomUUID(),
+        created_at: nowIso,
+        from_lager_id: locationId,
+        to_lager_id: fromLagerId,
+        item: "glass",
+        qty: collectedGlasses,
+        reason: "collect",
+        note: comment || null,
+        actor_epost: gate.email,
+        actor_role: gate.role,
+      })
+    }
+
+    let pickedUpBoxes = 0
+    if (pickedUp) {
+      const qty = Math.min(currLocBoxes, 1)
+      if (qty <= 0) return NextResponse.json({ ok: false, feil: "Ingen eske på lokasjonen å hente inn." }, { status: 400 })
+      const dec = await applyDelta(admin, locationId, "bie_eske", -qty)
+      if (!dec.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+      const inc = await applyDelta(admin, fromLagerId, "bie_eske", qty)
+      if (!inc.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+      pickedUpBoxes = qty
+      movements.push({
+        id: crypto.randomUUID(),
+        created_at: nowIso,
+        from_lager_id: locationId,
+        to_lager_id: fromLagerId,
+        item: "bie_eske",
+        qty,
+        reason: "pickup",
+        note: comment || null,
+        actor_epost: gate.email,
+        actor_role: gate.role,
+      })
+      if (currLocBoxes - qty <= 0) {
+        await admin.from("lek_v2_lager").update({ active: false, updated_at: nowIso } as unknown as never).eq("id", locationId)
+      }
+    }
+
+    const delta = Math.trunc(glassesLeft - locGlass)
+    if (delta !== 0) {
+      const upd = await applyDelta(admin, locationId, "glass", delta)
+      if (!upd.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+      movements.push({
+        id: crypto.randomUUID(),
+        created_at: nowIso,
+        from_lager_id: delta < 0 ? locationId : null,
+        to_lager_id: delta > 0 ? locationId : null,
+        item: "glass",
+        qty: Math.abs(delta),
+        reason: "count_adjust",
+        note: "Kontroll: justering til oppgitt glass igjen",
+        actor_epost: gate.email,
+        actor_role: gate.role,
+      })
+    }
+
+    if (movements.length) {
+      const { error } = await admin.from("lek_v2_lager_bevegelser").insert(movements as unknown as never)
+      if (error) {
+        const msg = String((error as { message?: string } | null)?.message ?? "")
+        return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke logge kontroll." }, { status: isSchemaError(msg) ? 500 : 400 })
+      }
     }
 
     const rawFiles = form.getAll("images")
@@ -989,6 +938,12 @@ export async function POST(request: Request) {
       paths[i] = path
     }
 
+    const extras: string[] = []
+    if (filledAdded != null && filledAdded > 0) extras.push(`Påfylt: ${filledAdded}`)
+    if (collectedGlasses != null && collectedGlasses > 0) extras.push(`Glass inn: ${collectedGlasses}`)
+    if (pickedUpBoxes > 0) extras.push("Eske hentet inn")
+    const finalComment = `${comment || ""}${extras.length ? `${comment ? " · " : ""}${extras.join(" · ")}` : ""}`.trim() || null
+
     const { error: evErr } = await admin.from("lek_v2_lokasjon_hendelser").insert({
       id: eventId,
       created_at: nowIso,
@@ -996,7 +951,7 @@ export async function POST(request: Request) {
       type: "kontroll",
       glasses_left: glassesLeft,
       filled_added: filledAdded != null && filledAdded > 0 ? filledAdded : null,
-      comment: comment || null,
+      comment: finalComment,
       lat,
       lng,
       image1_path: paths[0],
