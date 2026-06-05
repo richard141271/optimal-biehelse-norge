@@ -67,20 +67,6 @@ export default function AdminHomePage() {
             Bilder og videoer · last opp · søk · last ned.
           </div>
         </Link>
-        <Link
-          href="/admin/skrapelodd"
-          className="rounded-xl border bg-card p-5 hover:bg-muted/40"
-        >
-          <div className="text-sm font-medium">Skrapelodd</div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            Administrer forhåndsdefinerte skrapelodd og vinnere.
-          </div>
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <Link href="/lodd" className="underline underline-offset-4">
-              Åpne loddsalg
-            </Link>
-          </div>
-        </Link>
       </div>
     </div>
   )
