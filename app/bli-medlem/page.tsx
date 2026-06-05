@@ -25,7 +25,7 @@ export default function BliMedlemPage() {
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <a
-                  href="vipps://"
+                  href="vipps://pay?receiver=52387"
                   className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
                 >
                   Åpne Vipps
@@ -54,6 +54,9 @@ export default function BliMedlemPage() {
                 </div>
                 <div>
                   <span className="font-medium">Støttemedlem:</span> 300 kr / år
+                </div>
+                <div>
+                  <span className="font-medium">Støttemedlem Bedrift:</span> 1000 kr / år
                 </div>
               </div>
 
