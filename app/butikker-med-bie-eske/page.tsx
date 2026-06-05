@@ -134,7 +134,11 @@ export default async function ButikkerMedBieEskePage() {
             {res.shops.map((s) => (
               <div key={s.id} className="overflow-hidden rounded-2xl border bg-card">
                 <div className="h-44 w-full bg-muted/30">
-                  {s.imageUrl ? <img src={s.imageUrl} alt={s.name} className="h-full w-full object-cover" /> : null}
+                  {s.imageUrl ? (
+                    <a href={s.imageUrl} target="_blank" rel="noreferrer" className="block h-full w-full">
+                      <img src={s.imageUrl} alt={s.name} className="h-full w-full object-cover" />
+                    </a>
+                  ) : null}
                 </div>
                 <div className="space-y-1 p-4">
                   <div className="text-base font-semibold">{s.name}</div>
@@ -153,4 +157,3 @@ export default async function ButikkerMedBieEskePage() {
     </main>
   )
 }
-
