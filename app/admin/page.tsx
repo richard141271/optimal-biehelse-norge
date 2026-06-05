@@ -79,9 +79,6 @@ export default function AdminHomePage() {
             <Link href="/lodd" className="underline underline-offset-4">
               Åpne loddsalg
             </Link>
-            <Link href="/skrapelodd" className="underline underline-offset-4">
-              Åpne skrapelodd
-            </Link>
           </div>
         </Link>
       </div>

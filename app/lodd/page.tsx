@@ -20,11 +20,6 @@ function buildVippsCopyText(opts: { belop: number; vippsRef: string; ticketFrom:
   return vippsRef
 }
 
-function isMobileDevice() {
-  if (typeof navigator === "undefined") return false
-  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-}
-
 type Lotteri = {
   id: string
   tittel?: string | null
@@ -261,6 +256,9 @@ export default function LoddPage() {
 
                   <div className="rounded-2xl border bg-card p-6">
                     <div className="text-sm font-medium">Kjøp lodd</div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      (Legg inn ditt telefonnummer, velg antall lodd, trykk kjøp. Åpne din vipps, tast inn #52387 og betal den summen du kjøpte lodd for.) Vinnere blir annonsert på siden etter trekning, og SMS sendes til vinnere. LYKKE TIL!
+                    </p>
                     <form className="mt-4 space-y-4" onSubmit={kjop}>
                       <div className="space-y-2">
                         <Label htmlFor="telefon">Telefonnummer</Label>
@@ -311,6 +309,15 @@ export default function LoddPage() {
                             : "Kjøp lodd nå"}
                       </Button>
 
+                      <div className="rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground">
+                        <div>
+                          Vippsnummer: <span className="font-medium text-foreground">#{VIPPS_NUMBER}</span>
+                        </div>
+                        <div className="mt-3 inline-flex rounded-xl border bg-background p-2">
+                          <img src="/QR-kode-52387.png" alt={`Vipps QR-kode #${VIPPS_NUMBER}`} className="h-auto w-[180px] sm:w-[220px]" />
+                        </div>
+                      </div>
+
                       {kjopState.type === "error" ? (
                         <div className="text-sm text-destructive">{kjopState.message}</div>
                       ) : null}
@@ -357,26 +364,6 @@ export default function LoddPage() {
                               {kjopState.copied ? "Kopiert" : "Kopier info"}
                             </Button>
                           </div>
-
-                          {!isMobileDevice() ? (
-                            <div className="mt-4 space-y-2">
-                              <div className="inline-flex rounded-xl border bg-background p-2">
-                                <img
-                                  src="/QR-kode-52387.png"
-                                  alt="Vipps QR-kode #52387"
-                                  className="h-auto w-[180px] sm:w-[220px]"
-                                />
-                              </div>
-                              <div className="text-muted-foreground">
-                                Åpne Vipps og betal manuelt til #{VIPPS_NUMBER}. Lim inn meldingen og legg inn beløpet.
-                                Du kan også skanne QR-koden med mobilen for å åpne Vipps.
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="mt-3 text-muted-foreground">
-                              Åpne Vipps og betal manuelt til #{VIPPS_NUMBER}. Lim inn meldingen og legg inn beløpet.
-                            </div>
-                          )}
                         </div>
                       ) : null}
 
