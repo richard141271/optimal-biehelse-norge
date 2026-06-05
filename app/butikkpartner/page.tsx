@@ -37,6 +37,12 @@ export default function ButikkpartnerPage() {
                 >
                   Se prosjekter
                 </Link>
+                <Link
+                  href="/butikker-med-bie-eske"
+                  className="inline-flex h-10 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium shadow-sm hover:bg-muted"
+                >
+                  Se hvilke butikker som har Bie-Eske
+                </Link>
               </div>
             </div>
 
