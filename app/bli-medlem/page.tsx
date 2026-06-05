@@ -22,6 +22,9 @@ export default function BliMedlemPage() {
               <p className="mt-2 text-sm text-muted-foreground">
                 Vipps til <span className="font-medium text-foreground">#52387</span>
               </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                (Beklager tungvint løsning, men Vipps har pr i dag ingen løsning som åpner rett til betaling. Du må selv gå inn og legge inn vårt nummer #52387 samt summen du skal betale inn. Du kan scanne QR-Koden, det fungerer)
+              </p>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <a
