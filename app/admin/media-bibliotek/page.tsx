@@ -270,21 +270,22 @@ export default function MediaBibliotekPage() {
               }}
               onDrop={onDrop}
             >
-              Dra og slipp bilder/video her
+              <div className="break-words">Dra og slipp bilder/video her</div>
               <input ref={fileInputRef} id="media_files" type="file" accept="image/*,video/*" multiple onChange={(e) => pickFiles(e.target.files)} className="sr-only" />
               <div className="mt-3 flex flex-col items-center justify-center gap-2 sm:flex-row">
-                <label htmlFor="media_files" className={buttonVariants({ variant: "outline" })}>
+                <label htmlFor="media_files" className={`${buttonVariants({ variant: "outline" })} w-full sm:w-auto`}>
                   Velg filer
                 </label>
-                <Button onClick={onUpload} disabled={uploading || !selectedFiles.length}>
+                <Button onClick={onUpload} disabled={uploading || !selectedFiles.length} className="w-full sm:w-auto">
                   {uploading ? `Laster opp ${uploadCount}/${selectedFiles.length}` : `Last opp (${selectedFiles.length})`}
                 </Button>
               </div>
               {selectedFiles.length ? (
-                <div className="mt-3 text-left text-xs text-muted-foreground">
+                <div className="mt-3 w-full text-left text-xs text-muted-foreground">
                   {selectedFiles.slice(0, 6).map((f) => (
-                    <div key={`${f.name}-${f.size}`} className="truncate">
-                      {f.name} · {formatBytes(f.size)}
+                    <div key={`${f.name}-${f.size}`} className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 truncate">{f.name}</div>
+                      <div className="shrink-0">{formatBytes(f.size)}</div>
                     </div>
                   ))}
                   {selectedFiles.length > 6 ? <div>+ {selectedFiles.length - 6} til…</div> : null}
