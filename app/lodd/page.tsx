@@ -356,14 +356,6 @@ export default function LoddPage() {
                             >
                               {kjopState.copied ? "Kopiert" : "Kopier info"}
                             </Button>
-                            <Button
-                              type="button"
-                              onClick={() => {
-                                window.location.href = "vipps://"
-                              }}
-                            >
-                              Åpne Vipps
-                            </Button>
                           </div>
 
                           {!isMobileDevice() ? (

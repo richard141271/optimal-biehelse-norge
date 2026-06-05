@@ -84,7 +84,7 @@ export default function SkrapeloddPage() {
                 disabled={status.type === "loading"}
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
               >
-                {status.type === "loading" ? "Åpner Vipps…" : "Åpne Vipps"}
+                {status.type === "loading" ? "Starter betaling…" : "Kjøp skrapelodd"}
               </button>
               <div className="text-sm text-muted-foreground">
                 Pris: <span className="font-medium text-foreground">20 kr</span> per lodd

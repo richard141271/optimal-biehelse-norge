@@ -26,15 +26,6 @@ export default function BliMedlemPage() {
                 (Beklager tungvint løsning, men Vipps har pr i dag ingen løsning som åpner rett til betaling. Du må selv gå inn og legge inn vårt nummer #52387 samt summen du skal betale inn. Du kan scanne QR-Koden, det fungerer)
               </p>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <a
-                  href="vipps://pay?receiver=52387"
-                  className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-                >
-                  Åpne Vipps
-                </a>
-              </div>
-
               <div className="mt-4 space-y-2">
                 <div className="inline-flex rounded-xl border bg-background p-3">
                   <Image

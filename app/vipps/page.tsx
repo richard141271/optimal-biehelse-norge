@@ -47,12 +47,6 @@ export default function VippsPage() {
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2">
-            <a
-              href={`vipps://pay?receiver=${vippsNummer}`}
-              className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-            >
-              Åpne Vipps
-            </a>
             <Link
               href="/"
               className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-medium hover:bg-muted"
