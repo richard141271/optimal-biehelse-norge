@@ -35,10 +35,39 @@ function extFromNameAndType(filename: string, type: string) {
 }
 
 function parseMoney(value: string) {
-  const trimmed = value.trim()
+  const trimmed = value.trim().replace(/\s/g, "")
   if (!trimmed) return null
-  const normalized = trimmed.replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
-  const n = Number(normalized)
+  const cleaned = trimmed.replace(/[^\d,.-]/g, "")
+  if (!cleaned || cleaned === "-" || cleaned === "," || cleaned === ".") return null
+
+  const negative = cleaned.startsWith("-")
+  const unsigned = negative ? cleaned.slice(1) : cleaned
+  const lastComma = unsigned.lastIndexOf(",")
+  const lastDot = unsigned.lastIndexOf(".")
+
+  let decimalSep = ""
+  if (lastComma >= 0 && lastDot >= 0) {
+    decimalSep = lastComma > lastDot ? "," : "."
+  } else if (lastComma >= 0) {
+    const decimals = unsigned.length - lastComma - 1
+    decimalSep = decimals > 0 && decimals <= 2 ? "," : ""
+  } else if (lastDot >= 0) {
+    const decimals = unsigned.length - lastDot - 1
+    decimalSep = decimals > 0 && decimals <= 2 ? "." : ""
+  }
+
+  let normalized = unsigned
+  if (decimalSep) {
+    const idx = decimalSep === "," ? lastComma : lastDot
+    const intPart = unsigned.slice(0, idx).replace(/[.,]/g, "")
+    const fracPart = unsigned.slice(idx + 1).replace(/[^\d]/g, "")
+    normalized = `${intPart || "0"}.${fracPart}`
+  } else {
+    normalized = unsigned.replace(/[.,]/g, "")
+  }
+
+  if (!/^\d+(\.\d+)?$/.test(normalized)) return null
+  const n = Number(`${negative ? "-" : ""}${normalized}`)
   if (!Number.isFinite(n)) return null
   return n
 }
@@ -46,8 +75,7 @@ function parseMoney(value: string) {
 function toNumber(value: unknown) {
   if (typeof value === "number") return Number.isFinite(value) ? value : null
   if (typeof value === "string") {
-    const n = Number(value.replace(",", "."))
-    return Number.isFinite(n) ? n : null
+    return parseMoney(value)
   }
   return null
 }
@@ -315,12 +343,12 @@ export async function GET() {
     .eq("user_id", auth.userId)
     .maybeSingle()
   const role = String(roleRow?.role ?? "")
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
   if (role !== "admin" && role !== "superadmin") {
-    const ownerEmail = String(
-      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
-    )
-      .trim()
-      .toLowerCase()
     if (!ownerEmail || auth.email !== ownerEmail) {
       return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
     }
@@ -421,12 +449,12 @@ export async function POST(request: Request) {
     .eq("user_id", auth.userId)
     .maybeSingle()
   const role = String(roleRow?.role ?? "")
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
   if (role !== "admin" && role !== "superadmin") {
-    const ownerEmail = String(
-      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
-    )
-      .trim()
-      .toLowerCase()
     if (!ownerEmail || auth.email !== ownerEmail) {
       return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
     }
@@ -600,12 +628,13 @@ export async function PATCH(request: Request) {
     .eq("user_id", auth.userId)
     .maybeSingle()
   const role = String(roleRow?.role ?? "")
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const isBootstrapSuper = ownerEmail && auth.email === ownerEmail
   if (role !== "admin" && role !== "superadmin") {
-    const ownerEmail = String(
-      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
-    )
-      .trim()
-      .toLowerCase()
     if (!ownerEmail || auth.email !== ownerEmail) {
       return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
     }
@@ -658,6 +687,21 @@ export async function PATCH(request: Request) {
   }
   if (!existingRow) {
     return NextResponse.json({ ok: false, feil: "Regnskapspost finnes ikke." }, { status: 404 })
+  }
+
+  const isUtlegg =
+    Boolean(
+      String((existingRow as { utlegg_medlem_id?: unknown } | null)?.utlegg_medlem_id ?? "").trim() ||
+        String((existingRow as { utlegg_status?: unknown } | null)?.utlegg_status ?? "").trim() ||
+        String((existingRow as { utlegg_medlem_navn?: unknown } | null)?.utlegg_medlem_navn ?? "").trim() ||
+        String((existingRow as { utlegg_medlem_epost?: unknown } | null)?.utlegg_medlem_epost ?? "").trim()
+    )
+
+  if (isUtlegg && role !== "superadmin" && !isBootstrapSuper) {
+    return NextResponse.json(
+      { ok: false, feil: "Kun superbruker kan endre utlegg." },
+      { status: 403 }
+    )
   }
 
   const oldBilagPath = typeof existingRow.bilag_path === "string" ? existingRow.bilag_path : null
@@ -1023,7 +1067,7 @@ export async function DELETE(request: Request) {
 
   const { data: existingRow, error: existingError } = await admin
     .from("regnskap_poster")
-    .select("bilag_path, type, belop")
+    .select("bilag_path, type, belop, utlegg_medlem_id, utlegg_status, utlegg_medlem_navn, utlegg_medlem_epost")
     .eq("id", id)
     .maybeSingle()
 
@@ -1032,6 +1076,21 @@ export async function DELETE(request: Request) {
   }
   if (!existingRow) {
     return NextResponse.json({ ok: false, feil: "Regnskapspost finnes ikke." }, { status: 404 })
+  }
+
+  const isUtlegg =
+    Boolean(
+      String((existingRow as { utlegg_medlem_id?: unknown } | null)?.utlegg_medlem_id ?? "").trim() ||
+        String((existingRow as { utlegg_status?: unknown } | null)?.utlegg_status ?? "").trim() ||
+        String((existingRow as { utlegg_medlem_navn?: unknown } | null)?.utlegg_medlem_navn ?? "").trim() ||
+        String((existingRow as { utlegg_medlem_epost?: unknown } | null)?.utlegg_medlem_epost ?? "").trim()
+    )
+
+  if (isUtlegg && roleRow?.role !== "superadmin" && !isBootstrapSuper) {
+    return NextResponse.json(
+      { ok: false, feil: "Kun superbruker kan slette utlegg." },
+      { status: 403 }
+    )
   }
 
   const bilagPath = typeof existingRow.bilag_path === "string" ? existingRow.bilag_path : null

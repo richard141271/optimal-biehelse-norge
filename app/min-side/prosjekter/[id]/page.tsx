@@ -143,7 +143,7 @@ export default function MinSideProsjektDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-4 sm:px-6">
       <div className="space-y-1">
         <div className="text-sm text-muted-foreground">
           <Link href="/min-side" className="hover:text-foreground">
@@ -266,4 +266,3 @@ export default function MinSideProsjektDetailPage() {
     </div>
   )
 }
-

@@ -91,11 +91,8 @@ const MAX_BILAG_BYTES = 20 * 1024 * 1024
 
 function formatBelop(value?: number | string) {
   if (value === null || value === undefined) return ""
-  const n =
-    typeof value === "number"
-      ? value
-      : Number(String(value).replace(",", "."))
-  if (!Number.isFinite(n)) return ""
+  const n = typeof value === "number" ? value : parseMoneyInput(String(value))
+  if (n === null || !Number.isFinite(n)) return ""
   return new Intl.NumberFormat("nb-NO", {
     style: "currency",
     currency: "NOK",
@@ -145,6 +142,54 @@ function normalizeOcrText(text: string) {
   return text.replace(/\s+/g, " ").trim()
 }
 
+function parseMoneyInput(value: string) {
+  const trimmed = value.trim().replace(/\s/g, "")
+  if (!trimmed) return null
+  const cleaned = trimmed.replace(/[^\d,.-]/g, "")
+  if (!cleaned || cleaned === "-" || cleaned === "," || cleaned === ".") return null
+
+  const negative = cleaned.startsWith("-")
+  const unsigned = negative ? cleaned.slice(1) : cleaned
+  const lastComma = unsigned.lastIndexOf(",")
+  const lastDot = unsigned.lastIndexOf(".")
+
+  let decimalSep = ""
+  if (lastComma >= 0 && lastDot >= 0) {
+    decimalSep = lastComma > lastDot ? "," : "."
+  } else if (lastComma >= 0) {
+    const decimals = unsigned.length - lastComma - 1
+    decimalSep = decimals > 0 && decimals <= 2 ? "," : ""
+  } else if (lastDot >= 0) {
+    const decimals = unsigned.length - lastDot - 1
+    decimalSep = decimals > 0 && decimals <= 2 ? "." : ""
+  }
+
+  let normalized = unsigned
+  if (decimalSep) {
+    const idx = decimalSep === "," ? lastComma : lastDot
+    const intPart = unsigned.slice(0, idx).replace(/[.,]/g, "")
+    const fracPart = unsigned.slice(idx + 1).replace(/[^\d]/g, "")
+    normalized = `${intPart || "0"}.${fracPart}`
+  } else {
+    normalized = unsigned.replace(/[.,]/g, "")
+  }
+
+  if (!/^\d+(\.\d+)?$/.test(normalized)) return null
+  const num = Number(`${negative ? "-" : ""}${normalized}`)
+  return Number.isFinite(num) ? num : null
+}
+
+function formatMoneyInput(value?: number | string | null) {
+  if (value === null || value === undefined || value === "") return ""
+  const num = typeof value === "number" ? value : parseMoneyInput(String(value))
+  if (num === null) return String(value)
+  return num.toLocaleString("nb-NO", {
+    minimumFractionDigits: Number.isInteger(num) ? 0 : 2,
+    maximumFractionDigits: 2,
+    useGrouping: false,
+  })
+}
+
 function extractAmount(text: string) {
   const upper = text.toUpperCase()
   const patterns = [
@@ -156,17 +201,17 @@ function extractAmount(text: string) {
   for (const p of patterns) {
     const m = upper.match(p)
     if (m?.[1]) {
-      return m[1].replace(/[ .]/g, "").replace(",", ".")
+      const parsed = parseMoneyInput(m[1])
+      if (parsed !== null) return formatMoneyInput(parsed)
     }
   }
 
   const all = upper.match(/\d[\d .]*[,.]\d{2}/g) ?? []
   const candidates = all
-    .map((s) => s.replace(/[ .]/g, "").replace(",", "."))
-    .map((s) => Number(s))
-    .filter((n) => Number.isFinite(n) && n > 0)
+    .map((s) => parseMoneyInput(s))
+    .filter((n): n is number => n !== null && Number.isFinite(n) && n > 0)
     .sort((a, b) => b - a)
-  return candidates[0] ? String(candidates[0]) : ""
+  return candidates[0] ? formatMoneyInput(candidates[0]) : ""
 }
 
 function extractVendor(text: string) {
@@ -555,6 +600,7 @@ export default function AdminRegnskapPage() {
     vare: false,
   })
   const [utleggFileInputKey, setUtleggFileInputKey] = useState(0)
+  const [utleggEditId, setUtleggEditId] = useState<string | null>(null)
   const [utleggForm, setUtleggForm] = useState<UtleggFormState>({
     medlemId: "",
     dato: todayIso(),
@@ -819,8 +865,8 @@ export default function AdminRegnskapPage() {
     let inn = 0
     let ut = 0
     for (const p of poster) {
-      const bel = typeof p.belop === "number" ? p.belop : Number(String(p.belop ?? "").replace(",", "."))
-      if (!Number.isFinite(bel)) continue
+      const bel = typeof p.belop === "number" ? p.belop : parseMoneyInput(String(p.belop ?? ""))
+      if (bel === null || !Number.isFinite(bel)) continue
       if (p.type === "inntekt") inn += bel
       if (p.type === "utgift") ut += bel
     }
@@ -854,8 +900,8 @@ export default function AdminRegnskapPage() {
       : []
 
   const skyldigSum = skyldigeUtlegg.reduce((sum, p) => {
-    const bel = typeof p.belop === "number" ? p.belop : Number(String(p.belop ?? "").replace(",", "."))
-    return Number.isFinite(bel) ? sum + bel : sum
+    const bel = typeof p.belop === "number" ? p.belop : parseMoneyInput(String(p.belop ?? ""))
+    return bel !== null && Number.isFinite(bel) ? sum + bel : sum
   }, 0)
 
   const utleggMedlemmerFiltrert = utleggMedlemmer
@@ -962,13 +1008,48 @@ export default function AdminRegnskapPage() {
     setForm({
       type,
       dato: dato || todayIso(),
-      belop: p.belop === null || p.belop === undefined ? "" : String(p.belop),
+      belop: formatMoneyInput(p.belop),
       motpart: String(p.motpart ?? ""),
       vare: String(p.vare ?? ""),
       notat: String(p.notat ?? ""),
       bilag: null,
       bilagPreviewUrl: null,
       bilagTekst: null,
+    })
+  }
+
+  function isUtleggPost(p: RegnskapPost) {
+    return Boolean(
+      String(p.utlegg_medlem_id ?? "").trim() ||
+        String(p.utlegg_status ?? "").trim() ||
+        String(p.utlegg_medlem_navn ?? "").trim() ||
+        String(p.utlegg_medlem_epost ?? "").trim()
+    )
+  }
+
+  async function apneUtleggRedigering(p: RegnskapPost) {
+    if (minRolle !== "superadmin") return
+    await hentUtleggMedlemmer()
+    const datoSource = String(p.dato ?? p.created_at ?? todayIso())
+    const dato = datoSource.includes("T") ? datoSource.slice(0, 10) : datoSource
+    setShowUtlegg(true)
+    setUtleggTab("ny")
+    setUtleggEditId(p.id)
+    setUtleggDirty({ belop: false, motpart: false, vare: false })
+    setUtleggMedlemQuery(String(p.utlegg_medlem_navn ?? p.utlegg_medlem_epost ?? ""))
+    setUtleggForm((prev) => {
+      if (prev.bilagPreviewUrl) URL.revokeObjectURL(prev.bilagPreviewUrl)
+      return {
+        medlemId: String(p.utlegg_medlem_id ?? ""),
+        dato: dato || todayIso(),
+        belop: formatMoneyInput(p.belop),
+        motpart: String(p.motpart ?? ""),
+        vare: String(p.vare ?? ""),
+        notat: String(p.notat ?? ""),
+        bilag: null,
+        bilagPreviewUrl: null,
+        bilagTekst: null,
+      }
     })
   }
 
@@ -1071,12 +1152,25 @@ export default function AdminRegnskapPage() {
       const motpart = extractVendor(rawText)
       const vare = extractItem(rawText)
 
+      setForm((prev) => ({ ...prev, bilagTekst: normalized || null }))
+      const forslag = [
+        belop ? `Belop: ${belop}` : null,
+        motpart ? `Butikk/firma: ${motpart}` : null,
+        vare ? `Vare/tjeneste: ${vare}` : null,
+      ].filter(Boolean)
+      if (!forslag.length) {
+        alert("Fant ingen sikre forslag i bilaget.")
+        return
+      }
+      const ok = window.confirm(
+        `Fant disse forslagene:\n\n${forslag.join("\n")}\n\nVil du fylle dem inn i feltene?`
+      )
+      if (!ok) return
       setForm((prev) => ({
         ...prev,
-        belop: prev.belop || belop,
-        motpart: prev.motpart || motpart,
-        vare: prev.vare || vare,
-        bilagTekst: normalized || null,
+        belop: belop || prev.belop,
+        motpart: motpart || prev.motpart,
+        vare: vare || prev.vare,
       }))
     } finally {
       setOcrLoading(false)
@@ -1109,6 +1203,7 @@ export default function AdminRegnskapPage() {
   function resetUtleggState() {
     setUtleggMedlemQuery("")
     setUtleggTab("ny")
+    setUtleggEditId(null)
     setUtleggDirty({ belop: false, motpart: false, vare: false })
     setUtleggFileInputKey((k) => k + 1)
     setUtleggForm((prev) => {
@@ -1171,7 +1266,6 @@ export default function AdminRegnskapPage() {
           bilagTekst: null,
         }
       })
-      await analyserUtleggFile(file, true, { belop: false, motpart: false, vare: false })
       return
     }
 
@@ -1194,7 +1288,6 @@ export default function AdminRegnskapPage() {
         }
       })
 
-      await analyserUtleggFile(cropped, true, { belop: false, motpart: false, vare: false })
     } catch {
       setUtleggForm((prev) => {
         if (prev.bilagPreviewUrl) URL.revokeObjectURL(prev.bilagPreviewUrl)
@@ -1208,13 +1301,11 @@ export default function AdminRegnskapPage() {
           bilagTekst: null,
         }
       })
-      await analyserUtleggFile(normalized, true, { belop: false, motpart: false, vare: false })
     }
   }
 
   async function analyserUtleggFile(
     file: File,
-    overwriteAll: boolean,
     dirty: { belop: boolean; motpart: boolean; vare: boolean }
   ) {
     setUtleggOcrLoading(true)
@@ -1225,12 +1316,25 @@ export default function AdminRegnskapPage() {
       const motpart = extractVendor(rawText)
       const vare = extractItem(rawText)
 
+      setUtleggForm((prev) => ({ ...prev, bilagTekst: normalized || null }))
+      const forslag = [
+        belop && !dirty.belop ? `Belop: ${belop}` : null,
+        motpart && !dirty.motpart ? `Butikk/firma: ${motpart}` : null,
+        vare && !dirty.vare ? `Vare/tjeneste: ${vare}` : null,
+      ].filter(Boolean)
+      if (!forslag.length) {
+        alert("Fant ingen sikre forslag i bilaget.")
+        return
+      }
+      const ok = window.confirm(
+        `Fant disse forslagene:\n\n${forslag.join("\n")}\n\nVil du fylle dem inn i feltene?`
+      )
+      if (!ok) return
       setUtleggForm((prev) => ({
         ...prev,
-        belop: overwriteAll || !dirty.belop ? belop : prev.belop,
-        motpart: overwriteAll || !dirty.motpart ? motpart : prev.motpart,
-        vare: overwriteAll || !dirty.vare ? vare : prev.vare,
-        bilagTekst: normalized || null,
+        belop: !dirty.belop && belop ? belop : prev.belop,
+        motpart: !dirty.motpart && motpart ? motpart : prev.motpart,
+        vare: !dirty.vare && vare ? vare : prev.vare,
       }))
     } finally {
       setUtleggOcrLoading(false)
@@ -1239,7 +1343,7 @@ export default function AdminRegnskapPage() {
 
   async function analyserUtleggBilag() {
     if (!utleggForm.bilag) return
-    await analyserUtleggFile(utleggForm.bilag, false, utleggDirty)
+    await analyserUtleggFile(utleggForm.bilag, utleggDirty)
   }
 
   async function lagreUtlegg() {
@@ -1258,9 +1362,8 @@ export default function AdminRegnskapPage() {
       return
     }
 
-    const belop = utleggForm.belop.trim().replace(",", ".")
-    const belopTall = belop ? Number(belop) : NaN
-    if (!Number.isFinite(belopTall)) {
+    const belopTall = parseMoneyInput(utleggForm.belop)
+    if (belopTall === null) {
       alert("Skriv inn et gyldig beløp.")
       return
     }
@@ -1285,8 +1388,9 @@ export default function AdminRegnskapPage() {
       fd.set("utleggMedlemNavn", String(medlem.navn ?? ""))
       fd.set("utleggMedlemEpost", String(medlem.epost ?? ""))
       fd.set("utleggStatus", "skyldig")
+      if (utleggEditId) fd.set("id", utleggEditId)
 
-      const res = await fetch("/api/regnskap", { method: "POST", body: fd })
+      const res = await fetch("/api/regnskap", { method: utleggEditId ? "PATCH" : "POST", body: fd })
       const data = (await res.json()) as { ok?: boolean; feil?: string }
       if (!res.ok || !data.ok) {
         alert(data.feil ?? `Kunne ikke lagre utlegg. (HTTP ${res.status})`)
@@ -1294,6 +1398,7 @@ export default function AdminRegnskapPage() {
       }
 
       setUtleggDirty({ belop: false, motpart: false, vare: false })
+      setUtleggEditId(null)
       setUtleggFileInputKey((k) => k + 1)
       setUtleggForm({
         medlemId: "",
@@ -1341,9 +1446,8 @@ export default function AdminRegnskapPage() {
 
   async function lagre() {
     if (saving) return
-    const belop = form.belop.trim().replace(",", ".")
-    const belopTall = belop ? Number(belop) : NaN
-    if (!Number.isFinite(belopTall)) {
+    const belopTall = parseMoneyInput(form.belop)
+    if (belopTall === null) {
       alert("Skriv inn et gyldig beløp.")
       return
     }
@@ -1759,8 +1863,7 @@ export default function AdminRegnskapPage() {
                     onChange={(e) => {
                       const f = e.target.files?.[0] ?? null
                       void (async () => {
-                        const next = await velgBilag(f)
-                        if (next) await analyserBilagFile(next)
+                        await velgBilag(f)
                       })()
                     }}
                     className="h-10"
@@ -1813,7 +1916,7 @@ export default function AdminRegnskapPage() {
                 ) : null}
                 {form.bilagTekst ? (
                   <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">
-                    OCR-forslag er fylt inn der det var mulig.
+                    Forslag er lest fra bilaget, men fylles bare inn etter bekreftelse.
                   </div>
                 ) : null}
               </div>
@@ -1923,13 +2026,25 @@ export default function AdminRegnskapPage() {
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => apneRedigering(p)}
-                      >
-                        Åpne/rediger
-                      </Button>
+                      {!isUtleggPost(p) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => apneRedigering(p)}
+                        >
+                          Åpne/rediger
+                        </Button>
+                      ) : minRolle === "superadmin" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void apneUtleggRedigering(p)}
+                        >
+                          Åpne/rediger utlegg
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Kun superbruker</span>
+                      )}
                       {minRolle === "superadmin" ? (
                         <Button
                           size="sm"
@@ -1971,7 +2086,7 @@ export default function AdminRegnskapPage() {
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-lg font-semibold">Utlegg</div>
+                <div className="text-lg font-semibold">{utleggEditId ? "Rediger utlegg" : "Utlegg"}</div>
                 <div className="text-sm text-muted-foreground">
                   Knytt en utgift til et medlem, og hold oversikt over det som er skyldig.
                 </div>
@@ -1986,7 +2101,7 @@ export default function AdminRegnskapPage() {
                 type="button"
                 variant={utleggTab === "ny" ? "default" : "outline"}
                 onClick={() => {
-                  setUtleggTab("ny")
+                  resetUtleggState()
                   void hentUtleggMedlemmer()
                 }}
               >
@@ -2152,6 +2267,11 @@ export default function AdminRegnskapPage() {
                       )}
                     </div>
                   ) : null}
+                  {utleggForm.bilagTekst ? (
+                    <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">
+                      Forslag er lest fra bilaget, men fylles bare inn etter bekreftelse.
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-wrap justify-end gap-2">
@@ -2159,7 +2279,7 @@ export default function AdminRegnskapPage() {
                     Avbryt
                   </Button>
                   <Button onClick={() => void lagreUtlegg()} disabled={utleggSaving}>
-                    {utleggSaving ? "Lagrer…" : "Lagre utlegg"}
+                    {utleggSaving ? "Lagrer…" : utleggEditId ? "Oppdater utlegg" : "Lagre utlegg"}
                   </Button>
                 </div>
               </div>
@@ -2214,6 +2334,17 @@ export default function AdminRegnskapPage() {
                               )}
                             </td>
                             <td className="whitespace-nowrap px-4 py-3 text-right">
+                              {minRolle === "superadmin" ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="mr-2"
+                                  disabled={utleggSaving}
+                                  onClick={() => void apneUtleggRedigering(p)}
+                                >
+                                  Åpne/rediger
+                                </Button>
+                              ) : null}
                               <Button
                                 size="sm"
                                 className="bg-emerald-600 text-white hover:bg-emerald-600/90"
@@ -2222,6 +2353,17 @@ export default function AdminRegnskapPage() {
                               >
                                 Marker utbetalt
                               </Button>
+                              {minRolle === "superadmin" ? (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="ml-2"
+                                  disabled={deletingId === p.id}
+                                  onClick={() => void slettPost(p)}
+                                >
+                                  Slett
+                                </Button>
+                              ) : null}
                             </td>
                           </tr>
                         ))
