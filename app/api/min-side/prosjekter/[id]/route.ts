@@ -22,6 +22,10 @@ function isAktivKontingent(gyldigTil?: string | null) {
 
 export const dynamic = "force-dynamic"
 
+const MAX_VEDLEGG_PER_UPLOAD = 10
+const MAX_TOTAL_VEDLEGG = 30
+const MAX_VEDLEGG_BYTES = 15 * 1024 * 1024
+
 async function getAuth() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -73,6 +77,67 @@ function schemaFeil() {
   )
 }
 
+async function verifyActiveMember(admin: unknown, userId: string) {
+  const client = admin as ReturnType<typeof createClient>
+  const { data: medlem, error: medlemError } = await client
+    .from("medlemmer")
+    .select("aktiv, kontingent_gyldig_til")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (medlemError) {
+    const msg = String((medlemError as { message?: string } | null)?.message ?? "")
+    if (/column/i.test(msg) && /user_id/i.test(msg)) {
+      return {
+        ok: false as const,
+        response: NextResponse.json(
+          {
+            ok: false,
+            feil:
+              "Medlemsregister-tabellen mangler feltet user_id. Kjør dette i Supabase (SQL Editor):\n\n" +
+              "alter table public.medlemmer add column if not exists user_id uuid;",
+          },
+          { status: 500 }
+        ),
+      }
+    }
+    if (/column/i.test(msg) && /(kontingent_gyldig_til|aktiv)/i.test(msg)) {
+      return {
+        ok: false as const,
+        response: NextResponse.json(
+          {
+            ok: false,
+            feil:
+              "Medlemsregister-tabellen mangler feltet aktiv/kontingent_gyldig_til. Kjør dette i Supabase (SQL Editor):\n\n" +
+              "alter table public.medlemmer add column if not exists aktiv boolean not null default true;\n" +
+              "alter table public.medlemmer add column if not exists kontingent_gyldig_til date;",
+          },
+          { status: 500 }
+        ),
+      }
+    }
+    return {
+      ok: false as const,
+      response: NextResponse.json({ ok: false, feil: "Kunne ikke verifisere medlemskap." }, { status: 400 }),
+    }
+  }
+
+  const medlemRow = (medlem as { aktiv?: boolean | null; kontingent_gyldig_til?: string | null } | null) ?? null
+  if (!medlemRow || medlemRow.aktiv === false || !isAktivKontingent(medlemRow.kontingent_gyldig_til ?? null)) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { ok: false, feil: "Prosjekter er kun tilgjengelig for aktive medlemmer." },
+        { status: 403 }
+      ),
+    }
+  }
+
+  return { ok: true as const }
+}
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> }
@@ -110,48 +175,8 @@ export async function GET(
     auth: { persistSession: false },
   })
 
-  const { data: medlem, error: medlemError } = await admin
-    .from("medlemmer")
-    .select("aktiv, kontingent_gyldig_til")
-    .eq("user_id", auth.userId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (medlemError) {
-    const msg = String((medlemError as { message?: string } | null)?.message ?? "")
-    if (/column/i.test(msg) && /user_id/i.test(msg)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          feil:
-            "Medlemsregister-tabellen mangler feltet user_id. Kjør dette i Supabase (SQL Editor):\n\n" +
-            "alter table public.medlemmer add column if not exists user_id uuid;",
-        },
-        { status: 500 }
-      )
-    }
-    if (/column/i.test(msg) && /(kontingent_gyldig_til|aktiv)/i.test(msg)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          feil:
-            "Medlemsregister-tabellen mangler feltet aktiv/kontingent_gyldig_til. Kjør dette i Supabase (SQL Editor):\n\n" +
-            "alter table public.medlemmer add column if not exists aktiv boolean not null default true;\n" +
-            "alter table public.medlemmer add column if not exists kontingent_gyldig_til date;",
-        },
-        { status: 500 }
-      )
-    }
-    return NextResponse.json({ ok: false, feil: "Kunne ikke verifisere medlemskap." }, { status: 400 })
-  }
-
-  if (!medlem || medlem.aktiv === false || !isAktivKontingent(medlem.kontingent_gyldig_til ?? null)) {
-    return NextResponse.json(
-      { ok: false, feil: "Prosjekter er kun tilgjengelig for aktive medlemmer." },
-      { status: 403 }
-    )
-  }
+  const verified = await verifyActiveMember(admin, auth.userId)
+  if (!verified.ok) return verified.response
 
   const baseSelect =
     "id, created_at, medlemsnummer, navn, epost, telefon, tittel, sted, budsjett, beskrivelse, status"
@@ -204,9 +229,9 @@ export async function GET(
 
   const paths = Array.isArray(row.vedlegg_paths) ? (row.vedlegg_paths as string[]) : []
   const signed = await Promise.all(
-    paths.slice(0, 12).map(async (p) => {
+    paths.slice(0, MAX_TOTAL_VEDLEGG).map(async (p) => {
       const { data } = await admin.storage.from(bucket).createSignedUrl(p, 60)
-      return data?.signedUrl ?? null
+      return data?.signedUrl ? { path: p, url: data.signedUrl } : null
     })
   )
 
@@ -231,9 +256,160 @@ export async function GET(
     ok: true,
     prosjekt: {
       ...row,
-      vedlegg_signed_urls: signed.filter(Boolean),
+      vedlegg: signed.filter(Boolean),
       hendelser: hendelser ?? [],
     },
     schemaWarning,
   })
+}
+
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json({ ok: false, feil: "Supabase er ikke konfigurert." }, { status: 500 })
+  }
+
+  const auth = await getAuth()
+  if (!auth) {
+    return NextResponse.json({ ok: false, feil: "Ikke innlogget." }, { status: 401 })
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { ok: false, feil: "Mine prosjekter krever SUPABASE_SERVICE_ROLE_KEY i miljøvariabler." },
+      { status: 500 }
+    )
+  }
+
+  const { id } = await context.params
+  const prosjektId = String(id ?? "").trim()
+  if (!isUuid(prosjektId)) {
+    return NextResponse.json({ ok: false, feil: "Ugyldig id." }, { status: 400 })
+  }
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  })
+
+  const verified = await verifyActiveMember(admin, auth.userId)
+  if (!verified.ok) return verified.response
+
+  let form: FormData
+  try {
+    form = await request.formData()
+  } catch {
+    return NextResponse.json({ ok: false, feil: "Ugyldig forespørsel." }, { status: 400 })
+  }
+
+  const kommentar = String(form.get("kommentar") ?? "").trim()
+  const files = form.getAll("vedlegg").filter((v): v is File => v instanceof File && v.size > 0)
+  if (!files.length) {
+    return NextResponse.json({ ok: false, feil: "Velg minst én fil." }, { status: 400 })
+  }
+  if (files.length > MAX_VEDLEGG_PER_UPLOAD) {
+    return NextResponse.json(
+      { ok: false, feil: `Maks ${MAX_VEDLEGG_PER_UPLOAD} filer per opplasting.` },
+      { status: 400 }
+    )
+  }
+
+  const { data: row, error } = await admin
+    .from("prosjekt_soknader")
+    .select("id, epost, vedlegg_paths")
+    .eq("id", prosjektId)
+    .eq("epost", auth.email)
+    .maybeSingle()
+
+  if (error) {
+    const msg = String((error as { message?: string } | null)?.message ?? "")
+    if ((/relation/i.test(msg) && /prosjekt_soknader/i.test(msg)) || /42p01/i.test(msg) || /vedlegg_paths/i.test(msg)) {
+      return NextResponse.json({ ok: false, feil: schemaFeil() }, { status: 500 })
+    }
+    return NextResponse.json({ ok: false, feil: "Kunne ikke hente prosjekt." }, { status: 400 })
+  }
+  if (!row) {
+    return NextResponse.json({ ok: false, feil: "Fant ikke prosjekt." }, { status: 404 })
+  }
+
+  const existingPaths = Array.isArray(row.vedlegg_paths) ? (row.vedlegg_paths as string[]) : []
+  if (existingPaths.length + files.length > MAX_TOTAL_VEDLEGG) {
+    return NextResponse.json(
+      { ok: false, feil: `Prosjektet kan maks ha ${MAX_TOTAL_VEDLEGG} vedlegg totalt.` },
+      { status: 400 }
+    )
+  }
+
+  const { error: createBucketError } = await admin.storage.createBucket(bucket, { public: false })
+  if (createBucketError) {
+    const msg = String((createBucketError as { message?: string } | null)?.message ?? "")
+    if (!/exists/i.test(msg) && !/already/i.test(msg)) {
+      return NextResponse.json(
+        { ok: false, feil: "Lagring av vedlegg er ikke satt opp i Supabase Storage." },
+        { status: 500 }
+      )
+    }
+  }
+
+  const uploadedPaths: string[] = []
+  try {
+    for (const f of files) {
+      if (f.size > MAX_VEDLEGG_BYTES) {
+        return NextResponse.json(
+          { ok: false, feil: "Hver fil kan maks være 15 MB." },
+          { status: 400 }
+        )
+      }
+      const safeName = (f.name || "vedlegg")
+        .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+        .replace(/-+/g, "-")
+        .slice(0, 100)
+      const path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${safeName}`
+      const body = await f.arrayBuffer()
+      const { error: uploadError } = await admin.storage
+        .from(bucket)
+        .upload(path, body, { upsert: false, contentType: f.type || undefined })
+      if (uploadError) {
+        return NextResponse.json({ ok: false, feil: "Kunne ikke laste opp vedlegg." }, { status: 400 })
+      }
+      uploadedPaths.push(path)
+    }
+
+    const nextPaths = [...existingPaths, ...uploadedPaths]
+    const { error: updateError } = await admin
+      .from("prosjekt_soknader")
+      .update({ vedlegg_paths: nextPaths })
+      .eq("id", prosjektId)
+      .eq("epost", auth.email)
+
+    if (updateError) {
+      const msg = String((updateError as { message?: string } | null)?.message ?? "")
+      if ((/relation|column/i.test(msg) && /prosjekt_soknader/i.test(msg)) || /42p01/i.test(msg) || /vedlegg_paths/i.test(msg)) {
+        if (uploadedPaths.length) await admin.storage.from(bucket).remove(uploadedPaths)
+        return NextResponse.json({ ok: false, feil: schemaFeil() }, { status: 500 })
+      }
+      if (uploadedPaths.length) await admin.storage.from(bucket).remove(uploadedPaths)
+      return NextResponse.json({ ok: false, feil: "Kunne ikke lagre vedlegg på prosjektet." }, { status: 400 })
+    }
+
+    const logMessage = kommentar
+      ? `${files.length} vedlegg lastet opp av søker. Kommentar: ${kommentar}`
+      : `${files.length} vedlegg lastet opp av søker.`
+    await admin.from("prosjekt_hendelser").insert({
+      prosjekt_id: prosjektId,
+      actor_email: auth.email,
+      type: "vedlegg_lastet_opp",
+      message: logMessage,
+    })
+
+    return NextResponse.json({ ok: true })
+  } catch {
+    if (uploadedPaths.length) await admin.storage.from(bucket).remove(uploadedPaths)
+    return NextResponse.json({ ok: false, feil: "Kunne ikke laste opp vedlegg akkurat nå." }, { status: 400 })
+  }
 }

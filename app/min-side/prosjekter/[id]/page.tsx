@@ -4,6 +4,9 @@ import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
 type Prosjekt = {
   id: string
@@ -20,7 +23,7 @@ type Prosjekt = {
   admin_svar?: string | null
   admin_svar_at?: string | null
   admin_svar_sent_at?: string | null
-  vedlegg_signed_urls?: string[] | null
+  vedlegg?: Array<{ path?: string; url?: string }> | null
   hendelser?: Array<{
     id?: string
     created_at?: string
@@ -58,6 +61,11 @@ export default function MinSideProsjektDetailPage() {
   const prosjektId = String(params?.id ?? "").trim()
 
   const [state, setState] = useState<State>({ type: "loading" })
+  const [vedleggFiles, setVedleggFiles] = useState<File[]>([])
+  const [vedleggKommentar, setVedleggKommentar] = useState("")
+  const [vedleggStatus, setVedleggStatus] = useState<
+    { type: "idle" } | { type: "uploading" } | { type: "success" } | { type: "error"; message: string }
+  >({ type: "idle" })
 
   const hent = useCallback(async () => {
     setState({ type: "loading" })
@@ -140,6 +148,35 @@ export default function MinSideProsjektDetailPage() {
     w.document.open()
     w.document.write(html)
     w.document.close()
+  }
+
+  async function lastOppVedlegg(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!vedleggFiles.length) {
+      setVedleggStatus({ type: "error", message: "Velg minst én fil." })
+      return
+    }
+    setVedleggStatus({ type: "uploading" })
+    try {
+      const fd = new FormData()
+      if (vedleggKommentar.trim()) fd.set("kommentar", vedleggKommentar.trim())
+      for (const file of vedleggFiles) fd.append("vedlegg", file, file.name)
+      const res = await fetch(`/api/min-side/prosjekter/${encodeURIComponent(prosjektId)}`, {
+        method: "POST",
+        body: fd,
+      })
+      const payload = (await res.json()) as { ok?: boolean; feil?: string }
+      if (!res.ok || !payload.ok) {
+        setVedleggStatus({ type: "error", message: payload.feil ?? "Kunne ikke laste opp vedlegg." })
+        return
+      }
+      setVedleggFiles([])
+      setVedleggKommentar("")
+      setVedleggStatus({ type: "success" })
+      await hent()
+    } catch {
+      setVedleggStatus({ type: "error", message: "Kunne ikke laste opp vedlegg." })
+    }
   }
 
   return (
@@ -236,6 +273,75 @@ export default function MinSideProsjektDetailPage() {
                   ? `Sist lagret: ${formatDato(state.prosjekt.admin_svar_at)}`
                   : ""}
             </div>
+          </div>
+
+          <div className="rounded-2xl border bg-card p-6">
+            <h2 className="text-lg font-semibold">Vedlegg</h2>
+            <div className="mt-2 text-sm text-muted-foreground">
+              Last opp flere bilder, filer, kvitteringer eller fakturaer underveis i prosjektet.
+            </div>
+
+            {Array.isArray(state.prosjekt.vedlegg) && state.prosjekt.vedlegg.length ? (
+              <div className="mt-4 grid gap-2 text-sm">
+                {state.prosjekt.vedlegg.map((item, idx) => {
+                  const path = String(item.path ?? "")
+                  const url = String(item.url ?? "")
+                  const name = path.split("/").pop() || `Vedlegg ${idx + 1}`
+                  if (!url) return null
+                  return (
+                    <a
+                      key={`${path}-${idx}`}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-lg border px-3 py-2 underline underline-offset-4 hover:bg-muted/40"
+                    >
+                      {name}
+                    </a>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="mt-4 text-sm text-muted-foreground">Ingen vedlegg lastet opp enda.</div>
+            )}
+
+            <form className="mt-5 space-y-4" onSubmit={lastOppVedlegg}>
+              <div className="space-y-2">
+                <Label htmlFor="prosjekt_kommentar">Kommentar (valgfri)</Label>
+                <Textarea
+                  id="prosjekt_kommentar"
+                  value={vedleggKommentar}
+                  onChange={(e) => setVedleggKommentar(e.target.value)}
+                  placeholder="F.eks. her kommer bilder av fremdrift, eller kvitteringer/fakturaer som er betalt."
+                  className="min-h-24"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="prosjekt_vedlegg">Velg filer</Label>
+                <Input
+                  id="prosjekt_vedlegg"
+                  type="file"
+                  multiple
+                  onChange={(e) => setVedleggFiles(Array.from(e.target.files ?? []))}
+                />
+                {vedleggFiles.length ? (
+                  <div className="text-sm text-muted-foreground">
+                    {vedleggFiles.length} fil(er) valgt
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button type="submit" disabled={vedleggStatus.type === "uploading"}>
+                  {vedleggStatus.type === "uploading" ? "Laster opp…" : "Last opp vedlegg"}
+                </Button>
+              </div>
+              {vedleggStatus.type === "success" ? (
+                <div className="text-sm text-emerald-700">Vedlegg lastet opp.</div>
+              ) : null}
+              {vedleggStatus.type === "error" ? (
+                <div className="text-sm text-destructive">{vedleggStatus.message}</div>
+              ) : null}
+            </form>
           </div>
 
           <div className="rounded-2xl border bg-card p-6">
