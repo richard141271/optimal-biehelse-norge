@@ -22,6 +22,15 @@ function digitsOnly(value: string) {
   return value.replace(/\D/g, "")
 }
 
+function normalizeNorwegianPhone(value: string) {
+  const digits = digitsOnly(value.trim())
+  if (!digits) return ""
+  if (digits.length === 8) return digits
+  if (digits.length === 10 && digits.startsWith("47")) return digits.slice(2)
+  if (digits.length === 12 && digits.startsWith("0047")) return digits.slice(4)
+  return digits
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -332,7 +341,9 @@ export async function POST(request: Request) {
 
   const navn = String(medlem.navn ?? payload.navn ?? "").trim()
   const epost = auth.email
-  const telefon = digitsOnly(String(medlem.telefon ?? payload.telefon ?? "").trim())
+  const telefonInput = String(payload.telefon ?? "").trim()
+  const telefonFraMedlem = String(medlem.telefon ?? "").trim()
+  const telefon = normalizeNorwegianPhone(telefonInput || telefonFraMedlem)
   const tittel = (payload.tittel ?? "").trim()
   const sted = (payload.sted ?? "").trim()
   const beskrivelse = (payload.beskrivelse ?? "").trim()
