@@ -87,7 +87,7 @@ type UtleggFormState = {
   bilagTekst: string | null
 }
 
-type CropTrimState = { top: number; right: number; bottom: number; left: number }
+const MAX_BILAG_BYTES = 20 * 1024 * 1024
 
 function formatBelop(value?: number | string) {
   if (value === null || value === undefined) return ""
@@ -316,6 +316,108 @@ async function normalizeReceiptImageFile(file: File) {
   }
 }
 
+function isPdfFile(file: File) {
+  const t = String(file.type || "").toLowerCase()
+  const n = String(file.name || "").toLowerCase()
+  return t.includes("pdf") || n.endsWith(".pdf")
+}
+
+function isTextLikeFile(file: File) {
+  const t = String(file.type || "").toLowerCase()
+  return t.startsWith("text/") || t.includes("xml") || t.includes("json") || t.includes("csv")
+}
+
+async function ocrRawText(image: File | Blob) {
+  type TesseractModule = {
+    recognize: (img: File | Blob, lang: string) => Promise<{ data?: { text?: string } }>
+  }
+  const { recognize } = (await import("tesseract.js")) as unknown as TesseractModule
+  const result = await recognize(image, "eng")
+  return String(result?.data?.text ?? "")
+}
+
+type PdfTextContent = { items?: unknown[] }
+type PdfViewport = { width: number; height: number }
+type PdfPage = {
+  getTextContent: () => Promise<PdfTextContent>
+  getViewport: (opts: { scale: number }) => PdfViewport
+  render: (opts: { canvasContext: CanvasRenderingContext2D; viewport: PdfViewport }) => { promise: Promise<unknown> }
+}
+type PdfDoc = { numPages: number; getPage: (n: number) => Promise<PdfPage> }
+type PdfJs = { getDocument: (src: { data: ArrayBuffer; disableWorker: boolean }) => { promise: Promise<PdfDoc> } }
+
+async function extractTextFromPdf(file: File) {
+  const buf = await file.arrayBuffer()
+  const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as PdfJs
+  const pdf = await pdfjs.getDocument({ data: buf, disableWorker: true }).promise
+  const maxPages = Math.min(Number(pdf?.numPages ?? 0) || 0, 2)
+  const parts: string[] = []
+  for (let i = 1; i <= maxPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    const items = Array.isArray(content?.items) ? content.items : []
+    const line = items
+      .map((it) => {
+        const str = (it as { str?: unknown } | null)?.str
+        return typeof str === "string" ? str : ""
+      })
+      .filter(Boolean)
+      .join(" ")
+    if (line) parts.push(line)
+  }
+  return parts.join("\n")
+}
+
+async function renderPdfFirstPageToJpeg(file: File) {
+  const buf = await file.arrayBuffer()
+  const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as PdfJs
+  const pdf = await pdfjs.getDocument({ data: buf, disableWorker: true }).promise
+  const page = await pdf.getPage(1)
+  const viewport0 = page.getViewport({ scale: 1 })
+  const maxSide = 1600
+  const scale = Math.min(2, maxSide / Math.max(viewport0.width, viewport0.height))
+  const viewport = page.getViewport({ scale })
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.max(1, Math.round(viewport.width))
+  canvas.height = Math.max(1, Math.round(viewport.height))
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return null
+  await page.render({ canvasContext: ctx, viewport }).promise
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85))
+  if (!blob) return null
+  return new File([blob], `bilag-${Date.now()}.jpg`, { type: "image/jpeg" })
+}
+
+async function extractRawTextFromBilagFile(file: File) {
+  if (isPdfFile(file)) {
+    try {
+      const text = await extractTextFromPdf(file)
+      if (text.trim().length >= 20) return text
+    } catch {}
+    try {
+      const img = await renderPdfFirstPageToJpeg(file)
+      if (!img) return ""
+      return await ocrRawText(img)
+    } catch {
+      return ""
+    }
+  }
+
+  if (String(file.type || "").startsWith("image/")) {
+    return await ocrRawText(file)
+  }
+
+  if (isTextLikeFile(file)) {
+    try {
+      return await file.text()
+    } catch {
+      return ""
+    }
+  }
+
+  return ""
+}
+
 function autoCropRectFromCanvas(canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext("2d")
   if (!ctx) return null
@@ -451,15 +553,6 @@ export default function AdminRegnskapPage() {
     belop: false,
     motpart: false,
     vare: false,
-  })
-  const [utleggOriginalBilag, setUtleggOriginalBilag] = useState<File | null>(null)
-  const [utleggAutoCropRect, setUtleggAutoCropRect] = useState<CropRect | null>(null)
-  const [utleggCropOpen, setUtleggCropOpen] = useState(false)
-  const [utleggCropTrim, setUtleggCropTrim] = useState<CropTrimState>({
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
   })
   const [utleggFileInputKey, setUtleggFileInputKey] = useState(0)
   const [utleggForm, setUtleggForm] = useState<UtleggFormState>({
@@ -923,8 +1016,21 @@ export default function AdminRegnskapPage() {
     }
 
     if (String(file.type || "").startsWith("video/")) {
-      alert("Velg et bilde av bilaget (ikke video).")
+      alert("Velg et bilag (ikke video).")
       return null
+    }
+
+    if (!String(file.type || "").startsWith("image/")) {
+      setForm((prev) => {
+        if (prev.bilagPreviewUrl) URL.revokeObjectURL(prev.bilagPreviewUrl)
+        return {
+          ...prev,
+          bilag: file,
+          bilagPreviewUrl: URL.createObjectURL(file),
+          bilagTekst: null,
+        }
+      })
+      return file
     }
 
     const normalized = await normalizeReceiptImageFile(file)
@@ -959,19 +1065,7 @@ export default function AdminRegnskapPage() {
   async function analyserBilagFile(file: File) {
     setOcrLoading(true)
     try {
-      type TesseractModule = {
-        recognize: (
-          image: File | Blob,
-          lang: string
-        ) => Promise<{ data?: { text?: string } }>
-      }
-
-      const { recognize } = (await import(
-        "tesseract.js"
-      )) as unknown as TesseractModule
-
-      const result = await recognize(file, "eng")
-      const rawText = String(result?.data?.text ?? "")
+      const rawText = await extractRawTextFromBilagFile(file)
       const normalized = normalizeOcrText(rawText)
       const belop = extractAmount(rawText)
       const motpart = extractVendor(rawText)
@@ -1016,10 +1110,6 @@ export default function AdminRegnskapPage() {
     setUtleggMedlemQuery("")
     setUtleggTab("ny")
     setUtleggDirty({ belop: false, motpart: false, vare: false })
-    setUtleggOriginalBilag(null)
-    setUtleggAutoCropRect(null)
-    setUtleggCropOpen(false)
-    setUtleggCropTrim({ top: 0, right: 0, bottom: 0, left: 0 })
     setUtleggFileInputKey((k) => k + 1)
     setUtleggForm((prev) => {
       if (prev.bilagPreviewUrl) URL.revokeObjectURL(prev.bilagPreviewUrl)
@@ -1042,24 +1132,8 @@ export default function AdminRegnskapPage() {
     setShowUtlegg(false)
   }
 
-  function computeRectFromTrim(base: CropRect, trim: CropTrimState) {
-    const left = Math.min(0.45, Math.max(0, trim.left / 100))
-    const right = Math.min(0.45, Math.max(0, trim.right / 100))
-    const top = Math.min(0.45, Math.max(0, trim.top / 100))
-    const bottom = Math.min(0.45, Math.max(0, trim.bottom / 100))
-    const x = base.x + base.w * left
-    const y = base.y + base.h * top
-    const w = base.w * (1 - left - right)
-    const h = base.h * (1 - top - bottom)
-    return { x, y, w, h } satisfies CropRect
-  }
-
   async function velgUtleggBilag(file: File | null) {
     if (!file) {
-      setUtleggOriginalBilag(null)
-      setUtleggAutoCropRect(null)
-      setUtleggCropOpen(false)
-      setUtleggCropTrim({ top: 0, right: 0, bottom: 0, left: 0 })
       setUtleggDirty({ belop: false, motpart: false, vare: false })
       setUtleggFileInputKey((k) => k + 1)
       setUtleggForm((prev) => {
@@ -1083,15 +1157,28 @@ export default function AdminRegnskapPage() {
     }
 
     setUtleggDirty({ belop: false, motpart: false, vare: false })
-    setUtleggCropOpen(false)
-    setUtleggCropTrim({ top: 0, right: 0, bottom: 0, left: 0 })
+
+    if (!String(file.type || "").startsWith("image/")) {
+      setUtleggForm((prev) => {
+        if (prev.bilagPreviewUrl) URL.revokeObjectURL(prev.bilagPreviewUrl)
+        return {
+          ...prev,
+          belop: "",
+          motpart: "",
+          vare: "",
+          bilag: file,
+          bilagPreviewUrl: URL.createObjectURL(file),
+          bilagTekst: null,
+        }
+      })
+      await analyserUtleggFile(file, true, { belop: false, motpart: false, vare: false })
+      return
+    }
 
     const normalized = await normalizeReceiptImageFile(file)
-    setUtleggOriginalBilag(normalized)
     try {
       const { canvas } = await decodeImageToCanvas(normalized, 2200)
       const autoRect = autoCropRectFromCanvas(canvas)
-      setUtleggAutoCropRect(autoRect)
       const cropped = autoRect ? await cropCanvasToJpegFile(canvas, autoRect) : normalized
 
       setUtleggForm((prev) => {
@@ -1109,7 +1196,6 @@ export default function AdminRegnskapPage() {
 
       await analyserUtleggFile(cropped, true, { belop: false, motpart: false, vare: false })
     } catch {
-      setUtleggAutoCropRect(null)
       setUtleggForm((prev) => {
         if (prev.bilagPreviewUrl) URL.revokeObjectURL(prev.bilagPreviewUrl)
         return {
@@ -1126,37 +1212,6 @@ export default function AdminRegnskapPage() {
     }
   }
 
-  async function applyUtleggCrop() {
-    if (!utleggOriginalBilag) return
-    try {
-      const { canvas } = await decodeImageToCanvas(utleggOriginalBilag, 2200)
-      const base: CropRect =
-        utleggAutoCropRect ?? { x: 0, y: 0, w: canvas.width, h: canvas.height }
-      const rect = computeRectFromTrim(base, utleggCropTrim)
-      if (rect.w < 80 || rect.h < 80) {
-        alert("Beskjæringen er for liten.")
-        return
-      }
-      const cropped = await cropCanvasToJpegFile(canvas, rect)
-      setUtleggForm((prev) => {
-        if (prev.bilagPreviewUrl) URL.revokeObjectURL(prev.bilagPreviewUrl)
-        return {
-          ...prev,
-          belop: "",
-          motpart: "",
-          vare: "",
-          bilag: cropped,
-          bilagPreviewUrl: URL.createObjectURL(cropped),
-          bilagTekst: null,
-        }
-      })
-      setUtleggDirty({ belop: false, motpart: false, vare: false })
-      await analyserUtleggFile(cropped, true, { belop: false, motpart: false, vare: false })
-    } catch {
-      alert("Kunne ikke beskjære bildet. Prøv et nytt bilde.")
-    }
-  }
-
   async function analyserUtleggFile(
     file: File,
     overwriteAll: boolean,
@@ -1164,19 +1219,7 @@ export default function AdminRegnskapPage() {
   ) {
     setUtleggOcrLoading(true)
     try {
-      type TesseractModule = {
-        recognize: (
-          image: File | Blob,
-          lang: string
-        ) => Promise<{ data?: { text?: string } }>
-      }
-
-      const { recognize } = (await import(
-        "tesseract.js"
-      )) as unknown as TesseractModule
-
-      const result = await recognize(file, "eng")
-      const rawText = String(result?.data?.text ?? "")
+      const rawText = await extractRawTextFromBilagFile(file)
       const normalized = normalizeOcrText(rawText)
       const belop = extractAmount(rawText)
       const motpart = extractVendor(rawText)
@@ -1221,8 +1264,8 @@ export default function AdminRegnskapPage() {
       alert("Skriv inn et gyldig beløp.")
       return
     }
-    if (utleggForm.bilag && utleggForm.bilag.size > 4 * 1024 * 1024) {
-      alert("Bilag er for stort. Maks 4 MB.")
+    if (utleggForm.bilag && utleggForm.bilag.size > MAX_BILAG_BYTES) {
+      alert("Bilag er for stort. Maks 20 MB.")
       return
     }
 
@@ -1251,10 +1294,6 @@ export default function AdminRegnskapPage() {
       }
 
       setUtleggDirty({ belop: false, motpart: false, vare: false })
-      setUtleggOriginalBilag(null)
-      setUtleggAutoCropRect(null)
-      setUtleggCropOpen(false)
-      setUtleggCropTrim({ top: 0, right: 0, bottom: 0, left: 0 })
       setUtleggFileInputKey((k) => k + 1)
       setUtleggForm({
         medlemId: "",
@@ -1308,8 +1347,8 @@ export default function AdminRegnskapPage() {
       alert("Skriv inn et gyldig beløp.")
       return
     }
-    if (form.bilag && form.bilag.size > 4 * 1024 * 1024) {
-      alert("Bilag er for stort. Maks 4 MB.")
+    if (form.bilag && form.bilag.size > MAX_BILAG_BYTES) {
+      alert("Bilag er for stort. Maks 20 MB.")
       return
     }
 
@@ -1713,12 +1752,10 @@ export default function AdminRegnskapPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Bilag (foto)</Label>
+                <Label>Bilag (fil)</Label>
                 <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
                   <Input
                     type="file"
-                    accept="image/*"
-                    capture="environment"
                     onChange={(e) => {
                       const f = e.target.files?.[0] ?? null
                       void (async () => {
@@ -1746,16 +1783,32 @@ export default function AdminRegnskapPage() {
                     </Button>
                   </div>
                 </div>
-                {form.bilagPreviewUrl ? (
+                {form.bilagPreviewUrl && form.bilag ? (
                   <div className="overflow-hidden rounded-xl border bg-muted/30">
-                    <Image
-                      src={form.bilagPreviewUrl}
-                      alt="Forhåndsvisning av bilag"
-                      className="h-auto w-full"
-                      width={1200}
-                      height={800}
-                      unoptimized
-                    />
+                    {String(form.bilag.type || "").startsWith("image/") ? (
+                      <Image
+                        src={form.bilagPreviewUrl}
+                        alt="Forhåndsvisning av bilag"
+                        className="h-auto w-full"
+                        width={1200}
+                        height={800}
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="p-4 text-sm">
+                        <a
+                          href={form.bilagPreviewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium underline underline-offset-4"
+                        >
+                          Åpne bilag
+                        </a>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          {form.bilag.name || "Bilag"}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : null}
                 {form.bilagTekst ? (
@@ -2041,13 +2094,11 @@ export default function AdminRegnskapPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Kvittering (foto)</Label>
+                  <Label>Kvittering (fil)</Label>
                   <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-start">
                     <Input
                       key={utleggFileInputKey}
                       type="file"
-                      accept="image/*"
-                      capture="environment"
                       onChange={(e) => {
                         const f = e.target.files?.[0] ?? null
                         void (async () => {
@@ -2073,102 +2124,32 @@ export default function AdminRegnskapPage() {
                       Bytt bilde
                     </Button>
                   </div>
-                  {utleggForm.bilagPreviewUrl ? (
+                  {utleggForm.bilagPreviewUrl && utleggForm.bilag ? (
                     <div className="mt-3 overflow-hidden rounded-xl border bg-background">
-                      <Image
-                        src={utleggForm.bilagPreviewUrl}
-                        alt="Forhåndsvisning av kvittering"
-                        width={1200}
-                        height={1200}
-                        className="h-auto w-full"
-                        unoptimized
-                      />
-                    </div>
-                  ) : null}
-                  {utleggOriginalBilag && utleggForm.bilag ? (
-                    <div className="mt-3 rounded-xl border bg-background p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-sm font-medium">Beskjæring</div>
-                        <div className="flex gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setUtleggCropOpen((v) => !v)}
-                            disabled={utleggSaving}
+                      {String(utleggForm.bilag.type || "").startsWith("image/") ? (
+                        <Image
+                          src={utleggForm.bilagPreviewUrl}
+                          alt="Forhåndsvisning av kvittering"
+                          width={1200}
+                          height={1200}
+                          className="h-auto w-full"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="p-4 text-sm">
+                          <a
+                            href={utleggForm.bilagPreviewUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium underline underline-offset-4"
                           >
-                            {utleggCropOpen ? "Skjul" : "Juster"}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void applyUtleggCrop()}
-                            disabled={utleggSaving || !utleggCropOpen}
-                          >
-                            Bruk beskjæring
-                          </Button>
-                        </div>
-                      </div>
-                      {utleggCropOpen ? (
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">Topp ({utleggCropTrim.top}%)</div>
-                            <input
-                              type="range"
-                              min={0}
-                              max={25}
-                              value={utleggCropTrim.top}
-                              onChange={(e) => setUtleggCropTrim((t) => ({ ...t, top: Number(e.target.value) }))}
-                              className="w-full"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">Bunn ({utleggCropTrim.bottom}%)</div>
-                            <input
-                              type="range"
-                              min={0}
-                              max={25}
-                              value={utleggCropTrim.bottom}
-                              onChange={(e) => setUtleggCropTrim((t) => ({ ...t, bottom: Number(e.target.value) }))}
-                              className="w-full"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">Venstre ({utleggCropTrim.left}%)</div>
-                            <input
-                              type="range"
-                              min={0}
-                              max={25}
-                              value={utleggCropTrim.left}
-                              onChange={(e) => setUtleggCropTrim((t) => ({ ...t, left: Number(e.target.value) }))}
-                              className="w-full"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">Høyre ({utleggCropTrim.right}%)</div>
-                            <input
-                              type="range"
-                              min={0}
-                              max={25}
-                              value={utleggCropTrim.right}
-                              onChange={(e) => setUtleggCropTrim((t) => ({ ...t, right: Number(e.target.value) }))}
-                              className="w-full"
-                            />
-                          </div>
-                          <div className="flex justify-end gap-2 sm:col-span-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setUtleggCropTrim({ top: 0, right: 0, bottom: 0, left: 0 })}
-                              disabled={utleggSaving}
-                            >
-                              Tilbakestill
-                            </Button>
+                            Åpne bilag
+                          </a>
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {utleggForm.bilag.name || "Bilag"}
                           </div>
                         </div>
-                      ) : null}
+                      )}
                     </div>
                   ) : null}
                 </div>

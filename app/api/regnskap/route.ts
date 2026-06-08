@@ -6,8 +6,32 @@ import { cookies } from "next/headers"
 
 export const dynamic = "force-dynamic"
 
+const MAX_BILAG_BYTES = 20 * 1024 * 1024
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
+}
+
+function extFromNameAndType(filename: string, type: string) {
+  const safe = (s: string) => s.replace(/[^a-z0-9]+/g, "").slice(0, 10)
+  const name = String(filename ?? "").trim().toLowerCase()
+  const t = String(type ?? "").trim().toLowerCase()
+
+  const last = name.lastIndexOf(".")
+  const fromName = last > 0 ? safe(name.slice(last + 1)) : ""
+  if (fromName) return fromName
+
+  if (t.includes("pdf")) return "pdf"
+  if (t.includes("png")) return "png"
+  if (t.includes("webp")) return "webp"
+  if (t.includes("jpeg") || t.includes("jpg")) return "jpg"
+  if (t.includes("heic")) return "heic"
+  if (t.includes("heif")) return "heif"
+  if (t.includes("csv")) return "csv"
+  if (t.includes("json")) return "json"
+  if (t.includes("xml")) return "xml"
+  if (t.startsWith("text/")) return "txt"
+  return "bin"
 }
 
 function parseMoney(value: string) {
@@ -415,7 +439,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        feil: "Ugyldig forespørsel (kunne ikke lese fil). Hvis du laster opp bilag: prøv et mindre bilde.",
+        feil: "Ugyldig forespørsel (kunne ikke lese fil). Hvis du laster opp bilag: prøv en mindre fil.",
       },
       { status: 400 }
     )
@@ -445,11 +469,11 @@ export async function POST(request: Request) {
   let bilagPath: string | null = null
   if (bilag instanceof File && bilag.size > 0) {
     if (String(bilag.type || "").startsWith("video/")) {
-      return NextResponse.json({ ok: false, feil: "Bilag må være et bilde (ikke video)." }, { status: 400 })
+      return NextResponse.json({ ok: false, feil: "Bilag kan ikke være video." }, { status: 400 })
     }
-    if (bilag.size > 4 * 1024 * 1024) {
+    if (bilag.size > MAX_BILAG_BYTES) {
       return NextResponse.json(
-        { ok: false, feil: "Bilag er for stort (maks 4 MB)." },
+        { ok: false, feil: "Bilag er for stort (maks 20 MB)." },
         { status: 400 }
       )
     }
@@ -470,11 +494,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const ext = (bilag.type || "").toLowerCase().includes("png")
-      ? "png"
-      : (bilag.type || "").toLowerCase().includes("webp")
-        ? "webp"
-        : "jpg"
+    const ext = extFromNameAndType(bilag.name, bilag.type)
     bilagPath = `${todayIso()}/${crypto.randomUUID()}.${ext}`
     const body = await bilag.arrayBuffer()
     const { error: uploadError } = await admin.storage
@@ -598,7 +618,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        feil: "Ugyldig forespørsel (kunne ikke lese fil). Hvis du laster opp bilag: prøv et mindre bilde.",
+        feil: "Ugyldig forespørsel (kunne ikke lese fil). Hvis du laster opp bilag: prøv en mindre fil.",
       },
       { status: 400 }
     )
@@ -668,11 +688,11 @@ export async function PATCH(request: Request) {
   let newBilagPath: string | null = null
   if (bilag instanceof File && bilag.size > 0) {
     if (String(bilag.type || "").startsWith("video/")) {
-      return NextResponse.json({ ok: false, feil: "Bilag må være et bilde (ikke video)." }, { status: 400 })
+      return NextResponse.json({ ok: false, feil: "Bilag kan ikke være video." }, { status: 400 })
     }
-    if (bilag.size > 4 * 1024 * 1024) {
+    if (bilag.size > MAX_BILAG_BYTES) {
       return NextResponse.json(
-        { ok: false, feil: "Bilag er for stort (maks 4 MB)." },
+        { ok: false, feil: "Bilag er for stort (maks 20 MB)." },
         { status: 400 }
       )
     }
@@ -693,11 +713,7 @@ export async function PATCH(request: Request) {
       }
     }
 
-    const ext = (bilag.type || "").toLowerCase().includes("png")
-      ? "png"
-      : (bilag.type || "").toLowerCase().includes("webp")
-        ? "webp"
-        : "jpg"
+    const ext = extFromNameAndType(bilag.name, bilag.type)
     newBilagPath = `${todayIso()}/${crypto.randomUUID()}.${ext}`
     const body = await bilag.arrayBuffer()
     const { error: uploadError } = await admin.storage
