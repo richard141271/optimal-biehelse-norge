@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
+import { arkiverTilMediaBibliotek } from "@/lib/media-bibliotek-arkiv"
 
 export const dynamic = "force-dynamic"
 
@@ -211,7 +212,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, feil: "Bildet er for stort. Prøv et mindre bilde." }, { status: 400 })
   }
 
-  const bytes = new Uint8Array(await file.arrayBuffer())
+  const arrayBuffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(arrayBuffer)
   const ext = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg"
   const path = `premier/${auth.userId}/${crypto.randomUUID()}.${ext}`
 
@@ -225,6 +227,10 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
+
+  try {
+    await arkiverTilMediaBibliotek(gate.admin, { name: file.name, type: file.type, size: file.size, bytes: arrayBuffer })
+  } catch {}
 
   const { data: inserted, error } = await gate.admin
     .from("lodd_premier")
