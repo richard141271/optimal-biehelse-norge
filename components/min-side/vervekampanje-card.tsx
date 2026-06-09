@@ -61,10 +61,7 @@ function formatCurrency(value: number) {
 }
 
 export function VervekampanjeCard() {
-  const [isOpen, setIsOpen] = useState(() => {
-    if (typeof window === "undefined") return true
-    return window.localStorage.getItem("obno_vervekampanje_min_side_open") !== "0"
-  })
+  const [isOpen, setIsOpen] = useState(false)
   const [state, setState] = useState<State>({ type: "loading" })
   const [copyStatus, setCopyStatus] = useState("")
 
@@ -192,11 +189,7 @@ export function VervekampanjeCard() {
             size="sm"
             variant="outline"
             onClick={() => {
-              const next = !isOpen
-              setIsOpen(next)
-              if (typeof window !== "undefined") {
-                window.localStorage.setItem("obno_vervekampanje_min_side_open", next ? "1" : "0")
-              }
+              setIsOpen((prev) => !prev)
             }}
           >
             {isOpen ? (

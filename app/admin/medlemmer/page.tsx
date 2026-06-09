@@ -607,9 +607,6 @@ export default function AdminMedlemmerPage() {
                   <th className="w-[72px] whitespace-nowrap px-2 py-2 text-left font-medium">
                     Medlemsnr.
                   </th>
-                  <th className="w-24 whitespace-nowrap px-2 py-2 text-left font-medium">
-                    Type
-                  </th>
                   <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
                     Navn
                   </th>
@@ -619,13 +616,10 @@ export default function AdminMedlemmerPage() {
                   <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
                     E-post
                   </th>
-                  <th className="w-16 whitespace-nowrap px-2 py-2 text-left font-medium">
-                    Status
-                  </th>
-                  <th className="w-28 whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-[140px] whitespace-nowrap px-2 py-2 text-left font-medium">
                     Rolle
                   </th>
-                  <th className="w-[88px] whitespace-nowrap px-2 py-2 text-left font-medium">
+                  <th className="w-[96px] whitespace-nowrap px-2 py-2 text-left font-medium">
                     Telefon
                   </th>
                   <th className="w-[76px] whitespace-nowrap px-2 py-2 text-left font-medium">
@@ -678,9 +672,6 @@ export default function AdminMedlemmerPage() {
                     <td className="whitespace-nowrap px-2 py-2">
                       {m.medlemsnummer ?? "—"}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-2">
-                      {labelForType(m.medlemskap_type ?? null)}
-                    </td>
                     <td className="px-2 py-2">
                       <div className="truncate" title={m.navn ?? ""}>
                         {m.navn ?? ""}
@@ -706,14 +697,11 @@ export default function AdminMedlemmerPage() {
                       {m.epost ?? ""}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2">
-                      {m.aktiv === false ? "Innaktiv" : "Aktiv"}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2">
                       {m.role === "superadmin" ? (
                         labelForRole(m.role ?? null)
                       ) : (
                         <select
-                          className="h-9 rounded-md border bg-background px-2 text-xs"
+                          className="h-9 w-full max-w-[140px] rounded-md border bg-background px-2 text-xs"
                           value={normalizeRole(m.role)}
                           disabled={
                             !state.permissions.assign_roles ||
@@ -754,7 +742,23 @@ export default function AdminMedlemmerPage() {
                       })()}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 text-right">
-                      <div className="flex flex-wrap justify-end gap-1">
+                      <div className="flex flex-col items-end gap-1">
+                        <div
+                          className={
+                            m.aktiv === false
+                              ? "rounded-full border bg-background px-2 py-1 text-[10px] text-muted-foreground"
+                              : m.kontingent_gyldig_til
+                                ? "rounded-full border bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white"
+                                : "rounded-full border bg-amber-500 px-2 py-1 text-[10px] font-medium text-white"
+                          }
+                        >
+                          {m.aktiv === false
+                            ? "Innaktiv"
+                            : m.kontingent_gyldig_til
+                              ? "Aktiv medlem"
+                              : "Ikke betalt"}
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-1">
                         {m.id && m.aktiv !== false ? (
                           m.kontingent_gyldig_til ? (
                             <Button
@@ -812,6 +816,7 @@ export default function AdminMedlemmerPage() {
                             </Button>
                           )
                         ) : null}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -819,7 +824,7 @@ export default function AdminMedlemmerPage() {
                 {sorted.length === 0 ? (
                   <tr className="border-t">
                     <td
-                      colSpan={13}
+                      colSpan={11}
                       className="px-3 py-5 text-center text-muted-foreground"
                     >
                       Ingen treff.
@@ -863,14 +868,11 @@ export default function AdminMedlemmerPage() {
                             <div className="truncate font-medium">{m.navn ?? "—"}</div>
                           </div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            #{m.medlemsnummer ?? "—"} · {labelForType(m.medlemskap_type ?? null)} · {labelForRole(m.role ?? null)}
+                            #{m.medlemsnummer ?? "—"} · {labelForRole(m.role ?? null)}
                           </div>
                         </div>
                         <div className="shrink-0 text-right text-xs text-muted-foreground">
                           {formatDato(m.created_at)}
-                          <div className={m.aktiv === false ? "mt-1 font-medium text-destructive" : "mt-1 font-medium text-primary"}>
-                            {m.aktiv === false ? "Innaktiv" : "Aktiv"}
-                          </div>
                         </div>
                       </div>
 
@@ -898,6 +900,21 @@ export default function AdminMedlemmerPage() {
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-2">
+                        <div
+                          className={
+                            m.aktiv === false
+                              ? "rounded-full border bg-background/70 px-3 py-2 text-xs text-muted-foreground"
+                              : m.kontingent_gyldig_til
+                                ? "rounded-full border bg-emerald-600 px-3 py-2 text-xs font-medium text-white"
+                                : "rounded-full border bg-amber-500 px-3 py-2 text-xs font-medium text-white"
+                          }
+                        >
+                          {m.aktiv === false
+                            ? "Innaktiv"
+                            : m.kontingent_gyldig_til
+                              ? "Aktiv medlem"
+                              : "Ikke betalt"}
+                        </div>
                         {m.role !== "superadmin" ? (
                           <select
                             className="h-10 rounded-lg border bg-background/70 px-3 py-2 text-xs"

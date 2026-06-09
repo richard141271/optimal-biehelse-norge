@@ -85,10 +85,7 @@ function formatCurrency(value: number) {
 }
 
 export function VervekampanjePanel() {
-  const [isOpen, setIsOpen] = useState(() => {
-    if (typeof window === "undefined") return true
-    return window.localStorage.getItem("obno_vervekampanje_open") !== "0"
-  })
+  const [isOpen, setIsOpen] = useState(false)
   const [state, setState] = useState<State>({ type: "loading" })
   const [selectedCampaignId, setSelectedCampaignId] = useState("")
   const [title, setTitle] = useState("")
@@ -218,11 +215,7 @@ export function VervekampanjePanel() {
             size="sm"
             variant="outline"
             onClick={() => {
-              const next = !isOpen
-              setIsOpen(next)
-              if (typeof window !== "undefined") {
-                window.localStorage.setItem("obno_vervekampanje_open", next ? "1" : "0")
-              }
+              setIsOpen((prev) => !prev)
             }}
           >
             {isOpen ? (
