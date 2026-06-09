@@ -37,32 +37,6 @@ type State =
   | { type: "error"; message: string; status?: number }
   | { type: "ready"; prosjekt: Prosjekt; schemaWarning: string | null }
 
-const DEBUG_UPLOAD_URL = "http://192.168.0.196:7777/event"
-const DEBUG_UPLOAD_SESSION = "project-upload-images"
-
-function reportProjectUploadClientDebug(
-  hypothesisId: "A" | "E",
-  msg: string,
-  data: Record<string, unknown>,
-  traceId?: string
-) {
-  // #region debug-point A:client-report
-  fetch(DEBUG_UPLOAD_URL, {
-    method: "POST",
-    body: JSON.stringify({
-      sessionId: DEBUG_UPLOAD_SESSION,
-      runId: "pre-fix",
-      hypothesisId,
-      location: "app/min-side/prosjekter/[id]/page.tsx",
-      msg: `[DEBUG] ${msg}`,
-      data,
-      traceId,
-      ts: Date.now(),
-    }),
-  }).catch(() => {})
-  // #endregion
-}
-
 function formatDato(value?: string) {
   if (!value) return ""
   const d = new Date(value)
@@ -191,19 +165,8 @@ export default function MinSideProsjektDetailPage() {
     setVedleggStatus({ type: "uploading", uploaded: 0, total })
     try {
       const batchSize = 1
-      // #region debug-point A:upload-start
-      reportProjectUploadClientDebug("A", "Klient starter opplasting", {
-        prosjektId,
-        totalFiles: total,
-        totalBytes: vedleggFiles.reduce((sum, file) => sum + file.size, 0),
-        batchSize,
-      })
-      // #endregion
       for (let i = 0; i < vedleggFiles.length; i += batchSize) {
         const batch = vedleggFiles.slice(i, i + batchSize)
-        const batchNumber = Math.floor(i / batchSize) + 1
-        const batchBytes = batch.reduce((sum, file) => sum + file.size, 0)
-        const traceId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
         const fd = new FormData()
         if (i === 0) {
           if (vedleggKommentar.trim()) fd.set("kommentar", vedleggKommentar.trim())
@@ -217,65 +180,13 @@ export default function MinSideProsjektDetailPage() {
         let payload: { ok?: boolean; feil?: string } | null = null
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            // #region debug-point A:batch-fetch-start
-            reportProjectUploadClientDebug(
-              "A",
-              "Klient sender batch",
-              {
-                prosjektId,
-                batchNumber,
-                attempt: attempt + 1,
-                batchFiles: batch.map((file) => ({
-                  name: file.name,
-                  size: file.size,
-                  type: file.type,
-                })),
-                batchBytes,
-              },
-              traceId
-            )
-            // #endregion
             res = await fetch(`/api/min-side/prosjekter/${encodeURIComponent(prosjektId)}`, {
               method: "POST",
               body: fd,
-              headers: {
-                "x-debug-trace-id": traceId,
-                "x-debug-batch-number": String(batchNumber),
-                "x-debug-batch-bytes": String(batchBytes),
-              },
             })
             payload = (await res.json()) as { ok?: boolean; feil?: string }
-            // #region debug-point E:batch-fetch-done
-            reportProjectUploadClientDebug(
-              "E",
-              "Klient mottok batch-respons",
-              {
-                prosjektId,
-                batchNumber,
-                attempt: attempt + 1,
-                status: res.status,
-                ok: res.ok,
-                payloadOk: payload.ok ?? null,
-                feil: payload.feil ?? null,
-              },
-              traceId
-            )
-            // #endregion
             break
-          } catch (error) {
-            // #region debug-point A:batch-fetch-error
-            reportProjectUploadClientDebug(
-              "A",
-              "Klient fikk fetch-feil",
-              {
-                prosjektId,
-                batchNumber,
-                attempt: attempt + 1,
-                error: error instanceof Error ? error.message : String(error),
-              },
-              traceId
-            )
-            // #endregion
+          } catch {
             if (attempt === 1) throw new Error("network")
             await new Promise((r) => setTimeout(r, 500))
           }
@@ -288,58 +199,18 @@ export default function MinSideProsjektDetailPage() {
             type: "error",
             message: nameList ? `${msg} (${nameList})` : msg,
           })
-          // #region debug-point E:batch-visible-error
-          reportProjectUploadClientDebug(
-            "E",
-            "Klient viser batch-feil",
-            {
-              prosjektId,
-              batchNumber,
-              status: res?.status ?? null,
-              feil: msg,
-              fileNames: batch.map((file) => file.name),
-            },
-            traceId
-          )
-          // #endregion
           return
         }
 
         const uploaded = Math.min(total, i + batch.length)
         setVedleggStatus({ type: "uploading", uploaded, total })
-        // #region debug-point E:batch-progress
-        reportProjectUploadClientDebug(
-          "E",
-          "Klient oppdaterte fremdrift",
-          {
-            prosjektId,
-            batchNumber,
-            uploaded,
-            total,
-          },
-          traceId
-        )
-        // #endregion
       }
       setVedleggFiles([])
       setVedleggInputKey((k) => k + 1)
       setVedleggKommentar("")
       setVedleggStatus({ type: "success", message: "Vedlegg lastet opp." })
-      // #region debug-point E:upload-success
-      reportProjectUploadClientDebug("E", "Klient fullførte opplasting", {
-        prosjektId,
-        totalFiles: total,
-      })
-      // #endregion
       await hent()
-    } catch (error) {
-      // #region debug-point A:upload-fatal
-      reportProjectUploadClientDebug("A", "Klient fikk fatal opplastingsfeil", {
-        prosjektId,
-        totalFiles: total,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      // #endregion
+    } catch {
       setVedleggStatus({ type: "error", message: "Kunne ikke laste opp vedlegg." })
     }
   }

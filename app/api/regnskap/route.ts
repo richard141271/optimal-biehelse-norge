@@ -5,7 +5,6 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { hasPermission, normalizeRole } from "@/lib/roller"
 import { syncPaidMembersToRegnskap } from "@/lib/medlemskontingent-regnskap"
-import { arkiverTilMediaBibliotek, isImageOrVideo } from "@/lib/media-bibliotek-arkiv"
 
 export const dynamic = "force-dynamic"
 
@@ -551,11 +550,6 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
-    if (isImageOrVideo(String(bilag.type || ""), bilag.name)) {
-      try {
-        await arkiverTilMediaBibliotek(admin, { name: bilag.name, type: bilag.type, size: bilag.size, bytes: body })
-      } catch {}
-    }
   }
 
   const insert: Record<string, unknown> = {
@@ -791,11 +785,6 @@ export async function PATCH(request: Request) {
         },
         { status: 400 }
       )
-    }
-    if (isImageOrVideo(String(bilag.type || ""), bilag.name)) {
-      try {
-        await arkiverTilMediaBibliotek(admin, { name: bilag.name, type: bilag.type, size: bilag.size, bytes: body })
-      } catch {}
     }
   }
 

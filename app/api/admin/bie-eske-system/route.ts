@@ -3,7 +3,6 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import { hasPermission, normalizeRole } from "@/lib/roller"
-import { arkiverTilMediaBibliotek } from "@/lib/media-bibliotek-arkiv"
 
 export const dynamic = "force-dynamic"
 
@@ -967,9 +966,6 @@ export async function POST(request: Request) {
         const msg = String((uploadError as { message?: string } | null)?.message ?? "").trim()
         return NextResponse.json({ ok: false, feil: msg ? `Kunne ikke laste opp bilde: ${msg}` : "Kunne ikke laste opp bilde." }, { status: 400 })
       }
-      try {
-        await arkiverTilMediaBibliotek(admin, { name: f.name, type: f.type, size: f.size, bytes: body })
-      } catch {}
       uploaded.push(path)
       paths[i] = path
     }
@@ -1142,9 +1138,6 @@ export async function POST(request: Request) {
         const msg = String((uploadError as { message?: string } | null)?.message ?? "").trim()
         return NextResponse.json({ ok: false, feil: msg ? `Kunne ikke laste opp bilde: ${msg}` : "Kunne ikke laste opp bilde." }, { status: 400 })
       }
-      try {
-        await arkiverTilMediaBibliotek(admin, { name: f.name, type: f.type, size: f.size, bytes: body })
-      } catch {}
       uploaded.push(path)
       paths[i] = path
     }

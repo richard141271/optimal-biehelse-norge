@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
-import { arkiverTilMediaBibliotek, isImageOrVideo } from "@/lib/media-bibliotek-arkiv"
 import { hasPermission, normalizeRole } from "@/lib/roller"
 
 type Payload = {
@@ -475,11 +474,6 @@ export async function POST(request: Request) {
             { ok: false, feil: "Kunne ikke laste opp vedlegg." },
             { status: 400 }
           )
-        }
-        if (isImageOrVideo(String(f.type || ""), f.name)) {
-          try {
-            await arkiverTilMediaBibliotek(admin, { name: f.name, type: f.type, size: f.size, bytes: body })
-          } catch {}
         }
         uploadedPaths.push(path)
       }

@@ -3,7 +3,6 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
 import { hasPermission, normalizeRole } from "@/lib/roller"
-import { arkiverTilMediaBibliotek } from "@/lib/media-bibliotek-arkiv"
 
 export const dynamic = "force-dynamic"
 
@@ -385,9 +384,6 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ ok: false, feil: "Kunne ikke laste opp bilde." }, { status: 400 })
     }
-    try {
-      await arkiverTilMediaBibliotek(gate.admin, { name: f.name, type: f.type, size: f.size, bytes: body })
-    } catch {}
     uploaded.push(path)
     paths[i] = path
   }

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
-import { arkiverTilMediaBibliotek, isImageOrVideo } from "@/lib/media-bibliotek-arkiv"
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -31,31 +30,6 @@ export const dynamic = "force-dynamic"
 const MAX_VEDLEGG_PER_UPLOAD = 10
 const MAX_TOTAL_VEDLEGG = 30
 const MAX_VEDLEGG_BYTES = 15 * 1024 * 1024
-const DEBUG_UPLOAD_URL = "http://192.168.0.196:7777/event"
-const DEBUG_UPLOAD_SESSION = "project-upload-images"
-
-function reportProjectUploadApiDebug(
-  hypothesisId: "B" | "C" | "D",
-  msg: string,
-  data: Record<string, unknown>,
-  traceId?: string | null
-) {
-  // #region debug-point B:api-report
-  fetch(DEBUG_UPLOAD_URL, {
-    method: "POST",
-    body: JSON.stringify({
-      sessionId: DEBUG_UPLOAD_SESSION,
-      runId: "pre-fix",
-      hypothesisId,
-      location: "app/api/min-side/prosjekter/[id]/route.ts",
-      msg: `[DEBUG] ${msg}`,
-      data,
-      traceId,
-      ts: Date.now(),
-    }),
-  }).catch(() => {})
-  // #endregion
-}
 
 async function getAuth() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -320,9 +294,6 @@ export async function POST(
 
   const { id } = await context.params
   const prosjektId = String(id ?? "").trim()
-  const traceId = String(request.headers.get("x-debug-trace-id") ?? "").trim() || null
-  const batchNumber = String(request.headers.get("x-debug-batch-number") ?? "").trim() || null
-  const batchBytesHeader = String(request.headers.get("x-debug-batch-bytes") ?? "").trim() || null
   if (!isUuid(prosjektId)) {
     return NextResponse.json({ ok: false, feil: "Ugyldig id." }, { status: 400 })
   }
@@ -336,34 +307,8 @@ export async function POST(
 
   let form: FormData
   try {
-    // #region debug-point B:before-formdata
-    reportProjectUploadApiDebug(
-      "B",
-      "API mottok opplastingsrequest",
-      {
-        prosjektId,
-        batchNumber,
-        contentLength: request.headers.get("content-length"),
-        contentType: request.headers.get("content-type"),
-        batchBytesHeader,
-      },
-      traceId
-    )
-    // #endregion
     form = await request.formData()
-  } catch (error) {
-    // #region debug-point B:formdata-error
-    reportProjectUploadApiDebug(
-      "B",
-      "API feilet i request.formData()",
-      {
-        prosjektId,
-        batchNumber,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      traceId
-    )
-    // #endregion
+  } catch {
     return NextResponse.json(
       {
         ok: false,
@@ -378,26 +323,6 @@ export async function POST(
   const totalCountRaw = String(form.get("totalCount") ?? "").trim()
   const totalCount = /^\d+$/.test(totalCountRaw) ? Math.max(1, Math.min(50, Number(totalCountRaw))) : null
   const files = form.getAll("vedlegg").filter((v): v is File => v instanceof File && v.size > 0)
-  // #region debug-point B:after-formdata
-  reportProjectUploadApiDebug(
-    "B",
-    "API leste multipart-data",
-    {
-      prosjektId,
-      batchNumber,
-      fileCount: files.length,
-      files: files.map((file) => ({
-        name: file.name,
-        size: file.size,
-        type: file.type,
-      })),
-      skipLog,
-      totalCount,
-      kommentarLength: kommentar.length,
-    },
-    traceId
-  )
-  // #endregion
   if (!files.length) {
     return NextResponse.json({ ok: false, feil: "Velg minst én fil." }, { status: 400 })
   }
@@ -459,41 +384,11 @@ export async function POST(
         .replace(/-+/g, "-")
         .slice(0, 100)
       const path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${safeName}`
-      const body = await f.arrayBuffer()
-      // #region debug-point C:before-storage-upload
-      reportProjectUploadApiDebug(
-        "C",
-        "API starter storage-upload",
-        {
-          prosjektId,
-          batchNumber,
-          fileName: f.name,
-          fileSize: f.size,
-          fileType: f.type,
-          path,
-        },
-        traceId
-      )
-      // #endregion
+      const body = new Uint8Array(await f.arrayBuffer())
       const { error: uploadError } = await admin.storage
         .from(bucket)
         .upload(path, body, { upsert: false, contentType: f.type || undefined })
       if (uploadError) {
-        // #region debug-point C:storage-upload-error
-        reportProjectUploadApiDebug(
-          "C",
-          "API fikk storage-feil",
-          {
-            prosjektId,
-            batchNumber,
-            fileName: f.name,
-            fileSize: f.size,
-            path,
-            error: describeError(uploadError),
-          },
-          traceId
-        )
-        // #endregion
         if (uploadedPaths.length) await admin.storage.from(bucket).remove(uploadedPaths)
         const msg = describeError(uploadError)
         return NextResponse.json(
@@ -503,66 +398,6 @@ export async function POST(
           },
           { status: 400 }
         )
-      }
-      // #region debug-point C:storage-upload-ok
-      reportProjectUploadApiDebug(
-        "C",
-        "API fullforte storage-upload",
-        {
-          prosjektId,
-          batchNumber,
-          fileName: f.name,
-          path,
-        },
-        traceId
-      )
-      // #endregion
-      if (isImageOrVideo(String(f.type || ""), f.name)) {
-        try {
-          // #region debug-point D:archive-start
-          reportProjectUploadApiDebug(
-            "D",
-            "API starter arkivering til media-bibliotek",
-            {
-              prosjektId,
-              batchNumber,
-              fileName: f.name,
-              fileSize: f.size,
-              path,
-            },
-            traceId
-          )
-          // #endregion
-          await arkiverTilMediaBibliotek(admin, { name: f.name, type: f.type, size: f.size, bytes: body })
-          // #region debug-point D:archive-ok
-          reportProjectUploadApiDebug(
-            "D",
-            "API fullforte arkivering til media-bibliotek",
-            {
-              prosjektId,
-              batchNumber,
-              fileName: f.name,
-              path,
-            },
-            traceId
-          )
-          // #endregion
-        } catch (error) {
-          // #region debug-point D:archive-error
-          reportProjectUploadApiDebug(
-            "D",
-            "API fikk arkiveringsfeil",
-            {
-              prosjektId,
-              batchNumber,
-              fileName: f.name,
-              path,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            traceId
-          )
-          // #endregion
-        }
       }
       uploadedPaths.push(path)
     }
@@ -597,33 +432,8 @@ export async function POST(
       })
     }
 
-    // #region debug-point C:request-success
-    reportProjectUploadApiDebug(
-      "C",
-      "API fullforte hele opplastingen",
-      {
-        prosjektId,
-        batchNumber,
-        uploadedCount: uploadedPaths.length,
-      },
-      traceId
-    )
-    // #endregion
     return NextResponse.json({ ok: true })
-  } catch (error) {
-    // #region debug-point C:request-error
-    reportProjectUploadApiDebug(
-      "C",
-      "API fikk uventet opplastingsfeil",
-      {
-        prosjektId,
-        batchNumber,
-        uploadedCount: uploadedPaths.length,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      traceId
-    )
-    // #endregion
+  } catch {
     if (uploadedPaths.length) await admin.storage.from(bucket).remove(uploadedPaths)
     return NextResponse.json({ ok: false, feil: "Kunne ikke laste opp vedlegg akkurat nå." }, { status: 400 })
   }
