@@ -468,6 +468,9 @@ export async function POST(request: Request) {
           .from(bucket)
           .upload(path, body, { upsert: false, contentType: f.type || undefined })
         if (uploadError) {
+          if (uploadedPaths.length) {
+            await admin.storage.from(bucket).remove(uploadedPaths)
+          }
           return NextResponse.json(
             { ok: false, feil: "Kunne ikke laste opp vedlegg." },
             { status: 400 }

@@ -21,6 +21,11 @@ function isAktivKontingent(gyldigTil?: string | null) {
   return d.getTime() > Date.now()
 }
 
+function describeError(error: unknown) {
+  const msg = String((error as { message?: unknown } | null)?.message ?? "").trim()
+  return msg || null
+}
+
 export const dynamic = "force-dynamic"
 
 const MAX_VEDLEGG_PER_UPLOAD = 10
@@ -305,10 +310,19 @@ export async function POST(
   try {
     form = await request.formData()
   } catch {
-    return NextResponse.json({ ok: false, feil: "Ugyldig forespørsel." }, { status: 400 })
+    return NextResponse.json(
+      {
+        ok: false,
+        feil: "Kunne ikke lese filene. Prøv færre bilder om gangen (eller mindre filer).",
+      },
+      { status: 400 }
+    )
   }
 
   const kommentar = String(form.get("kommentar") ?? "").trim()
+  const skipLog = String(form.get("skipLog") ?? "").trim() === "1"
+  const totalCountRaw = String(form.get("totalCount") ?? "").trim()
+  const totalCount = /^\d+$/.test(totalCountRaw) ? Math.max(1, Math.min(50, Number(totalCountRaw))) : null
   const files = form.getAll("vedlegg").filter((v): v is File => v instanceof File && v.size > 0)
   if (!files.length) {
     return NextResponse.json({ ok: false, feil: "Velg minst én fil." }, { status: 400 })
@@ -362,7 +376,7 @@ export async function POST(
     for (const f of files) {
       if (f.size > MAX_VEDLEGG_BYTES) {
         return NextResponse.json(
-          { ok: false, feil: "Hver fil kan maks være 15 MB." },
+          { ok: false, feil: `${f.name || "Filen"} er for stor. Hver fil kan maks være 15 MB.` },
           { status: 400 }
         )
       }
@@ -376,7 +390,15 @@ export async function POST(
         .from(bucket)
         .upload(path, body, { upsert: false, contentType: f.type || undefined })
       if (uploadError) {
-        return NextResponse.json({ ok: false, feil: "Kunne ikke laste opp vedlegg." }, { status: 400 })
+        if (uploadedPaths.length) await admin.storage.from(bucket).remove(uploadedPaths)
+        const msg = describeError(uploadError)
+        return NextResponse.json(
+          {
+            ok: false,
+            feil: msg ? `Kunne ikke laste opp vedlegg: ${msg}` : "Kunne ikke laste opp vedlegg.",
+          },
+          { status: 400 }
+        )
       }
       if (isImageOrVideo(String(f.type || ""), f.name)) {
         try {
@@ -403,15 +425,18 @@ export async function POST(
       return NextResponse.json({ ok: false, feil: "Kunne ikke lagre vedlegg på prosjektet." }, { status: 400 })
     }
 
-    const logMessage = kommentar
-      ? `${files.length} vedlegg lastet opp av søker. Kommentar: ${kommentar}`
-      : `${files.length} vedlegg lastet opp av søker.`
-    await admin.from("prosjekt_hendelser").insert({
-      prosjekt_id: prosjektId,
-      actor_email: auth.email,
-      type: "vedlegg_lastet_opp",
-      message: logMessage,
-    })
+    if (!skipLog) {
+      const antall = totalCount ?? files.length
+      const logMessage = kommentar
+        ? `${antall} vedlegg lastet opp av søker. Kommentar: ${kommentar}`
+        : `${antall} vedlegg lastet opp av søker.`
+      await admin.from("prosjekt_hendelser").insert({
+        prosjekt_id: prosjektId,
+        actor_email: auth.email,
+        type: "vedlegg_lastet_opp",
+        message: logMessage,
+      })
+    }
 
     return NextResponse.json({ ok: true })
   } catch {

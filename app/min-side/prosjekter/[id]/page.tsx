@@ -62,9 +62,13 @@ export default function MinSideProsjektDetailPage() {
 
   const [state, setState] = useState<State>({ type: "loading" })
   const [vedleggFiles, setVedleggFiles] = useState<File[]>([])
+  const [vedleggInputKey, setVedleggInputKey] = useState(0)
   const [vedleggKommentar, setVedleggKommentar] = useState("")
   const [vedleggStatus, setVedleggStatus] = useState<
-    { type: "idle" } | { type: "uploading" } | { type: "success" } | { type: "error"; message: string }
+    | { type: "idle" }
+    | { type: "uploading"; uploaded: number; total: number }
+    | { type: "success" }
+    | { type: "error"; message: string }
   >({ type: "idle" })
 
   const hent = useCallback(async () => {
@@ -156,21 +160,52 @@ export default function MinSideProsjektDetailPage() {
       setVedleggStatus({ type: "error", message: "Velg minst én fil." })
       return
     }
-    setVedleggStatus({ type: "uploading" })
+    const total = vedleggFiles.length
+    setVedleggStatus({ type: "uploading", uploaded: 0, total })
     try {
-      const fd = new FormData()
-      if (vedleggKommentar.trim()) fd.set("kommentar", vedleggKommentar.trim())
-      for (const file of vedleggFiles) fd.append("vedlegg", file, file.name)
-      const res = await fetch(`/api/min-side/prosjekter/${encodeURIComponent(prosjektId)}`, {
-        method: "POST",
-        body: fd,
-      })
-      const payload = (await res.json()) as { ok?: boolean; feil?: string }
-      if (!res.ok || !payload.ok) {
-        setVedleggStatus({ type: "error", message: payload.feil ?? "Kunne ikke laste opp vedlegg." })
-        return
+      const batchSize = 2
+      for (let i = 0; i < vedleggFiles.length; i += batchSize) {
+        const batch = vedleggFiles.slice(i, i + batchSize)
+        const fd = new FormData()
+        if (i === 0) {
+          if (vedleggKommentar.trim()) fd.set("kommentar", vedleggKommentar.trim())
+          fd.set("totalCount", String(total))
+        } else {
+          fd.set("skipLog", "1")
+        }
+        for (const file of batch) fd.append("vedlegg", file, file.name)
+
+        let res: Response | null = null
+        let payload: { ok?: boolean; feil?: string } | null = null
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            res = await fetch(`/api/min-side/prosjekter/${encodeURIComponent(prosjektId)}`, {
+              method: "POST",
+              body: fd,
+            })
+            payload = (await res.json()) as { ok?: boolean; feil?: string }
+            break
+          } catch {
+            if (attempt === 1) throw new Error("network")
+            await new Promise((r) => setTimeout(r, 500))
+          }
+        }
+
+        if (!res || !payload || !res.ok || !payload.ok) {
+          const nameList = batch.map((f) => f.name).filter(Boolean).join(", ")
+          const msg = payload?.feil ?? "Kunne ikke laste opp vedlegg."
+          setVedleggStatus({
+            type: "error",
+            message: nameList ? `${msg} (${nameList})` : msg,
+          })
+          return
+        }
+
+        const uploaded = Math.min(total, i + batch.length)
+        setVedleggStatus({ type: "uploading", uploaded, total })
       }
       setVedleggFiles([])
+      setVedleggInputKey((k) => k + 1)
       setVedleggKommentar("")
       setVedleggStatus({ type: "success" })
       await hent()
@@ -319,6 +354,7 @@ export default function MinSideProsjektDetailPage() {
               <div className="space-y-2">
                 <Label htmlFor="prosjekt_vedlegg">Velg filer</Label>
                 <Input
+                  key={vedleggInputKey}
                   id="prosjekt_vedlegg"
                   type="file"
                   multiple
@@ -332,7 +368,9 @@ export default function MinSideProsjektDetailPage() {
               </div>
               <div className="flex flex-wrap justify-end gap-2">
                 <Button type="submit" disabled={vedleggStatus.type === "uploading"}>
-                  {vedleggStatus.type === "uploading" ? "Laster opp…" : "Last opp vedlegg"}
+                  {vedleggStatus.type === "uploading"
+                    ? `Laster opp… (${vedleggStatus.uploaded}/${vedleggStatus.total})`
+                    : "Last opp vedlegg"}
                 </Button>
               </div>
               {vedleggStatus.type === "success" ? (
