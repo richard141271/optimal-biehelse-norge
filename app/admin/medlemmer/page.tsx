@@ -305,7 +305,7 @@ export default function AdminMedlemmerPage() {
 
   const selectedEmails = sorted
     .map((m, idx) => ({ m, key: rowKey(m, idx) }))
-    .filter((x) => selected[x.key])
+    .filter((x) => selected[x.key] && x.m.aktiv !== false)
     .map((x) => String(x.m.epost ?? "").trim().toLowerCase())
     .filter((e) => !!e && isValidEmail(e))
     .filter((e, i, arr) => arr.indexOf(e) === i)
