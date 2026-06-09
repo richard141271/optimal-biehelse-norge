@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
+import { arkiverTilMediaBibliotek } from "@/lib/media-bibliotek-arkiv"
 
 export const dynamic = "force-dynamic"
 
@@ -226,6 +227,15 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
+
+  try {
+    await arkiverTilMediaBibliotek(gate.admin, {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      bytes: arrayBuffer,
+    })
+  } catch {}
 
   const { data: inserted, error } = await gate.admin
     .from("lodd_premier")

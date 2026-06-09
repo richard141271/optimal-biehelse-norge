@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 
 type Prosjekt = {
   id: string
@@ -161,49 +162,79 @@ export default function MinSideProsjektDetailPage() {
       setVedleggStatus({ type: "error", message: "Velg minst én fil." })
       return
     }
+    const supabase = createSupabaseBrowserClient()
+    if (!supabase) {
+      setVedleggStatus({ type: "error", message: "Supabase er ikke konfigurert." })
+      return
+    }
     const total = vedleggFiles.length
     setVedleggStatus({ type: "uploading", uploaded: 0, total })
     try {
-      const batchSize = 1
-      for (let i = 0; i < vedleggFiles.length; i += batchSize) {
-        const batch = vedleggFiles.slice(i, i + batchSize)
-        const fd = new FormData()
-        if (i === 0) {
-          if (vedleggKommentar.trim()) fd.set("kommentar", vedleggKommentar.trim())
-          fd.set("totalCount", String(total))
-        } else {
-          fd.set("skipLog", "1")
-        }
-        for (const file of batch) fd.append("vedlegg", file, file.name)
+      const kommentar = vedleggKommentar.trim()
+      for (let i = 0; i < vedleggFiles.length; i++) {
+        const file = vedleggFiles[i]
+        const name = String(file.name ?? "").trim() || "vedlegg"
+        const type = String(file.type ?? "").trim()
 
-        let res: Response | null = null
-        let payload: { ok?: boolean; feil?: string } | null = null
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            res = await fetch(`/api/min-side/prosjekter/${encodeURIComponent(prosjektId)}`, {
-              method: "POST",
-              body: fd,
-            })
-            payload = (await res.json()) as { ok?: boolean; feil?: string }
-            break
-          } catch {
-            if (attempt === 1) throw new Error("network")
-            await new Promise((r) => setTimeout(r, 500))
+        const tokenRes = await fetch(
+          `/api/min-side/prosjekter/${encodeURIComponent(prosjektId)}/upload-token`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ name, type, size: file.size }),
           }
-        }
-
-        if (!res || !payload || !res.ok || !payload.ok) {
-          const nameList = batch.map((f) => f.name).filter(Boolean).join(", ")
-          const msg = payload?.feil ?? "Kunne ikke laste opp vedlegg."
+        )
+        const tokenPayload = (await tokenRes.json().catch(() => null)) as
+          | { ok?: boolean; feil?: string; path?: string; token?: string }
+          | null
+        if (!tokenRes.ok || !tokenPayload?.ok || !tokenPayload.path || !tokenPayload.token) {
           setVedleggStatus({
             type: "error",
-            message: nameList ? `${msg} (${nameList})` : msg,
+            message: tokenPayload?.feil ?? "Kunne ikke starte opplasting.",
           })
           return
         }
 
-        const uploaded = Math.min(total, i + batch.length)
-        setVedleggStatus({ type: "uploading", uploaded, total })
+        const signedPath = String(tokenPayload.path)
+        const signedToken = String(tokenPayload.token)
+        const uploadRes = await supabase.storage
+          .from("prosjekt-vedlegg")
+          .uploadToSignedUrl(signedPath, signedToken, file, {
+            contentType: type || undefined,
+          })
+        if (uploadRes.error) {
+          setVedleggStatus({
+            type: "error",
+            message: `Kunne ikke laste opp ${name}: ${uploadRes.error.message}`,
+          })
+          return
+        }
+
+        const registerRes = await fetch(
+          `/api/min-side/prosjekter/${encodeURIComponent(prosjektId)}/register-vedlegg`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              items: [{ path: signedPath, name, type, size: file.size }],
+              kommentar: i === 0 ? kommentar : "",
+              totalCount: i === 0 ? total : undefined,
+              skipLog: i !== 0,
+            }),
+          }
+        )
+        const registerPayload = (await registerRes.json().catch(() => null)) as
+          | { ok?: boolean; feil?: string }
+          | null
+        if (!registerRes.ok || !registerPayload?.ok) {
+          setVedleggStatus({
+            type: "error",
+            message: registerPayload?.feil ?? "Kunne ikke lagre vedlegg på prosjektet.",
+          })
+          return
+        }
+
+        setVedleggStatus({ type: "uploading", uploaded: i + 1, total })
       }
       setVedleggFiles([])
       setVedleggInputKey((k) => k + 1)
