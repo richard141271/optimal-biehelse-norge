@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { hasPermission, normalizeRole } from "@/lib/roller"
 
 export const dynamic = "force-dynamic"
 
@@ -348,7 +349,8 @@ export async function GET() {
   )
     .trim()
     .toLowerCase()
-  if (role !== "admin" && role !== "superadmin") {
+  const resolvedRole = ownerEmail && auth.email === ownerEmail ? "superadmin" : normalizeRole(role)
+  if (!hasPermission(resolvedRole, "view_finance")) {
     if (!ownerEmail || auth.email !== ownerEmail) {
       return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
     }
@@ -454,7 +456,8 @@ export async function POST(request: Request) {
   )
     .trim()
     .toLowerCase()
-  if (role !== "admin" && role !== "superadmin") {
+  const resolvedRole = ownerEmail && auth.email === ownerEmail ? "superadmin" : normalizeRole(role)
+  if (!hasPermission(resolvedRole, "manage_finance")) {
     if (!ownerEmail || auth.email !== ownerEmail) {
       return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
     }
@@ -583,7 +586,7 @@ export async function POST(request: Request) {
 
   const logg = await loggHendelse(admin, {
     actor_epost: auth.email,
-    actor_role: role,
+    actor_role: resolvedRole,
     action: "poster:create",
     entity_type: "regnskap_poster",
     entity_id: String((insertedRow as { id?: string } | null)?.id ?? "") || null,
@@ -634,7 +637,8 @@ export async function PATCH(request: Request) {
     .trim()
     .toLowerCase()
   const isBootstrapSuper = ownerEmail && auth.email === ownerEmail
-  if (role !== "admin" && role !== "superadmin") {
+  const resolvedRole = isBootstrapSuper ? "superadmin" : normalizeRole(role)
+  if (!hasPermission(resolvedRole, "manage_finance")) {
     if (!ownerEmail || auth.email !== ownerEmail) {
       return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
     }
@@ -697,7 +701,7 @@ export async function PATCH(request: Request) {
         String((existingRow as { utlegg_medlem_epost?: unknown } | null)?.utlegg_medlem_epost ?? "").trim()
     )
 
-  if (isUtlegg && role !== "superadmin" && !isBootstrapSuper) {
+  if (isUtlegg && resolvedRole !== "superadmin" && !isBootstrapSuper) {
     return NextResponse.json(
       { ok: false, feil: "Kun superbruker kan endre utlegg." },
       { status: 403 }
@@ -818,7 +822,7 @@ export async function PATCH(request: Request) {
 
   const logg = await loggHendelse(admin, {
     actor_epost: auth.email,
-    actor_role: role,
+    actor_role: resolvedRole,
     action: "poster:update",
     entity_type: "regnskap_poster",
     entity_id: id,
@@ -869,6 +873,7 @@ export async function PUT(request: Request) {
     .trim()
     .toLowerCase()
   const isBootstrapSuper = ownerEmail && auth.email === ownerEmail
+  const resolvedRole = isBootstrapSuper ? "superadmin" : normalizeRole(role)
 
   const innstillinger = await hentInnstillinger(admin)
   if (!innstillinger.ok) {
@@ -891,10 +896,13 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: false, feil: "Ugyldig forespørsel." }, { status: 400 })
   }
 
-  if (hasKontoUpdate && role !== "admin" && role !== "superadmin" && !isBootstrapSuper) {
-    return NextResponse.json({ ok: false, feil: "Kun admin kan endre kontonummer." }, { status: 403 })
+  if (hasKontoUpdate && !hasPermission(resolvedRole, "manage_finance_settings") && !isBootstrapSuper) {
+    return NextResponse.json(
+      { ok: false, feil: "Du har ikke tilgang til å endre kontonummer." },
+      { status: 403 }
+    )
   }
-  if (hasSaldoUpdate && role !== "superadmin" && !isBootstrapSuper) {
+  if (hasSaldoUpdate && resolvedRole !== "superadmin" && !isBootstrapSuper) {
     return NextResponse.json({ ok: false, feil: "Kun superbruker kan endre saldo." }, { status: 403 })
   }
 
@@ -933,7 +941,7 @@ export async function PUT(request: Request) {
 
     const logg = await loggHendelse(admin, {
       actor_epost: auth.email,
-      actor_role: role,
+      actor_role: resolvedRole,
       action: "innstillinger:update",
       entity_type: "regnskap_innstillinger",
       entity_id: innstillingerId,
@@ -987,7 +995,7 @@ export async function PUT(request: Request) {
 
   const logg = await loggHendelse(admin, {
     actor_epost: auth.email,
-    actor_role: role,
+    actor_role: resolvedRole,
     action: "innstillinger:update",
     entity_type: "regnskap_innstillinger",
     entity_id: innstillingerId,

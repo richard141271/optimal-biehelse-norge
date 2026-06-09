@@ -5,6 +5,14 @@ import { useCallback, useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { VervekampanjePanel } from "@/components/admin/vervekampanje-panel"
+import {
+  hasAnyAdminAccess,
+  type RolePermissions,
+  SELECTABLE_ROLE_OPTIONS,
+  labelForRole,
+  normalizeRole,
+  roleRank,
+} from "@/lib/roller"
 
 type Medlem = {
   id?: string
@@ -29,7 +37,13 @@ type Medlem = {
 type State =
   | { type: "loading" }
   | { type: "error"; message: string; status?: number }
-  | { type: "ready"; medlemmer: Medlem[]; count: number | null; minRolle: string | null }
+  | {
+      type: "ready"
+      medlemmer: Medlem[]
+      count: number | null
+      minRolle: string | null
+      permissions: RolePermissions
+    }
 
 function formatDato(value?: string) {
   if (!value) return ""
@@ -69,25 +83,6 @@ function labelForType(type: string | null | undefined) {
   if (type === "stotte") return "Støttemedlem"
   if (type === "bedrift") return "Bedriftsmedlem"
   return "Medlem"
-}
-
-function labelForRole(role: string | null | undefined) {
-  if (role === "superadmin") return "Superbruker"
-  if (role === "admin") return "Admin"
-  return "—"
-}
-
-function normalizedRole(role: string | null | undefined) {
-  if (role === "superadmin") return "superadmin"
-  if (role === "admin") return "admin"
-  return "user"
-}
-
-function roleRank(role: string | null | undefined) {
-  const r = normalizedRole(role)
-  if (r === "superadmin") return 0
-  if (r === "admin") return 1
-  return 2
 }
 
 function safeString(v: unknown) {
@@ -134,6 +129,7 @@ export default function AdminMedlemmerPage() {
         medlemmer?: Medlem[]
         count?: number | null
         minRolle?: string | null
+        permissions?: RolePermissions
       }
       if (!res.ok || !data.ok) {
         setState({
@@ -148,6 +144,25 @@ export default function AdminMedlemmerPage() {
         medlemmer: data.medlemmer ?? [],
         count: typeof data.count === "number" ? data.count : null,
         minRolle: data.minRolle ?? null,
+        permissions:
+          data.permissions ?? {
+            admin_home: false,
+            view_members: false,
+            edit_members: false,
+            assign_roles: false,
+            change_member_status: false,
+            mark_membership_payment: false,
+            send_member_email: false,
+            manage_campaigns: false,
+            view_finance: false,
+            manage_finance: false,
+            manage_finance_settings: false,
+            manage_finance_balance: false,
+            manage_projects: false,
+            manage_lottery: false,
+            manage_media: false,
+            manage_bie_eske: false,
+          },
       })
     } catch {
       setState({
@@ -182,15 +197,15 @@ export default function AdminMedlemmerPage() {
     [hent, savingId]
   )
 
-  const settAdmin = useCallback(
-    async (medlemId: string, enabled: boolean) => {
+  const settRolle = useCallback(
+    async (medlemId: string, role: string) => {
       if (savingRoleId) return
       setSavingRoleId(medlemId)
       try {
         const res = await fetch("/api/admin/medlemmer", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ medlemId, role: enabled ? "admin" : "user" }),
+          body: JSON.stringify({ medlemId, role }),
         })
         const data = (await res.json()) as { feil?: string }
         if (!res.ok) {
@@ -209,11 +224,7 @@ export default function AdminMedlemmerPage() {
     async (m: Medlem, aktiv: boolean) => {
       if (changingId) return
       if (!m.id) return
-      if (
-        state.type !== "ready" ||
-        (state.minRolle !== "superadmin" && state.minRolle !== "admin")
-      )
-        return
+      if (state.type !== "ready" || !state.permissions.change_member_status) return
       if (m.role === "superadmin") return
 
       const label = [
@@ -318,13 +329,18 @@ export default function AdminMedlemmerPage() {
   }, [])
 
   const markerRolle = useCallback(
-    (role: "superadmin" | "admin" | "user") => {
+    (role: "superadmin" | "adminroller" | "user") => {
       setSelected((prev) => {
         const next = { ...prev }
         for (let i = 0; i < sorted.length; i++) {
           const m = sorted[i]
           const key = rowKey(m, i)
-          if (normalizedRole(m.role) === role) next[key] = true
+          const normalized = normalizeRole(m.role)
+          if (role === "superadmin" && normalized === "superadmin") next[key] = true
+          if (role === "adminroller" && normalized !== "superadmin" && hasAnyAdminAccess(normalized)) {
+            next[key] = true
+          }
+          if (role === "user" && normalized === "user") next[key] = true
         }
         return next
       })
@@ -374,7 +390,7 @@ export default function AdminMedlemmerPage() {
     setEditMedlemsnummer(openMember.medlemsnummer == null ? "" : String(openMember.medlemsnummer))
     setEditType(String(openMember.medlemskap_type ?? ""))
     setEditUtbetalingKontonummer(String(openMember.utbetaling_kontonummer ?? ""))
-      setEditUserId(String(openMember.user_id ?? ""))
+    setEditUserId(String(openMember.user_id ?? ""))
     setEditAuthEmail(String(openMember.epost ?? ""))
     setEditAuthPassword("")
   }, [openMember])
@@ -383,9 +399,10 @@ export default function AdminMedlemmerPage() {
   const lagreMedlem = useCallback(async () => {
     if (!openMember?.id) return
     if (savingMember) return
+    if (state.type !== "ready" || !state.permissions.edit_members) return
     setSavingMember(true)
     try {
-      const isSuper = state.type === "ready" && state.minRolle === "superadmin"
+      const isSuper = state.minRolle === "superadmin"
       const payload: Record<string, unknown> = {
         medlemId: String(openMember.id),
         navn: editNavn,
@@ -525,8 +542,8 @@ export default function AdminMedlemmerPage() {
                   <Button variant="outline" onClick={() => void markerRolle("superadmin")} disabled={sorted.length === 0}>
                     Velg superbruker
                   </Button>
-                  <Button variant="outline" onClick={() => void markerRolle("admin")} disabled={sorted.length === 0}>
-                    Velg admin
+                  <Button variant="outline" onClick={() => void markerRolle("adminroller")} disabled={sorted.length === 0}>
+                    Velg adminroller
                   </Button>
                   <Button variant="outline" onClick={() => void markerRolle("user")} disabled={sorted.length === 0}>
                     Velg medlemmer
@@ -546,18 +563,24 @@ export default function AdminMedlemmerPage() {
                     value={emailSubject}
                     onChange={(e) => setEmailSubject(e.target.value)}
                     placeholder="Emne"
+                    disabled={!state.permissions.send_member_email}
                   />
                   <Input
                     value={emailBody}
                     onChange={(e) => setEmailBody(e.target.value)}
                     placeholder="Melding (valgfritt)"
+                    disabled={!state.permissions.send_member_email}
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={åpneEpost} disabled={selectedEmails.length === 0}>
+                  <Button onClick={åpneEpost} disabled={!state.permissions.send_member_email || selectedEmails.length === 0}>
                     Send e-post ({selectedEmails.length})
                   </Button>
-                  <Button variant="outline" onClick={() => void kopierEposter()} disabled={selectedEmails.length === 0}>
+                  <Button
+                    variant="outline"
+                    onClick={() => void kopierEposter()}
+                    disabled={!state.permissions.send_member_email || selectedEmails.length === 0}
+                  >
                     Kopier e-poster
                   </Button>
                 </div>
@@ -689,25 +712,27 @@ export default function AdminMedlemmerPage() {
                       {m.role === "superadmin" ? (
                         labelForRole(m.role ?? null)
                       ) : (
-                        <label className="inline-flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 accent-foreground"
-                            checked={m.role === "admin"}
-                            disabled={
-                              state.minRolle !== "superadmin" ||
-                              m.aktiv === false ||
-                              !m.id ||
-                              savingRoleId === m.id
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              if (!m.id) return
-                              void settAdmin(m.id, e.target.checked)
-                            }}
-                          />
-                          <span>{labelForRole(m.role ?? null)}</span>
-                        </label>
+                        <select
+                          className="h-9 rounded-md border bg-background px-2 text-xs"
+                          value={normalizeRole(m.role)}
+                          disabled={
+                            !state.permissions.assign_roles ||
+                            m.aktiv === false ||
+                            !m.id ||
+                            savingRoleId === m.id
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            if (!m.id) return
+                            void settRolle(m.id, e.target.value)
+                          }}
+                        >
+                          {SELECTABLE_ROLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2">
@@ -739,7 +764,7 @@ export default function AdminMedlemmerPage() {
                                 e.stopPropagation()
                                 markerKontingent(String(m.id), false).catch(() => {})
                               }}
-                              disabled={savingId === String(m.id)}
+                              disabled={!state.permissions.mark_membership_payment || savingId === String(m.id)}
                             >
                               Betalt
                             </Button>
@@ -751,14 +776,14 @@ export default function AdminMedlemmerPage() {
                                 e.stopPropagation()
                                 markerKontingent(String(m.id), true).catch(() => {})
                               }}
-                              disabled={savingId === String(m.id)}
+                              disabled={!state.permissions.mark_membership_payment || savingId === String(m.id)}
                             >
                               Ubetalt
                             </Button>
                           )
                         ) : null}
                         {state.type === "ready" &&
-                        (state.minRolle === "superadmin" || state.minRolle === "admin") &&
+                        state.permissions.change_member_status &&
                         m.id &&
                         m.role !== "superadmin" ? (
                           m.aktiv === false ? (
@@ -769,7 +794,7 @@ export default function AdminMedlemmerPage() {
                                 e.stopPropagation()
                                 void settAktiv(m, true)
                               }}
-                              disabled={changingId === m.id}
+                              disabled={!state.permissions.change_member_status || changingId === m.id}
                             >
                               Aktiver
                             </Button>
@@ -781,7 +806,7 @@ export default function AdminMedlemmerPage() {
                                 e.stopPropagation()
                                 void settAktiv(m, false)
                               }}
-                              disabled={changingId === m.id}
+                              disabled={!state.permissions.change_member_status || changingId === m.id}
                             >
                               Meld ut
                             </Button>
@@ -874,25 +899,27 @@ export default function AdminMedlemmerPage() {
 
                       <div className="mt-3 flex flex-wrap gap-2">
                         {m.role !== "superadmin" ? (
-                          <label className="inline-flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2 text-xs">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 accent-foreground"
-                              checked={m.role === "admin"}
-                              disabled={
-                                state.minRolle !== "superadmin" ||
-                                m.aktiv === false ||
-                                !m.id ||
-                                savingRoleId === m.id
-                              }
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => {
-                                if (!m.id) return
-                                void settAdmin(m.id, e.target.checked)
-                              }}
-                            />
-                            <span>Admin</span>
-                          </label>
+                          <select
+                            className="h-10 rounded-lg border bg-background/70 px-3 py-2 text-xs"
+                            value={normalizeRole(m.role)}
+                            disabled={
+                              !state.permissions.assign_roles ||
+                              m.aktiv === false ||
+                              !m.id ||
+                              savingRoleId === m.id
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              if (!m.id) return
+                              void settRolle(m.id, e.target.value)
+                            }}
+                          >
+                            {SELECTABLE_ROLE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
                         ) : (
                           <div className="rounded-lg border bg-background/70 px-3 py-2 text-xs text-muted-foreground">
                             Superbruker
@@ -907,7 +934,7 @@ export default function AdminMedlemmerPage() {
                                 e.stopPropagation()
                                 markerKontingent(String(m.id), false).catch(() => {})
                               }}
-                              disabled={savingId === String(m.id)}
+                              disabled={!state.permissions.mark_membership_payment || savingId === String(m.id)}
                             >
                               Betalt
                             </Button>
@@ -918,7 +945,7 @@ export default function AdminMedlemmerPage() {
                                 e.stopPropagation()
                                 markerKontingent(String(m.id), true).catch(() => {})
                               }}
-                              disabled={savingId === String(m.id)}
+                              disabled={!state.permissions.mark_membership_payment || savingId === String(m.id)}
                             >
                               Ubetalt
                             </Button>
@@ -926,7 +953,7 @@ export default function AdminMedlemmerPage() {
                         ) : null}
 
                         {state.type === "ready" &&
-                        (state.minRolle === "superadmin" || state.minRolle === "admin") &&
+                        state.permissions.change_member_status &&
                         m.id &&
                         m.role !== "superadmin" ? (
                           m.aktiv === false ? (
@@ -1085,7 +1112,10 @@ export default function AdminMedlemmerPage() {
               <Button variant="outline" onClick={() => setOpenMember(null)} disabled={savingMember}>
                 Avbryt
               </Button>
-              <Button onClick={() => void lagreMedlem()} disabled={savingMember}>
+              <Button
+                onClick={() => void lagreMedlem()}
+                disabled={savingMember || state.type !== "ready" || !state.permissions.edit_members}
+              >
                 Lagre
               </Button>
             </div>

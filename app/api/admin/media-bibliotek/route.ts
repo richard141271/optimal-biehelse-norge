@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { hasPermission, normalizeRole } from "@/lib/roller"
 
 export const dynamic = "force-dynamic"
 
@@ -90,10 +91,18 @@ async function requireAdmin() {
   if (error) return { ok: false as const, status: 400 as const, feil: "Kunne ikke hente tilgang." }
   if ((data as { aktiv?: unknown } | null)?.aktiv === false) return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
 
-  const role = String((data as { role?: unknown } | null)?.role ?? "").trim().toLowerCase()
-  if (role !== "admin" && role !== "superadmin") return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const storedRole = (data as { role?: unknown } | null)?.role
+  const role = ownerEmail && auth.email === ownerEmail ? "superadmin" : normalizeRole(String(storedRole ?? ""))
+  if (!hasPermission(role, "manage_media")) {
+    return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
+  }
 
-  return { ok: true as const, admin, role: role as "admin" | "superadmin", email: auth.email }
+  return { ok: true as const, admin, role, email: auth.email }
 }
 
 async function ensureBucket(admin: AdminClient) {

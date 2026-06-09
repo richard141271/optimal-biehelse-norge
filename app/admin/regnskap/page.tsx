@@ -730,7 +730,7 @@ export default function AdminRegnskapPage() {
   }, [])
 
   const lagreInnstillinger = useCallback(async () => {
-    const kanEndreKonto = minRolle === "admin" || minRolle === "superadmin"
+    const kanEndreKonto = minRolle === "admin" || minRolle === "superadmin" || minRolle === "kasserer"
     const kanEndreSaldo = minRolle === "superadmin"
     if (!kanEndreKonto && !kanEndreSaldo) return
     if (!innstillingerLagret) return
@@ -774,7 +774,7 @@ export default function AdminRegnskapPage() {
 
   useEffect(() => {
     if (!innstillingerLagret) return
-    const kanEndreKonto = minRolle === "admin" || minRolle === "superadmin"
+    const kanEndreKonto = minRolle === "admin" || minRolle === "superadmin" || minRolle === "kasserer"
     if (!kanEndreKonto) return
     if (innstillingerLagret.kontonummer === kontoNr) return
     if (savingInnstillinger) return
@@ -1670,7 +1670,10 @@ export default function AdminRegnskapPage() {
               onBlur={() => void lagreInnstillinger()}
               placeholder="Kontonummer til foreningen"
               className="h-10"
-              disabled={(minRolle !== "admin" && minRolle !== "superadmin") || savingInnstillinger}
+              disabled={
+                (minRolle !== "admin" && minRolle !== "superadmin" && minRolle !== "kasserer") ||
+                savingInnstillinger
+              }
             />
           </div>
           <div className="space-y-2">

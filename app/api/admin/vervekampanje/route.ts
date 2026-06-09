@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import { isCampaignActive, labelForMedlemskapstype, vervekampanjeSchemaFeil } from "@/lib/vervekampanje"
+import { hasPermission, normalizeRole } from "@/lib/roller"
 
 export const dynamic = "force-dynamic"
 
@@ -67,8 +68,14 @@ async function requireAdmin() {
   if (data?.aktiv === false) {
     return { ok: false as const, status: 403 as const, feil: "Du er meldt ut." }
   }
-  if (data?.role !== "admin" && data?.role !== "superadmin") {
-    return { ok: false as const, status: 403 as const, feil: "Kun admin har tilgang." }
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const role = ownerEmail && user.email === ownerEmail ? "superadmin" : normalizeRole(data?.role)
+  if (!hasPermission(role, "manage_campaigns")) {
+    return { ok: false as const, status: 403 as const, feil: "Du har ikke tilgang til vervekampanjer." }
   }
 
   return {
@@ -76,7 +83,7 @@ async function requireAdmin() {
     admin,
     email: user.email,
     userId: user.userId,
-    role: data.role as "admin" | "superadmin",
+    role,
   }
 }
 

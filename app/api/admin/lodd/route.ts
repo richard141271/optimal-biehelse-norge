@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { hasPermission, normalizeRole } from "@/lib/roller"
 
 export const dynamic = "force-dynamic"
 
@@ -341,19 +342,17 @@ async function requireAdmin() {
   }
 
   const role = String((data as { role?: unknown } | null)?.role ?? "")
-  if (role !== "admin" && role !== "superadmin") {
-    const ownerEmail = String(
-      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
-    )
-      .trim()
-      .toLowerCase()
-    if (ownerEmail && auth.email === ownerEmail) {
-      return { ok: true as const, admin, role: "superadmin" as const, email: auth.email }
-    }
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const resolvedRole = ownerEmail && auth.email === ownerEmail ? "superadmin" : normalizeRole(role)
+  if (!hasPermission(resolvedRole, "manage_lottery")) {
     return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
   }
 
-  return { ok: true as const, admin, role: role as "admin" | "superadmin", email: auth.email }
+  return { ok: true as const, admin, role: resolvedRole, email: auth.email }
 }
 
 export async function GET(request: Request) {

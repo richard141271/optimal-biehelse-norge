@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
+import { hasPermission, normalizeRole } from "@/lib/roller"
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -73,23 +74,20 @@ async function getRole() {
     }
     return { ok: false as const, status: 400 as const }
   }
-  const role = (data?.role ?? null) as string | null
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const role = ownerEmail && email === ownerEmail ? "superadmin" : normalizeRole(data?.role)
   if (data?.aktiv === false) {
     return { ok: false as const, status: 403 as const }
   }
-  if (role !== "admin" && role !== "superadmin") {
-    const ownerEmail = String(
-      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
-    )
-      .trim()
-      .toLowerCase()
-    if (ownerEmail && email === ownerEmail) {
-      return { ok: true as const, admin }
-    }
+  if (!hasPermission(role, "mark_membership_payment")) {
     return { ok: false as const, status: 403 as const }
   }
 
-  return { ok: true as const, admin }
+  return { ok: true as const, admin, role }
 }
 
 export async function PATCH(request: Request) {

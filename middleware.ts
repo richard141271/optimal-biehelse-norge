@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { canAccessAdminPath, normalizeRole } from "@/lib/roller"
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -10,14 +11,6 @@ function isAdminPath(pathname: string) {
   if (pathname === "/admin/login") return false
   if (pathname.startsWith("/admin/login/")) return false
   return true
-}
-
-function isBieEskePath(pathname: string) {
-  return pathname === "/admin/redd-1-bie-eske" || pathname.startsWith("/admin/redd-1-bie-eske/")
-}
-
-function isBieEskeSystemPath(pathname: string) {
-  return pathname === "/admin/bie-eske-system" || pathname.startsWith("/admin/bie-eske-system/")
 }
 
 function isMemberPath(pathname: string) {
@@ -84,12 +77,14 @@ export async function middleware(request: NextRequest) {
         },
       })
       const medlemRows = (await medlemRes.json()) as Array<{ role?: string | null }>
-      const role = String(medlemRows?.[0]?.role ?? "")
-      if (
-        role !== "admin" &&
-        role !== "superadmin" &&
-        !(role === "frivillig" && (isBieEskePath(request.nextUrl.pathname) || isBieEskeSystemPath(request.nextUrl.pathname)))
-      ) {
+      const ownerEmail = String(
+        process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+      )
+        .trim()
+        .toLowerCase()
+      const role =
+        ownerEmail && email === ownerEmail ? "superadmin" : normalizeRole(medlemRows?.[0]?.role)
+      if (!canAccessAdminPath(request.nextUrl.pathname, role)) {
         const url = request.nextUrl.clone()
         url.pathname = "/min-side"
         return NextResponse.redirect(url)

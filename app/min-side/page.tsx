@@ -165,9 +165,8 @@ export default function MinSidePage() {
 
         try {
           const roleRes = await fetch(`/api/admin/me?ts=${Date.now()}`, { cache: "no-store" })
-          const roleData = (await roleRes.json()) as { ok?: boolean; role?: string | null }
-          const role = roleData.role ?? null
-          setIsAdmin(role === "admin" || role === "superadmin")
+          const roleData = (await roleRes.json()) as { ok?: boolean }
+          setIsAdmin(!!roleData.ok)
         } catch {
           setIsAdmin(false)
         }

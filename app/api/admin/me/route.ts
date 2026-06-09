@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
+import { hasAnyAdminAccess, normalizeRole, permissionsForRole } from "@/lib/roller"
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -70,22 +71,24 @@ export async function GET() {
     )
   }
 
-  const role =
-    data?.role === "admin" || data?.role === "superadmin" ? data.role : null
-  if (!role) {
-    const ownerEmail = String(
-      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
-    )
-      .trim()
-      .toLowerCase()
-    if (ownerEmail && email === ownerEmail) {
-      return NextResponse.json({ ok: true, email, userId, role: "superadmin" })
-    }
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const role = ownerEmail && email === ownerEmail ? "superadmin" : normalizeRole(data?.role)
+  if (!hasAnyAdminAccess(role)) {
     return NextResponse.json(
       { ok: false, feil: "Ingen adminrolle tilgjengelig." },
       { status: 403 }
     )
   }
 
-  return NextResponse.json({ ok: true, email, userId, role })
+  return NextResponse.json({
+    ok: true,
+    email,
+    userId,
+    role,
+    permissions: permissionsForRole(role),
+  })
 }

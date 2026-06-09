@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { hasPermission, normalizeRole } from "@/lib/roller"
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -63,19 +64,17 @@ async function requireAdmin() {
     .maybeSingle()
 
   if (error) return { ok: false as const, status: 400 as const }
-  if (data?.role !== "admin" && data?.role !== "superadmin") {
-    const ownerEmail = String(
-      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
-    )
-      .trim()
-      .toLowerCase()
-    if (ownerEmail && auth.email === ownerEmail) {
-      return { ok: true as const, admin, email: auth.email, role: "superadmin" as const }
-    }
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const role = ownerEmail && auth.email === ownerEmail ? "superadmin" : normalizeRole(data?.role)
+  if (!hasPermission(role, "manage_projects")) {
     return { ok: false as const, status: 403 as const }
   }
 
-  return { ok: true as const, admin, email: auth.email, role: data.role as "admin" | "superadmin" }
+  return { ok: true as const, admin, email: auth.email, role }
 }
 
 const bucket = "prosjekt-vedlegg"

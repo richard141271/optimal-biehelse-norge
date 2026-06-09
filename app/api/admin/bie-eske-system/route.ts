@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { hasPermission, normalizeRole } from "@/lib/roller"
 
 export const dynamic = "force-dynamic"
 
@@ -352,10 +353,18 @@ async function requireAccess() {
   if (error) return { ok: false as const, status: 400 as const, feil: "Kunne ikke hente tilgang." }
   if ((data as { aktiv?: unknown } | null)?.aktiv === false) return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
 
-  const role = String((data as { role?: unknown } | null)?.role ?? "").trim().toLowerCase()
-  if (role !== "admin" && role !== "superadmin" && role !== "frivillig") return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const storedRole = (data as { role?: unknown } | null)?.role
+  const role = ownerEmail && auth.email === ownerEmail ? "superadmin" : normalizeRole(String(storedRole ?? ""))
+  if (!hasPermission(role, "manage_bie_eske")) {
+    return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
+  }
 
-  return { ok: true as const, admin, role: role as "admin" | "superadmin" | "frivillig", email: auth.email }
+  return { ok: true as const, admin, role, email: auth.email }
 }
 
 async function ensureBucket(admin: AdminClient) {
@@ -750,7 +759,7 @@ export async function POST(request: Request) {
   }
 
   if (action === "updateLocation") {
-    if (gate.role === "frivillig") return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+    if (gate.role === "birokter") return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
     const locationId = String(form.get("locationId") ?? "").trim()
     const name = String(form.get("name") ?? "").trim()
     const locationType = String(form.get("locationType") ?? "").trim()
@@ -813,7 +822,7 @@ export async function POST(request: Request) {
   }
 
   if (action === "deactivateLocation") {
-    if (gate.role === "frivillig") return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
+    if (gate.role === "birokter") return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
     const locationId = String(form.get("locationId") ?? "").trim()
     if (!locationId) return NextResponse.json({ ok: false, feil: "Mangler lokasjon." }, { status: 400 })
     const saldo = await getSaldo(admin, [locationId])

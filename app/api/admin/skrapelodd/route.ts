@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { hasPermission, normalizeRole } from "@/lib/roller"
 
 type Db = {
   public: {
@@ -116,19 +117,17 @@ async function requireAdmin() {
   }
 
   const role = String((data as { role?: unknown } | null)?.role ?? "")
-  if (role !== "admin" && role !== "superadmin") {
-    const ownerEmail = String(
-      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
-    )
-      .trim()
-      .toLowerCase()
-    if (ownerEmail && email === ownerEmail) {
-      return { ok: true as const, admin, role: "superadmin" as const, email }
-    }
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const resolvedRole = ownerEmail && email === ownerEmail ? "superadmin" : normalizeRole(role)
+  if (!hasPermission(resolvedRole, "manage_lottery")) {
     return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
   }
 
-  return { ok: true as const, admin, role: role as "admin" | "superadmin", email }
+  return { ok: true as const, admin, role: resolvedRole, email }
 }
 
 export async function GET(request: Request) {

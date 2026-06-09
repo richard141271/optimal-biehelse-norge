@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
+import { hasAnyAdminAccess, hasPermission, isSelectableRole, normalizeRole, permissionsForRole } from "@/lib/roller"
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -99,21 +100,13 @@ async function requireAdmin() {
   if (data?.aktiv === false) {
     return { ok: false as const, status: 403 as const }
   }
-  if (data?.role !== "admin" && data?.role !== "superadmin") {
-    const ownerEmail = String(
-      process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
-    )
-      .trim()
-      .toLowerCase()
-    if (ownerEmail && user.email === ownerEmail) {
-      return {
-        ok: true as const,
-        admin,
-        email: user.email,
-        userId: user.userId,
-        role: "superadmin" as const,
-      }
-    }
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const role = ownerEmail && user.email === ownerEmail ? "superadmin" : normalizeRole(data?.role)
+  if (!hasAnyAdminAccess(role)) {
     return { ok: false as const, status: 403 as const }
   }
 
@@ -122,7 +115,8 @@ async function requireAdmin() {
     admin,
     email: user.email,
     userId: user.userId,
-    role: data.role as "admin" | "superadmin",
+    role,
+    permissions: permissionsForRole(role),
   }
 }
 
@@ -133,6 +127,10 @@ export async function GET() {
       { ok: false, feil: "feil" in gate ? gate.feil : undefined },
       { status: gate.status }
     )
+  }
+
+  if (!hasPermission(gate.role, "view_members")) {
+    return NextResponse.json({ ok: false, feil: "Ingen tilgang til medlemsregisteret." }, { status: 403 })
   }
 
   const { data, error, count } = await gate.admin
@@ -188,6 +186,7 @@ export async function GET() {
     medlemmer: data ?? [],
     count: safeCount,
     minRolle: gate.role,
+    permissions: gate.permissions,
   })
 }
 
@@ -223,7 +222,8 @@ export async function PATCH(request: Request) {
     )
   }
 
-  const hasRoleUpdate = role === "user" || role === "admin"
+  const normalizedRequestedRole = role ? normalizeRole(role) : null
+  const hasRoleUpdate = normalizedRequestedRole != null && isSelectableRole(normalizedRequestedRole)
   const hasAktivUpdate = typeof aktiv === "boolean"
   if (!hasRoleUpdate && !hasAktivUpdate) {
     return NextResponse.json(
@@ -232,9 +232,15 @@ export async function PATCH(request: Request) {
     )
   }
 
-  if (hasRoleUpdate && gate.role !== "superadmin") {
+  if (hasRoleUpdate && !hasPermission(gate.role, "assign_roles")) {
     return NextResponse.json(
       { ok: false, feil: "Kun superbruker kan endre rolle." },
+      { status: 403 }
+    )
+  }
+  if (hasAktivUpdate && !hasPermission(gate.role, "change_member_status")) {
+    return NextResponse.json(
+      { ok: false, feil: "Du har ikke tilgang til å melde ut eller aktivere medlemmer." },
       { status: 403 }
     )
   }
@@ -269,7 +275,7 @@ export async function PATCH(request: Request) {
   }
 
   const update: Record<string, unknown> = {}
-  if (hasRoleUpdate) update.role = role
+  if (hasRoleUpdate && normalizedRequestedRole) update.role = normalizedRequestedRole
   if (hasAktivUpdate) {
     if (aktiv) {
       update.aktiv = true
@@ -330,8 +336,11 @@ export async function DELETE(request: Request) {
     )
   }
 
-  if (gate.role !== "admin" && gate.role !== "superadmin") {
-    return NextResponse.json({ ok: false, feil: "Kun admin kan melde ut medlemmer." }, { status: 403 })
+  if (!hasPermission(gate.role, "change_member_status")) {
+    return NextResponse.json(
+      { ok: false, feil: "Du har ikke tilgang til å melde ut medlemmer." },
+      { status: 403 }
+    )
   }
 
   let payload: { medlemId?: string } | null = null
@@ -459,6 +468,10 @@ export async function PUT(request: Request) {
       { ok: false, feil: "feil" in gate ? gate.feil : undefined },
       { status: gate.status }
     )
+  }
+
+  if (!hasPermission(gate.role, "edit_members")) {
+    return NextResponse.json({ ok: false, feil: "Du har ikke tilgang til å redigere medlemmer." }, { status: 403 })
   }
 
   let payload: {

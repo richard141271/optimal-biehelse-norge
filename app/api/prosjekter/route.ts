@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { hasPermission, normalizeRole } from "@/lib/roller"
 
 type Payload = {
   medlemsnummer?: string
@@ -141,7 +142,13 @@ export async function GET() {
     .select("role")
     .eq("user_id", auth.userId)
     .maybeSingle()
-  if (roleRow?.role !== "admin" && roleRow?.role !== "superadmin") {
+  const ownerEmail = String(
+    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+  )
+    .trim()
+    .toLowerCase()
+  const role = ownerEmail && auth.email === ownerEmail ? "superadmin" : normalizeRole(roleRow?.role)
+  if (!hasPermission(role, "manage_projects")) {
     return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
   }
 
