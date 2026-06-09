@@ -1,5 +1,6 @@
 import { MedlemskapForm } from "@/components/landing/medlemskap-form"
 import Image from "next/image"
+import { Suspense } from "react"
 
 export default function BliMedlemPage() {
   return (
@@ -82,7 +83,11 @@ export default function BliMedlemPage() {
               </p>
             </div>
             <div className="mt-4">
-              <MedlemskapForm />
+              <Suspense
+                fallback={<div className="text-sm text-muted-foreground">Laster skjema...</div>}
+              >
+                <MedlemskapForm />
+              </Suspense>
             </div>
           </div>
         </section>

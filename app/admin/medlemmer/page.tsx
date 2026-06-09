@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { VervekampanjePanel } from "@/components/admin/vervekampanje-panel"
 
 type Medlem = {
   id?: string
@@ -506,6 +507,8 @@ export default function AdminMedlemmerPage() {
 
       {state.type === "ready" ? (
         <div className="space-y-3">
+          <VervekampanjePanel />
+
           {state.count === 0 ? (
             <div className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">
               Medlemsregisteret er tomt.

@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import {
+  isCampaignActive,
+  parseMemberIdValue,
+  prisForMedlemskapstype,
+  vervekampanjeSchemaFeil,
+} from "@/lib/vervekampanje"
 
 type Payload = {
-  type?: "innmeldt" | "stotte"
+  type?: "innmeldt" | "stotte" | "bedrift"
   navn?: string
   adresse?: string
   postnr?: string
@@ -10,6 +16,8 @@ type Payload = {
   epost?: string
   telefon?: string
   passord?: string
+  referralCampaignId?: string
+  referrerMemberId?: string
 }
 
 function isValidEmail(email: string) {
@@ -72,6 +80,8 @@ export async function POST(request: Request) {
   const epost = (payload.epost ?? "").trim().toLowerCase()
   const telefon = digitsOnly((payload.telefon ?? "").trim())
   const passord = (payload.passord ?? "").trim()
+  const referralCampaignId = String(payload.referralCampaignId ?? "").trim()
+  const referrerMemberId = String(payload.referrerMemberId ?? "").trim()
 
   if (!passord || passord.length < 6 || passord.length > 200) {
     return NextResponse.json(
@@ -80,7 +90,11 @@ export async function POST(request: Request) {
     )
   }
 
-  if (medlemskapType !== "innmeldt" && medlemskapType !== "stotte") {
+  if (
+    medlemskapType !== "innmeldt" &&
+    medlemskapType !== "stotte" &&
+    medlemskapType !== "bedrift"
+  ) {
     return NextResponse.json(
       { ok: false, feil: "Ugyldig medlemskapstype." },
       { status: 400 }
@@ -94,7 +108,7 @@ export async function POST(request: Request) {
     )
   }
 
-  if (medlemskapType === "innmeldt") {
+  if (medlemskapType === "innmeldt" || medlemskapType === "bedrift") {
     if (adresse.length < 4 || adresse.length > 200) {
       return NextResponse.json(
         { ok: false, feil: "Skriv inn en gyldig adresse." },
@@ -168,6 +182,83 @@ export async function POST(request: Request) {
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   })
+
+  if ((referralCampaignId && !referrerMemberId) || (!referralCampaignId && referrerMemberId)) {
+    return NextResponse.json(
+      { ok: false, feil: "Vervelenken er ufullstendig. Bruk hele vervelenken pa nytt." },
+      { status: 400 }
+    )
+  }
+
+  let validReferral:
+    | {
+        campaignId: string
+        referrerMemberId: string
+        referrerUserId: string | null
+        referrerName: string | null
+        referrerEmail: string | null
+      }
+    | null = null
+
+  if (referralCampaignId && referrerMemberId) {
+    const { data: campaign, error: campaignError } = await supabase
+      .from("vervekampanjer")
+      .select("id, status, starts_at, ends_at")
+      .eq("id", referralCampaignId)
+      .maybeSingle()
+
+    if (campaignError) {
+      const sf = vervekampanjeSchemaFeil((campaignError as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke lese vervelenken." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    if (!campaign?.id || !isCampaignActive(campaign)) {
+      return NextResponse.json(
+        { ok: false, feil: "Denne vervekampanjen er ikke aktiv lenger." },
+        { status: 400 }
+      )
+    }
+
+    const { data: referrer, error: referrerError } = await supabase
+      .from("medlemmer")
+      .select("id, user_id, navn, epost, aktiv")
+      .eq("id", parseMemberIdValue(referrerMemberId))
+      .maybeSingle()
+
+    if (referrerError) {
+      const sf = vervekampanjeSchemaFeil((referrerError as { message?: string } | null)?.message)
+      return NextResponse.json(
+        { ok: false, feil: sf ?? "Kunne ikke lese vervelenken." },
+        { status: sf ? 500 : 400 }
+      )
+    }
+
+    if (!referrer?.id || referrer.aktiv === false) {
+      return NextResponse.json(
+        { ok: false, feil: "Vervelenken er ikke gyldig lenger." },
+        { status: 400 }
+      )
+    }
+
+    const referrerEmail = String(referrer.epost ?? "").trim().toLowerCase()
+    if (referrerEmail && referrerEmail === epost) {
+      return NextResponse.json(
+        { ok: false, feil: "Du kan ikke verve deg selv." },
+        { status: 400 }
+      )
+    }
+
+    validReferral = {
+      campaignId: referralCampaignId,
+      referrerMemberId: String(referrer.id),
+      referrerUserId: String(referrer.user_id ?? "").trim() || null,
+      referrerName: String(referrer.navn ?? "").trim() || null,
+      referrerEmail: referrerEmail || null,
+    }
+  }
 
   const schemaFeil =
     "Medlemsregister-tabellen i Supabase mangler felter for medlemsnummer. Kjør denne SQL-en i Supabase (SQL Editor), og prøv igjen:\n\n" +
@@ -265,7 +356,7 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("medlemmer")
     .insert(insertRow)
-    .select("medlemsnummer")
+    .select("id, medlemsnummer, navn, epost")
     .maybeSingle()
 
   if (error) {
@@ -287,11 +378,59 @@ export async function POST(request: Request) {
     )
   }
 
-  if (
-    (data as { medlemsnummer?: number | null } | null)?.medlemsnummer == null
-  ) {
+  if ((data as { medlemsnummer?: number | null } | null)?.medlemsnummer == null) {
     await supabase.auth.admin.deleteUser(userId)
     return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+  }
+
+  if (validReferral) {
+    const newMember = data as {
+      id?: string | number | null
+      navn?: string | null
+      epost?: string | null
+    } | null
+    const referredMemberId = String(newMember?.id ?? "").trim()
+    if (!referredMemberId) {
+      await supabase.from("medlemmer").delete().eq("user_id", userId)
+      await supabase.auth.admin.deleteUser(userId)
+      return NextResponse.json(
+        { ok: false, feil: "Kunne ikke lagre vervet riktig. Prov igjen." },
+        { status: 500 }
+      )
+    }
+
+    const referralInsert = {
+      campaign_id: validReferral.campaignId,
+      referrer_member_id: validReferral.referrerMemberId,
+      referrer_user_id: validReferral.referrerUserId,
+      referrer_name: validReferral.referrerName,
+      referrer_email: validReferral.referrerEmail,
+      referred_member_id: referredMemberId,
+      referred_user_id: userId,
+      referred_name: String(newMember?.navn ?? navn).trim() || navn,
+      referred_email: String(newMember?.epost ?? epost).trim().toLowerCase() || epost,
+      membership_type: medlemskapType,
+      amount: prisForMedlemskapstype(medlemskapType),
+    }
+
+    const { error: referralError } = await supabase
+      .from("vervekampanje_verv")
+      .insert(referralInsert)
+
+    if (referralError) {
+      const sf = vervekampanjeSchemaFeil((referralError as { message?: string } | null)?.message)
+      await supabase.from("medlemmer").delete().eq("id", parseMemberIdValue(referredMemberId))
+      await supabase.auth.admin.deleteUser(userId)
+      return NextResponse.json(
+        {
+          ok: false,
+          feil:
+            sf ??
+            "Kunne ikke registrere vervet. Be medlemmet sende deg vervelenken pa nytt og prov igjen.",
+        },
+        { status: sf ? 500 : 400 }
+      )
+    }
   }
 
   return NextResponse.json({ ok: true })

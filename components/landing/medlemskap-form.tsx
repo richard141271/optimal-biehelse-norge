@@ -1,7 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,14 +14,28 @@ type Status =
   | { type: "success" }
   | { type: "error"; message: string }
 
+type ReferralState =
+  | { type: "idle" }
+  | { type: "loading" }
+  | {
+      type: "ready"
+      campaignId: string
+      referrerMemberId: string
+      campaignTitle: string
+      referrerName: string
+      endsAt?: string | null
+    }
+  | { type: "error"; message: string }
+
 function digitsOnly(value: string) {
   return value.replace(/\D/g, "")
 }
 
 export function MedlemskapForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
-  const [type, setType] = useState<"innmeldt" | "stotte">("innmeldt")
+  const [type, setType] = useState<"innmeldt" | "stotte" | "bedrift">("innmeldt")
   const [stotteMerInfo, setStotteMerInfo] = useState(false)
   const [navn, setNavn] = useState("")
   const [adresse, setAdresse] = useState("")
@@ -31,12 +46,71 @@ export function MedlemskapForm() {
   const [passord, setPassord] = useState("")
   const [passord2, setPassord2] = useState("")
   const [status, setStatus] = useState<Status>({ type: "idle" })
+  const [referral, setReferral] = useState<ReferralState>({ type: "idle" })
 
   const skalViseAdressefelter =
-    type === "innmeldt" || (type === "stotte" && stotteMerInfo)
-  const skalViseTelefon = type === "innmeldt" || (type === "stotte" && stotteMerInfo)
+    type === "innmeldt" || type === "bedrift" || (type === "stotte" && stotteMerInfo)
+  const skalViseTelefon = type === "innmeldt" || type === "bedrift" || (type === "stotte" && stotteMerInfo)
 
-  function velgType(next: "innmeldt" | "stotte") {
+  useEffect(() => {
+    const campaignId = String(searchParams.get("kampanje") ?? "").trim()
+    const referrerMemberId = String(searchParams.get("verver") ?? "").trim()
+
+    if (!campaignId || !referrerMemberId) {
+      return
+    }
+
+    let ignore = false
+
+    void fetch(
+      `/api/vervekampanje?kampanje=${encodeURIComponent(campaignId)}&verver=${encodeURIComponent(referrerMemberId)}&ts=${Date.now()}`,
+      { cache: "no-store" }
+    )
+      .then(async (res) => {
+        const data = (await res.json()) as {
+          ok?: boolean
+          feil?: string
+          campaign?: { id?: string; title?: string; ends_at?: string | null }
+          referrer?: { id?: string; navn?: string }
+        }
+        if (ignore) return
+        if (!res.ok || !data.ok || !data.campaign?.id || !data.referrer?.id) {
+          setReferral({
+            type: "error",
+            message: data.feil ?? "Vervelenken er ikke gyldig lenger.",
+          })
+          return
+        }
+        setReferral({
+          type: "ready",
+          campaignId: String(data.campaign.id),
+          referrerMemberId: String(data.referrer.id),
+          campaignTitle: String(data.campaign.title ?? "").trim() || "Vervekampanje",
+          referrerName: String(data.referrer.navn ?? "").trim() || "et medlem i OBNO",
+          endsAt: data.campaign.ends_at ?? null,
+        })
+      })
+      .catch(() => {
+        if (ignore) return
+        setReferral({
+          type: "error",
+          message: "Kunne ikke lese vervelenken akkurat na.",
+        })
+      })
+
+    return () => {
+      ignore = true
+    }
+  }, [searchParams])
+
+  const aktivReferral = (() => {
+    const campaignId = String(searchParams.get("kampanje") ?? "").trim()
+    const referrerMemberId = String(searchParams.get("verver") ?? "").trim()
+    if (!campaignId || !referrerMemberId) return { type: "idle" as const }
+    return referral
+  })()
+
+  function velgType(next: "innmeldt" | "stotte" | "bedrift") {
     setType(next)
     if (next !== "stotte") setStotteMerInfo(false)
     if (next === "stotte" && !stotteMerInfo) {
@@ -87,6 +161,10 @@ export function MedlemskapForm() {
           epost,
           telefon: tlf,
           passord,
+          referralCampaignId:
+            aktivReferral.type === "ready" ? aktivReferral.campaignId : undefined,
+          referrerMemberId:
+            aktivReferral.type === "ready" ? aktivReferral.referrerMemberId : undefined,
         }),
       })
 
@@ -142,8 +220,37 @@ export function MedlemskapForm() {
           >
             Støttemedlem
           </Button>
+          <Button
+            type="button"
+            variant={type === "bedrift" ? "default" : "outline"}
+            onClick={() => velgType("bedrift")}
+          >
+            Bedrift
+          </Button>
         </div>
       </div>
+
+      {aktivReferral.type === "loading" ? (
+        <div className="rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
+          Leser vervelenke...
+        </div>
+      ) : null}
+      {aktivReferral.type === "ready" ? (
+        <div className="rounded-xl border bg-card px-4 py-3 text-sm">
+          Dette medlemskapet teller i <span className="font-medium">{aktivReferral.campaignTitle}</span>
+          {" "}for <span className="font-medium">{aktivReferral.referrerName}</span>.
+          {aktivReferral.endsAt ? (
+            <div className="mt-1 text-muted-foreground">
+              Kampanjen avsluttes {new Date(aktivReferral.endsAt).toLocaleDateString("nb-NO")}.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {aktivReferral.type === "error" ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {aktivReferral.message}
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         <Label htmlFor="navn">Navn</Label>
@@ -282,7 +389,10 @@ export function MedlemskapForm() {
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Button type="submit" disabled={status.type === "sending"}>
+        <Button
+          type="submit"
+          disabled={status.type === "sending" || aktivReferral.type === "loading"}
+        >
           {status.type === "sending" ? "Sender…" : "Registrer medlemskap"}
         </Button>
         {status.type === "success" ? (

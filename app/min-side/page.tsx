@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { VervekampanjeCard } from "@/components/min-side/vervekampanje-card"
 
 type Medlem = {
   created_at?: string
@@ -651,6 +652,8 @@ export default function MinSidePage() {
       </div>
 
       <div className="mt-10 space-y-6">
+        <VervekampanjeCard />
+
         <section className="rounded-2xl border bg-card p-6">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold">Mine prosjekter</h2>
