@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 type State =
@@ -60,6 +61,10 @@ function formatCurrency(value: number) {
 }
 
 export function VervekampanjeCard() {
+  const [isOpen, setIsOpen] = useState(() => {
+    if (typeof window === "undefined") return true
+    return window.localStorage.getItem("obno_vervekampanje_min_side_open") !== "0"
+  })
   const [state, setState] = useState<State>({ type: "loading" })
   const [copyStatus, setCopyStatus] = useState("")
 
@@ -181,99 +186,132 @@ export function VervekampanjeCard() {
             Del lenken din, sa teller nye medlemmer pa deg i kampanjen.
           </p>
         </div>
-        <div className="rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
-          Males pa inntekt: medlem 100 kr, stottemedlem 300 kr, bedrift 1000 kr
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-xl border bg-background p-4">
-        <div className="font-medium">{state.campaign.title}</div>
-        {state.campaign.description ? (
-          <div className="mt-1 text-sm text-muted-foreground">{state.campaign.description}</div>
-        ) : null}
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border bg-card p-3">
-            <div className="text-xs text-muted-foreground">Vervet</div>
-            <div className="mt-1 text-xl font-semibold">{state.stats.count}</div>
-          </div>
-          <div className="rounded-lg border bg-card p-3">
-            <div className="text-xs text-muted-foreground">Sum inntekt</div>
-            <div className="mt-1 text-xl font-semibold">{formatCurrency(state.stats.amount)}</div>
-          </div>
-          <div className="rounded-lg border bg-card p-3">
-            <div className="text-xs text-muted-foreground">Plassering</div>
-            <div className="mt-1 text-xl font-semibold">
-              {state.stats.rank ? `#${state.stats.rank}` : "—"}
-            </div>
-          </div>
-        </div>
-        {state.campaign.ends_at ? (
-          <div className="mt-3 text-sm text-muted-foreground">
-            Kampanjen avsluttes {formatDate(state.campaign.ends_at)}.
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-4 rounded-xl border bg-background p-4">
-        <div className="text-sm font-medium">Din vervelenke</div>
-        <div className="mt-2 break-all rounded-lg border bg-card px-3 py-2 text-sm">
-          {referralLink}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             type="button"
-            onClick={() => void copyText(absoluteLink(referralLink), "Vervelenke kopiert.")}
-          >
-            Kopier vervelenke
-          </Button>
-          <Button
-            type="button"
+            size="sm"
             variant="outline"
-            onClick={() => void copyText(shareMessage, "Vervemelding kopiert.")}
+            onClick={() => {
+              const next = !isOpen
+              setIsOpen(next)
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem("obno_vervekampanje_min_side_open", next ? "1" : "0")
+              }
+            }}
           >
-            Kopier vervemelding
+            {isOpen ? (
+              <>
+                Skjul <ChevronUp className="ml-2 h-4 w-4" />
+              </>
+            ) : (
+              <>
+                Apne <ChevronDown className="ml-2 h-4 w-4" />
+              </>
+            )}
           </Button>
-        </div>
-        {copyStatus ? <div className="mt-2 text-xs text-muted-foreground">{copyStatus}</div> : null}
-      </div>
-
-      {state.campaign.premier.length ? (
-        <div className="mt-4 rounded-xl border bg-background p-4">
-          <div className="text-sm font-medium">Vervepremier</div>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {state.campaign.premier.map((premie) => (
-              <div key={premie.id} className="rounded-lg border bg-card p-3 text-sm">
-                <div className="font-medium">{premie.tittel}</div>
-                <div className="text-muted-foreground">
-                  {premie.verdi != null ? formatCurrency(premie.verdi) : "Premie"}
-                </div>
-              </div>
-            ))}
+          <div className="rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
+            Males pa inntekt: medlem 100 kr, stottemedlem 300 kr, bedrift 1000 kr
           </div>
         </div>
-      ) : null}
-
-      <div className="mt-4 rounded-xl border bg-background p-4">
-        <div className="text-sm font-medium">Hvem du har vervet</div>
-        {state.referrals.length ? (
-          <div className="mt-3 space-y-2">
-            {state.referrals.map((referral, index) => (
-              <div key={`${referral.epost ?? referral.navn}-${index}`} className="rounded-lg border bg-card p-3 text-sm">
-                <div className="font-medium">{referral.navn}</div>
-                <div className="mt-1 text-muted-foreground">
-                  {referral.medlemskap} · {formatCurrency(referral.amount)}
-                  {referral.created_at ? ` · ${formatDate(referral.created_at)}` : ""}
-                </div>
-                {referral.epost ? <div className="text-xs text-muted-foreground">{referral.epost}</div> : null}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-3 text-sm text-muted-foreground">
-            Ingen registrerte verv ennå.
-          </div>
-        )}
       </div>
+
+      {!isOpen ? null : (
+        <div className="mt-4 space-y-4">
+          <div className="rounded-xl border bg-background p-4">
+            <div className="font-medium">{state.campaign.title}</div>
+            {state.campaign.description ? (
+              <div className="mt-1 text-sm text-muted-foreground">{state.campaign.description}</div>
+            ) : null}
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border bg-card p-3">
+                <div className="text-xs text-muted-foreground">Vervet</div>
+                <div className="mt-1 text-xl font-semibold">{state.stats.count}</div>
+              </div>
+              <div className="rounded-lg border bg-card p-3">
+                <div className="text-xs text-muted-foreground">Sum inntekt</div>
+                <div className="mt-1 text-xl font-semibold">{formatCurrency(state.stats.amount)}</div>
+              </div>
+              <div className="rounded-lg border bg-card p-3">
+                <div className="text-xs text-muted-foreground">Plassering</div>
+                <div className="mt-1 text-xl font-semibold">
+                  {state.stats.rank ? `#${state.stats.rank}` : "—"}
+                </div>
+              </div>
+            </div>
+            {state.campaign.ends_at ? (
+              <div className="mt-3 text-sm text-muted-foreground">
+                Kampanjen avsluttes {formatDate(state.campaign.ends_at)}.
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <div className="text-sm font-medium">Din vervelenke</div>
+            <div className="mt-2 break-all rounded-lg border bg-card px-3 py-2 text-sm">
+              {referralLink}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => void copyText(absoluteLink(referralLink), "Vervelenke kopiert.")}
+              >
+                Kopier vervelenke
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void copyText(shareMessage, "Vervemelding kopiert.")}
+              >
+                Kopier vervemelding
+              </Button>
+            </div>
+            {copyStatus ? <div className="mt-2 text-xs text-muted-foreground">{copyStatus}</div> : null}
+          </div>
+
+          {state.campaign.premier.length ? (
+            <div className="rounded-xl border bg-background p-4">
+              <div className="text-sm font-medium">Vervepremier</div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {state.campaign.premier.map((premie) => (
+                  <div key={premie.id} className="rounded-lg border bg-card p-3 text-sm">
+                    <div className="font-medium">{premie.tittel}</div>
+                    <div className="text-muted-foreground">
+                      {premie.verdi != null ? formatCurrency(premie.verdi) : "Premie"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="rounded-xl border bg-background p-4">
+            <div className="text-sm font-medium">Hvem du har vervet</div>
+            {state.referrals.length ? (
+              <div className="mt-3 space-y-2">
+                {state.referrals.map((referral, index) => (
+                  <div
+                    key={`${referral.epost ?? referral.navn}-${index}`}
+                    className="rounded-lg border bg-card p-3 text-sm"
+                  >
+                    <div className="font-medium">{referral.navn}</div>
+                    <div className="mt-1 text-muted-foreground">
+                      {referral.medlemskap} · {formatCurrency(referral.amount)}
+                      {referral.created_at ? ` · ${formatDate(referral.created_at)}` : ""}
+                    </div>
+                    {referral.epost ? (
+                      <div className="text-xs text-muted-foreground">{referral.epost}</div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 text-sm text-muted-foreground">
+                Ingen registrerte verv ennå.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

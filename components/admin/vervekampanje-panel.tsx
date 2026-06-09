@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -84,6 +85,10 @@ function formatCurrency(value: number) {
 }
 
 export function VervekampanjePanel() {
+  const [isOpen, setIsOpen] = useState(() => {
+    if (typeof window === "undefined") return true
+    return window.localStorage.getItem("obno_vervekampanje_open") !== "0"
+  })
   const [state, setState] = useState<State>({ type: "loading" })
   const [selectedCampaignId, setSelectedCampaignId] = useState("")
   const [title, setTitle] = useState("")
@@ -207,11 +212,36 @@ export function VervekampanjePanel() {
             Start en kampanje i admin, la medlemmene hente egen vervelenke pa Min side og folg resultatene her.
           </p>
         </div>
-        <div className="rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
-          Score rangeres pa sum inntekt, deretter antall verv.
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const next = !isOpen
+              setIsOpen(next)
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem("obno_vervekampanje_open", next ? "1" : "0")
+              }
+            }}
+          >
+            {isOpen ? (
+              <>
+                Skjul <ChevronUp className="ml-2 h-4 w-4" />
+              </>
+            ) : (
+              <>
+                Apne <ChevronDown className="ml-2 h-4 w-4" />
+              </>
+            )}
+          </Button>
+          <div className="rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
+            Score rangeres pa sum inntekt, deretter antall verv.
+          </div>
         </div>
       </div>
 
+      {!isOpen ? null : (
       <div className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-4">
           <div className="rounded-xl border bg-background p-4">
@@ -379,13 +409,14 @@ export function VervekampanjePanel() {
         </div>
       </div>
 
-      {actionError ? (
+      )}
+      {isOpen && actionError ? (
         <div className={`mt-4 rounded-xl border p-3 text-sm ${actionError.includes("kopiert") ? "bg-card" : "bg-background"}`}>
           {actionError}
         </div>
       ) : null}
 
-      {selectedCampaign ? (
+      {isOpen && selectedCampaign ? (
         <div className="mt-6 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
           <div className="space-y-4">
             <div className="rounded-xl border bg-background p-4">
