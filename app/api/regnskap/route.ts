@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { hasPermission, normalizeRole } from "@/lib/roller"
+import { syncPaidMembersToRegnskap } from "@/lib/medlemskontingent-regnskap"
 
 export const dynamic = "force-dynamic"
 
@@ -354,6 +355,14 @@ export async function GET() {
     if (!ownerEmail || auth.email !== ownerEmail) {
       return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
     }
+  }
+
+  const membershipSync = await syncPaidMembersToRegnskap(admin)
+  if (!membershipSync.ok) {
+    return NextResponse.json(
+      { ok: false, feil: membershipSync.feil },
+      { status: membershipSync.status }
+    )
   }
 
   const { data, error } = await admin

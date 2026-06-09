@@ -3,6 +3,10 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
 import { hasPermission, normalizeRole } from "@/lib/roller"
+import {
+  ensureRegnskapForMembership,
+  removeRegnskapForMembership,
+} from "@/lib/medlemskontingent-regnskap"
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -117,6 +121,25 @@ export async function PATCH(request: Request) {
     )
   }
   const medlemIdValue = isNumericId ? Number(medlemId) : medlemId
+  const { data: existingMember, error: memberError } = await gate.admin
+    .from("medlemmer")
+    .select("id, medlemsnummer, medlemskap_type, navn, epost, aktiv, kontingent_betalt_at, kontingent_gyldig_til")
+    .eq("id", medlemIdValue)
+    .maybeSingle()
+
+  if (memberError) {
+    return NextResponse.json(
+      { ok: false, feil: "Kunne ikke hente medlem." },
+      { status: 400 }
+    )
+  }
+
+  if (!existingMember?.id) {
+    return NextResponse.json(
+      { ok: false, feil: "Fant ikke medlemmet." },
+      { status: 404 }
+    )
+  }
 
   if (betalt) {
     const now = new Date()
@@ -151,6 +174,18 @@ export async function PATCH(request: Request) {
       )
     }
 
+    const regnskap = await ensureRegnskapForMembership(gate.admin, {
+      ...existingMember,
+      kontingent_betalt_at: now.toISOString(),
+      kontingent_gyldig_til: gyldigTil.toISOString(),
+    })
+    if (!regnskap.ok) {
+      return NextResponse.json(
+        { ok: false, feil: regnskap.feil },
+        { status: regnskap.status }
+      )
+    }
+
     return NextResponse.json({ ok: true })
   }
 
@@ -179,6 +214,14 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       { ok: false, feil: "Kunne ikke fjerne betaling." },
       { status: 400 }
+    )
+  }
+
+  const regnskap = await removeRegnskapForMembership(gate.admin, existingMember)
+  if (!regnskap.ok) {
+    return NextResponse.json(
+      { ok: false, feil: regnskap.feil },
+      { status: regnskap.status }
     )
   }
 
