@@ -86,6 +86,8 @@ function schemaFeil() {
     "alter table public.prosjekt_soknader add column if not exists admin_svar text;\n" +
     "alter table public.prosjekt_soknader add column if not exists admin_svar_at timestamptz;\n" +
     "alter table public.prosjekt_soknader add column if not exists admin_svar_sent_at timestamptz;\n" +
+    "alter table public.prosjekt_soknader add column if not exists admin_intern_notat text;\n" +
+    "alter table public.prosjekt_soknader add column if not exists admin_intern_notat_at timestamptz;\n" +
     "\n" +
     "create table if not exists public.prosjekt_hendelser (\n" +
     "  id uuid primary key default gen_random_uuid(),\n" +
@@ -116,7 +118,7 @@ export async function GET(
 
   const baseSelect =
     "id, created_at, medlemsnummer, navn, epost, telefon, tittel, sted, budsjett, beskrivelse, status"
-  const fullSelect = `${baseSelect}, vedlegg_paths, admin_svar, admin_svar_at, admin_svar_sent_at`
+  const fullSelect = `${baseSelect}, vedlegg_paths, admin_svar, admin_svar_at, admin_svar_sent_at, admin_intern_notat, admin_intern_notat_at`
 
   let row: Record<string, unknown> | null = null
   let errorMsg = ""
@@ -130,7 +132,7 @@ export async function GET(
 
   if (full.error) {
     errorMsg = String((full.error as { message?: string } | null)?.message ?? "")
-    if (/column/i.test(errorMsg) && /admin_svar/i.test(errorMsg)) {
+    if (/column/i.test(errorMsg) && /(admin_svar|admin_intern_notat)/i.test(errorMsg)) {
       schemaWarning = schemaFeil()
     }
     let fallbackSelect = `${baseSelect}, vedlegg_paths`
@@ -138,6 +140,9 @@ export async function GET(
       fallbackSelect = `${baseSelect}, vedlegg_paths, admin_svar, admin_svar_at`
     } else if (/admin_svar_at/i.test(errorMsg)) {
       fallbackSelect = `${baseSelect}, vedlegg_paths, admin_svar`
+    }
+    if (/admin_intern_notat_at/i.test(errorMsg)) {
+      fallbackSelect = `${fallbackSelect}, admin_intern_notat`
     }
 
     const fallback = await gate.admin
@@ -158,7 +163,7 @@ export async function GET(
   }
 
   if (!row) {
-    if (/column/i.test(errorMsg) && /admin_svar/i.test(errorMsg)) {
+    if (/column/i.test(errorMsg) && /(admin_svar|admin_intern_notat)/i.test(errorMsg)) {
       return NextResponse.json({ ok: false, feil: schemaFeil() }, { status: 500 })
     }
     return NextResponse.json({ ok: false, feil: "Fant ikke prosjekt." }, { status: 404 })
@@ -252,9 +257,9 @@ export async function PATCH(
     return NextResponse.json({ ok: false, feil: "Ugyldig id." }, { status: 400 })
   }
 
-  let payload: { status?: string; svar?: string; send?: boolean }
+  let payload: { status?: string; svar?: string; send?: boolean; intern_notat?: string }
   try {
-    payload = (await request.json()) as { status?: string; svar?: string; send?: boolean }
+    payload = (await request.json()) as { status?: string; svar?: string; send?: boolean; intern_notat?: string }
   } catch {
     return NextResponse.json({ ok: false, feil: "Ugyldig JSON." }, { status: 400 })
   }
@@ -262,6 +267,7 @@ export async function PATCH(
   const nextStatus = payload.status != null ? String(payload.status).trim() : null
   const svar = payload.svar != null ? String(payload.svar).trim() : null
   const send = payload.send === true
+  const internNotat = payload.intern_notat != null ? String(payload.intern_notat) : null
 
   const allowedStatuses = new Set(["mottatt", "under behandling", "godkjent", "avslått"])
   if (nextStatus != null && !allowedStatuses.has(nextStatus)) {
@@ -279,7 +285,14 @@ export async function PATCH(
     )
   }
 
-  if (!nextStatus && !svar) {
+  if (internNotat != null && internNotat.length > 12000) {
+    return NextResponse.json(
+      { ok: false, feil: "Internnotatet er for langt." },
+      { status: 400 }
+    )
+  }
+
+  if (!nextStatus && !svar && internNotat == null) {
     return NextResponse.json({ ok: false, feil: "Ingenting å oppdatere." }, { status: 400 })
   }
 
@@ -304,6 +317,10 @@ export async function PATCH(
     update.admin_svar = svar
     update.admin_svar_at = new Date().toISOString()
   }
+  if (internNotat != null) {
+    update.admin_intern_notat = internNotat
+    update.admin_intern_notat_at = new Date().toISOString()
+  }
 
   const { error: updateError } = await gate.admin
     .from("prosjekt_soknader")
@@ -312,7 +329,7 @@ export async function PATCH(
 
   if (updateError) {
     const msg = String((updateError as { message?: string } | null)?.message ?? "")
-    if (/column/i.test(msg) && /admin_svar/i.test(msg)) {
+    if (/column/i.test(msg) && /(admin_svar|admin_intern_notat)/i.test(msg)) {
       return NextResponse.json({ ok: false, feil: schemaFeil() }, { status: 500 })
     }
     return NextResponse.json(

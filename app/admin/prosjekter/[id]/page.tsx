@@ -22,6 +22,8 @@ type Prosjekt = {
   admin_svar?: string | null
   admin_svar_at?: string | null
   admin_svar_sent_at?: string | null
+  admin_intern_notat?: string | null
+  admin_intern_notat_at?: string | null
   hendelser?: Array<{
     id?: string
     created_at?: string
@@ -70,8 +72,10 @@ export default function AdminProsjektDetailPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [status, setStatus] = useState<string>("mottatt")
   const [svar, setSvar] = useState("")
+  const [internNotat, setInternNotat] = useState("")
   const [savingStatus, setSavingStatus] = useState(false)
   const [sendingSvar, setSendingSvar] = useState(false)
+  const [savingInternNotat, setSavingInternNotat] = useState(false)
   const [info, setInfo] = useState<string | null>(null)
   const [minRolle, setMinRolle] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -105,6 +109,7 @@ export default function AdminProsjektDetailPage() {
     setState({ type: "ready", prosjekt: payload.prosjekt })
     setStatus(String(payload.prosjekt.status ?? "mottatt"))
     setSvar(String(payload.prosjekt.admin_svar ?? ""))
+    setInternNotat(String(payload.prosjekt.admin_intern_notat ?? ""))
     if (payload.schemaWarning) {
       setInfo(payload.schemaWarning)
     }
@@ -222,6 +227,29 @@ export default function AdminProsjektDetailPage() {
       await hent()
     } finally {
       setSendingSvar(false)
+    }
+  }
+
+  async function lagreInternNotat() {
+    if (state.type !== "ready" || savingInternNotat) return
+    setSavingInternNotat(true)
+    setInfo(null)
+    try {
+      const res = await fetch(`/api/admin/prosjekter/${encodeURIComponent(prosjektId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intern_notat: internNotat }),
+      })
+      const data = (await res.json()) as { ok?: boolean; feil?: string; schemaWarning?: string | null }
+      if (!res.ok || !data.ok) {
+        setInfo(data.feil ?? "Kunne ikke lagre internnotat.")
+        return
+      }
+      setInfo("Internnotat lagret.")
+      if (data.schemaWarning) setInfo(data.schemaWarning)
+      await hent()
+    } finally {
+      setSavingInternNotat(false)
     }
   }
 
@@ -394,6 +422,31 @@ export default function AdminProsjektDetailPage() {
                     {sendingSvar ? "Sender…" : "Send svar"}
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border bg-card p-6">
+            <h2 className="text-lg font-semibold">Internnotat</h2>
+            <div className="mt-2 text-sm text-muted-foreground">
+              Kun internt. Ikke synlig for søker.
+            </div>
+            <div className="mt-4 space-y-3">
+              <Textarea
+                value={internNotat}
+                onChange={(e) => setInternNotat(e.target.value)}
+                placeholder="Skriv internnotat for planlegging, kontaktpunkter, beslutninger, osv…"
+                className="min-h-28"
+              />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-xs text-muted-foreground">
+                  {state.prosjekt.admin_intern_notat_at
+                    ? `Sist lagret: ${formatDato(state.prosjekt.admin_intern_notat_at)}`
+                    : ""}
+                </div>
+                <Button onClick={lagreInternNotat} disabled={savingInternNotat}>
+                  {savingInternNotat ? "Lagrer…" : "Lagre internnotat"}
+                </Button>
               </div>
             </div>
           </div>
