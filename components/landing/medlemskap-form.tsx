@@ -94,7 +94,7 @@ export function MedlemskapForm() {
         if (ignore) return
         setReferral({
           type: "error",
-          message: "Kunne ikke lese vervelenken akkurat na.",
+          message: "Kunne ikke lese vervelenken akkurat nå.",
         })
       })
 

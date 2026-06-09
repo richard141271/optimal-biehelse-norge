@@ -51,7 +51,7 @@ export function vervekampanjeSchemaFeil(msg?: string) {
   if (!/relation|table|column|does not exist/i.test(text)) return null
 
   return (
-    "Vervekampanje mangler i Supabase. Kjor denne SQL-en i Supabase (SQL Editor), og prov igjen:\n\n" +
+    "Vervekampanje mangler i Supabase. Kjør denne SQL-en i Supabase (SQL Editor), og prøv igjen:\n\n" +
     "create table if not exists public.vervekampanjer (\n" +
     "  id uuid primary key default gen_random_uuid(),\n" +
     "  created_at timestamptz not null default now(),\n" +

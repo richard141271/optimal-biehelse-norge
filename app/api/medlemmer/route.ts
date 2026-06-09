@@ -185,7 +185,7 @@ export async function POST(request: Request) {
 
   if ((referralCampaignId && !referrerMemberId) || (!referralCampaignId && referrerMemberId)) {
     return NextResponse.json(
-      { ok: false, feil: "Vervelenken er ufullstendig. Bruk hele vervelenken pa nytt." },
+      { ok: false, feil: "Vervelenken er ufullstendig. Bruk hele vervelenken på nytt." },
       { status: 400 }
     )
   }
@@ -426,7 +426,7 @@ export async function POST(request: Request) {
           ok: false,
           feil:
             sf ??
-            "Kunne ikke registrere vervet. Be medlemmet sende deg vervelenken pa nytt og prov igjen.",
+            "Kunne ikke registrere vervet. Be medlemmet sende deg vervelenken på nytt og prøv igjen.",
         },
         { status: sf ? 500 : 400 }
       )

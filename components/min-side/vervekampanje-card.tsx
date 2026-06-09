@@ -141,7 +141,7 @@ export function VervekampanjeCard() {
       setCopyStatus(successText)
       window.setTimeout(() => setCopyStatus(""), 2500)
     } catch {
-      setCopyStatus("Kopiering feilet. Proev igjen.")
+      setCopyStatus("Kopiering feilet. Prøv igjen.")
       window.setTimeout(() => setCopyStatus(""), 2500)
     }
   }
@@ -171,7 +171,7 @@ export function VervekampanjeCard() {
 
   const shareMessage = [
     `Hei! Jeg er med i OBNO sin vervekampanje: ${state.campaign.title}.`,
-    "Hvis du vil bli medlem og samtidig la vervet telle pa meg, bruker du denne lenken:",
+    "Hvis du vil bli medlem og samtidig la vervet telle på meg, bruker du denne lenken:",
     absoluteLink(referralLink),
   ]
     .filter(Boolean)
@@ -183,7 +183,7 @@ export function VervekampanjeCard() {
         <div className="space-y-1">
           <h2 className="text-lg font-semibold">Vervekampanje</h2>
           <p className="text-sm text-muted-foreground">
-            Del lenken din, sa teller nye medlemmer pa deg i kampanjen.
+            Del lenken din, så teller nye medlemmer på deg i kampanjen.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -205,12 +205,12 @@ export function VervekampanjeCard() {
               </>
             ) : (
               <>
-                Apne <ChevronDown className="ml-2 h-4 w-4" />
+                Åpne <ChevronDown className="ml-2 h-4 w-4" />
               </>
             )}
           </Button>
           <div className="rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
-            Males pa inntekt: medlem 100 kr, stottemedlem 300 kr, bedrift 1000 kr
+            Måles på inntekt: medlem 100 kr, støttemedlem 300 kr, bedrift 1000 kr
           </div>
         </div>
       </div>

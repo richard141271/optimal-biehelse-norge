@@ -209,7 +209,7 @@ export function VervekampanjePanel() {
         <div className="space-y-1">
           <h2 className="text-lg font-semibold">Vervekampanje</h2>
           <p className="text-sm text-muted-foreground">
-            Start en kampanje i admin, la medlemmene hente egen vervelenke pa Min side og folg resultatene her.
+            Start en kampanje i admin, la medlemmene hente egen vervelenke på Min side og følg resultatene her.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -231,12 +231,12 @@ export function VervekampanjePanel() {
               </>
             ) : (
               <>
-                Apne <ChevronDown className="ml-2 h-4 w-4" />
+                Åpne <ChevronDown className="ml-2 h-4 w-4" />
               </>
             )}
           </Button>
           <div className="rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
-            Score rangeres pa sum inntekt, deretter antall verv.
+            Score rangeres på sum inntekt, deretter antall verv.
           </div>
         </div>
       </div>
@@ -295,13 +295,13 @@ export function VervekampanjePanel() {
             ) : (
               <div className="mt-3 space-y-3">
                 <div className="text-sm text-muted-foreground">
-                  Ingen aktiv kampanje akkurat na.
+                  Ingen aktiv kampanje akkurat nå.
                 </div>
                 <div className="grid gap-3">
                   <Input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Navn pa vervekampanjen"
+                    placeholder="Navn på vervekampanjen"
                   />
                   <Textarea
                     value={description}
@@ -375,7 +375,7 @@ export function VervekampanjePanel() {
           <div className="rounded-xl border bg-background p-4">
             <div className="text-sm font-medium">Utsending til medlemmene</div>
             <div className="mt-2 text-sm text-muted-foreground">
-              Bruk masseutsendingen lenger ned i medlemsregisteret for a sende beskjed til alle. Medlemmene finner sin personlige vervelenke pa Min side.
+              Bruk masseutsendingen lenger ned i medlemsregisteret for å sende beskjed til alle. Medlemmene finner sin personlige vervelenke på Min side.
             </div>
           </div>
 
@@ -425,7 +425,7 @@ export function VervekampanjePanel() {
                 <Input
                   value={prizeQuery}
                   onChange={(e) => setPrizeQuery(e.target.value)}
-                  placeholder="Sok i premiearkivet"
+                  placeholder="Søk i premiearkivet"
                   className="sm:max-w-xs"
                 />
               </div>
