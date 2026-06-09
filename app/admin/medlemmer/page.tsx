@@ -742,23 +742,7 @@ export default function AdminMedlemmerPage() {
                       })()}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 text-right">
-                      <div className="flex flex-col items-end gap-1">
-                        <div
-                          className={
-                            m.aktiv === false
-                              ? "rounded-full border bg-background px-2 py-1 text-[10px] text-muted-foreground"
-                              : m.kontingent_gyldig_til
-                                ? "rounded-full border bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white"
-                                : "rounded-full border bg-amber-500 px-2 py-1 text-[10px] font-medium text-white"
-                          }
-                        >
-                          {m.aktiv === false
-                            ? "Innaktiv"
-                            : m.kontingent_gyldig_til
-                              ? "Aktiv medlem"
-                              : "Ikke betalt"}
-                        </div>
-                        <div className="flex flex-wrap justify-end gap-1">
+                      <div className="flex flex-wrap justify-end gap-1">
                         {m.id && m.aktiv !== false ? (
                           m.kontingent_gyldig_til ? (
                             <Button
@@ -774,15 +758,15 @@ export default function AdminMedlemmerPage() {
                             </Button>
                           ) : (
                             <Button
-                              variant="destructive"
                               size="sm"
+                              className="bg-amber-500 text-white hover:bg-amber-500/90"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 markerKontingent(String(m.id), true).catch(() => {})
                               }}
                               disabled={!state.permissions.mark_membership_payment || savingId === String(m.id)}
                             >
-                              Ubetalt
+                              Ikke betalt
                             </Button>
                           )
                         ) : null}
@@ -816,7 +800,6 @@ export default function AdminMedlemmerPage() {
                             </Button>
                           )
                         ) : null}
-                        </div>
                       </div>
                     </td>
                   </tr>
@@ -900,21 +883,6 @@ export default function AdminMedlemmerPage() {
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <div
-                          className={
-                            m.aktiv === false
-                              ? "rounded-full border bg-background/70 px-3 py-2 text-xs text-muted-foreground"
-                              : m.kontingent_gyldig_til
-                                ? "rounded-full border bg-emerald-600 px-3 py-2 text-xs font-medium text-white"
-                                : "rounded-full border bg-amber-500 px-3 py-2 text-xs font-medium text-white"
-                          }
-                        >
-                          {m.aktiv === false
-                            ? "Innaktiv"
-                            : m.kontingent_gyldig_til
-                              ? "Aktiv medlem"
-                              : "Ikke betalt"}
-                        </div>
                         {m.role !== "superadmin" ? (
                           <select
                             className="h-10 rounded-lg border bg-background/70 px-3 py-2 text-xs"
@@ -957,14 +925,14 @@ export default function AdminMedlemmerPage() {
                             </Button>
                           ) : (
                             <Button
-                              variant="destructive"
+                              className="bg-amber-500 text-white hover:bg-amber-500/90"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 markerKontingent(String(m.id), true).catch(() => {})
                               }}
                               disabled={!state.permissions.mark_membership_payment || savingId === String(m.id)}
                             >
-                              Ubetalt
+                              Ikke betalt
                             </Button>
                           )
                         ) : null}
