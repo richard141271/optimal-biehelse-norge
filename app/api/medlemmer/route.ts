@@ -60,18 +60,44 @@ function removeUnsupportedMemberField(
   return null
 }
 
+function debugEnabled(request: Request) {
+  return request.headers.get("x-obno-debug-membership") === "1"
+}
+
+function debugResponse(
+  request: Request,
+  status: number,
+  feil: string,
+  stage: string,
+  detail?: string | null
+) {
+  if (!debugEnabled(request)) {
+    return NextResponse.json({ ok: false, feil }, { status })
+  }
+  return NextResponse.json(
+    {
+      ok: false,
+      feil,
+      debug: {
+        stage,
+        detail: detail ?? null,
+      },
+    },
+    { status }
+  )
+}
+
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.json(
-      {
-        ok: false,
-        feil: "Supabase er ikke konfigurert. Legg inn miljøvariabler først.",
-      },
-      { status: 500 }
+    return debugResponse(
+      request,
+      500,
+      "Supabase er ikke konfigurert. Legg inn miljøvariabler først.",
+      "missing_public_env"
     )
   }
 
@@ -79,20 +105,15 @@ export async function POST(request: Request) {
   try {
     payload = (await request.json()) as Payload
   } catch {
-    return NextResponse.json(
-      { ok: false, feil: "Ugyldig forespørsel." },
-      { status: 400 }
-    )
+    return debugResponse(request, 400, "Ugyldig forespørsel.", "invalid_json")
   }
 
   if (!serviceRoleKey) {
-    return NextResponse.json(
-      {
-        ok: false,
-        feil:
-          "Medlemsregistrering med passord krever SUPABASE_SERVICE_ROLE_KEY i miljøvariabler.",
-      },
-      { status: 500 }
+    return debugResponse(
+      request,
+      500,
+      "Medlemsregistrering med passord krever SUPABASE_SERVICE_ROLE_KEY i miljøvariabler.",
+      "missing_service_role"
     )
   }
 
@@ -233,9 +254,12 @@ export async function POST(request: Request) {
 
     if (campaignError) {
       const sf = vervekampanjeSchemaFeil((campaignError as { message?: string } | null)?.message)
-      return NextResponse.json(
-        { ok: false, feil: sf ?? "Kunne ikke lese vervelenken." },
-        { status: sf ? 500 : 400 }
+      return debugResponse(
+        request,
+        sf ? 500 : 400,
+        sf ?? "Kunne ikke lese vervelenken.",
+        "read_campaign",
+        String((campaignError as { message?: string } | null)?.message ?? "")
       )
     }
 
@@ -254,9 +278,12 @@ export async function POST(request: Request) {
 
     if (referrerError) {
       const sf = vervekampanjeSchemaFeil((referrerError as { message?: string } | null)?.message)
-      return NextResponse.json(
-        { ok: false, feil: sf ?? "Kunne ikke lese vervelenken." },
-        { status: sf ? 500 : 400 }
+      return debugResponse(
+        request,
+        sf ? 500 : 400,
+        sf ?? "Kunne ikke lese vervelenken.",
+        "read_referrer",
+        String((referrerError as { message?: string } | null)?.message ?? "")
       )
     }
 
@@ -297,26 +324,30 @@ export async function POST(request: Request) {
   if (createError) {
     const msg = String((createError as { message?: string } | null)?.message ?? "")
     if (/already/i.test(msg) || /registered/i.test(msg) || /exists/i.test(msg)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          feil:
-            "E-post er allerede registrert. Logg inn på Min side i stedet for å registrere på nytt.",
-        },
-        { status: 400 }
+      return debugResponse(
+        request,
+        400,
+        "E-post er allerede registrert. Logg inn på Min side i stedet for å registrere på nytt.",
+        "create_auth_user",
+        msg
       )
     }
-    return NextResponse.json(
-      { ok: false, feil: "Kunne ikke opprette brukerkonto akkurat nå." },
-      { status: 400 }
+    return debugResponse(
+      request,
+      400,
+      "Kunne ikke opprette brukerkonto akkurat nå.",
+      "create_auth_user",
+      msg
     )
   }
 
   const userId = created.user?.id ?? null
   if (!userId) {
-    return NextResponse.json(
-      { ok: false, feil: "Kunne ikke opprette brukerkonto akkurat nå." },
-      { status: 400 }
+    return debugResponse(
+      request,
+      400,
+      "Kunne ikke opprette brukerkonto akkurat nå.",
+      "create_auth_user_missing_id"
     )
   }
 
@@ -339,7 +370,7 @@ export async function POST(request: Request) {
     const msg = String((maxError as { message?: string } | null)?.message ?? "")
     if (/relation/i.test(msg) && /medlemmer/i.test(msg)) {
       await supabase.auth.admin.deleteUser(userId)
-      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+      return debugResponse(request, 500, schemaFeil, "read_members_max", msg)
     }
   } else {
     const maxVal = Number((maxRow as { medlemsnummer?: number | null } | null)?.medlemsnummer ?? 999)
@@ -388,7 +419,7 @@ export async function POST(request: Request) {
     insertError = msg
     if (/relation/i.test(msg) && /medlemmer/i.test(msg)) {
       await supabase.auth.admin.deleteUser(userId)
-      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+      return debugResponse(request, 500, schemaFeil, "insert_member_relation", msg)
     }
 
     const removed = removeUnsupportedMemberField(insertRow, msg)
@@ -397,9 +428,12 @@ export async function POST(request: Request) {
 
   if (insertError || !data?.id) {
     await supabase.auth.admin.deleteUser(userId)
-    return NextResponse.json(
-      { ok: false, feil: "Kunne ikke registrere medlemskap akkurat nå." },
-      { status: 400 }
+    return debugResponse(
+      request,
+      400,
+      "Kunne ikke registrere medlemskap akkurat nå.",
+      "insert_member",
+      insertError
     )
   }
 
@@ -413,9 +447,11 @@ export async function POST(request: Request) {
     if (!referredMemberId) {
       await supabase.from("medlemmer").delete().eq("user_id", userId)
       await supabase.auth.admin.deleteUser(userId)
-      return NextResponse.json(
-        { ok: false, feil: "Kunne ikke lagre vervet riktig. Prov igjen." },
-        { status: 500 }
+      return debugResponse(
+        request,
+        500,
+        "Kunne ikke lagre vervet riktig. Prov igjen.",
+        "referral_missing_member_id"
       )
     }
 
@@ -441,14 +477,13 @@ export async function POST(request: Request) {
       const sf = vervekampanjeSchemaFeil((referralError as { message?: string } | null)?.message)
       await supabase.from("medlemmer").delete().eq("id", parseMemberIdValue(referredMemberId))
       await supabase.auth.admin.deleteUser(userId)
-      return NextResponse.json(
-        {
-          ok: false,
-          feil:
-            sf ??
-            "Kunne ikke registrere vervet. Be medlemmet sende deg vervelenken på nytt og prøv igjen.",
-        },
-        { status: sf ? 500 : 400 }
+      return debugResponse(
+        request,
+        sf ? 500 : 400,
+        sf ??
+          "Kunne ikke registrere vervet. Be medlemmet sende deg vervelenken på nytt og prøv igjen.",
+        "insert_referral",
+        String((referralError as { message?: string } | null)?.message ?? "")
       )
     }
   }
