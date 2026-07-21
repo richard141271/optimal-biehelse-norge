@@ -45,6 +45,10 @@ function selectMedlem() {
   return "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til, aktiv, utbetaling_kontonummer"
 }
 
+function fallbackSelectMedlem() {
+  return "id, created_at, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til"
+}
+
 export async function GET() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -76,19 +80,31 @@ export async function GET() {
 
   if (byUserIdError) {
     const msg = String((byUserIdError as { message?: string } | null)?.message ?? "")
-    if (/column/i.test(msg) && /aktiv/i.test(msg)) {
-      return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
-    }
-    if (/column/i.test(msg) && /utbetaling_kontonummer/i.test(msg)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          feil:
-            "Medlemsregister-tabellen mangler feltet utbetaling_kontonummer. Kjør dette i Supabase (SQL Editor):\n\n" +
-            "alter table public.medlemmer add column if not exists utbetaling_kontonummer text;",
-        },
-        { status: 500 }
-      )
+    if (/column/i.test(msg) && /(user_id|aktiv|utbetaling_kontonummer)/i.test(msg)) {
+      const fallback = await admin
+        .from("medlemmer")
+        .select(fallbackSelectMedlem())
+        .eq("epost", email)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (fallback.error) {
+        if (/column/i.test(msg) && /aktiv/i.test(msg)) {
+          return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
+        }
+        return NextResponse.json({ ok: false, feil: "Kunne ikke hente medlemsdata." }, { status: 400 })
+      }
+      if (fallback.data) {
+        return NextResponse.json({
+          ok: true,
+          medlem: {
+            ...((fallback.data as unknown as Record<string, unknown>) ?? {}),
+            user_id: userId,
+            aktiv: true,
+            utbetaling_kontonummer: null,
+          },
+        })
+      }
     }
     return NextResponse.json({ ok: false, feil: "Kunne ikke hente medlemsdata." }, { status: 400 })
   }

@@ -36,6 +36,30 @@ function isValidNorskTelefon(telefon: string) {
   return /^\d{8}$/.test(telefon)
 }
 
+function removeUnsupportedMemberField(
+  row: Record<string, unknown>,
+  message: string
+) {
+  const msg = message.toLowerCase()
+  const fieldOrder = [
+    "medlemsnummer",
+    "medlemskap_type",
+    "user_id",
+    "role",
+    "adresse",
+    "postnr",
+    "sted",
+    "telefon",
+  ] as const
+  for (const field of fieldOrder) {
+    if (field in row && msg.includes(field.toLowerCase())) {
+      delete row[field]
+      return field
+    }
+  }
+  return null
+}
+
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -327,7 +351,7 @@ export async function POST(request: Request) {
 
   if (maxError) {
     const msg = String((maxError as { message?: string } | null)?.message ?? "")
-    if (/medlemsnummer/i.test(msg) || /column/i.test(msg)) {
+    if (/relation/i.test(msg) && /medlemmer/i.test(msg)) {
       await supabase.auth.admin.deleteUser(userId)
       return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
     }
@@ -353,34 +377,44 @@ export async function POST(request: Request) {
     insertRow.medlemsnummer = nesteMedlemsnummer
   }
 
-  const { data, error } = await supabase
-    .from("medlemmer")
-    .insert(insertRow)
-    .select("id, medlemsnummer, navn, epost")
-    .maybeSingle()
+  let data: { id?: string | number | null; medlemsnummer?: number | null; navn?: string | null; epost?: string | null } | null = null
+  let insertError: string | null = null
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const result = await supabase
+      .from("medlemmer")
+      .insert(insertRow)
+      .select("id, medlemsnummer, navn, epost")
+      .maybeSingle()
 
-  if (error) {
-    const msg = String((error as { message?: string } | null)?.message ?? "")
-    if (
-      /medlemsnummer/i.test(msg) ||
-      /medlemskap_type/i.test(msg) ||
-      /user_id/i.test(msg) ||
-      /role/i.test(msg) ||
-      /column/i.test(msg)
-    ) {
+    if (!result.error) {
+      data =
+        (result.data as {
+          id?: string | number | null
+          medlemsnummer?: number | null
+          navn?: string | null
+          epost?: string | null
+        } | null) ?? null
+      insertError = null
+      break
+    }
+
+    const msg = String((result.error as { message?: string } | null)?.message ?? "")
+    insertError = msg
+    if (/relation/i.test(msg) && /medlemmer/i.test(msg)) {
       await supabase.auth.admin.deleteUser(userId)
       return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
     }
+
+    const removed = removeUnsupportedMemberField(insertRow, msg)
+    if (!removed) break
+  }
+
+  if (insertError || !data?.id) {
     await supabase.auth.admin.deleteUser(userId)
     return NextResponse.json(
       { ok: false, feil: "Kunne ikke registrere medlemskap akkurat nå." },
       { status: 400 }
     )
-  }
-
-  if ((data as { medlemsnummer?: number | null } | null)?.medlemsnummer == null) {
-    await supabase.auth.admin.deleteUser(userId)
-    return NextResponse.json({ ok: false, feil: schemaFeil }, { status: 500 })
   }
 
   if (validReferral) {
