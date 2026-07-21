@@ -383,12 +383,12 @@ export async function POST(request: Request) {
     user_id: userId,
     medlemskap_type: medlemskapType,
     role,
-    navn: navn || null,
-    adresse: adresse || null,
-    postnr: postnr || null,
-    sted: sted || null,
+    navn: navn || "",
+    adresse: adresse || "",
+    postnr: postnr || "",
+    sted: sted || "",
     epost,
-    telefon: telefon || null,
+    telefon: telefon || "",
   }
   if (nesteMedlemsnummer != null) {
     insertRow.medlemsnummer = nesteMedlemsnummer
