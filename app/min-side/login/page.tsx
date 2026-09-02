@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,21 +14,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-function getRedirectTo() {
-  try {
-    const url = new URL(window.location.href)
-    const next = url.searchParams.get("next")
-    if (next && next.startsWith("/")) return next
-    return "/min-side"
-  } catch {
-    return "/min-side"
-  }
-}
-
 type Mode = "login" | "forgot" | "forgot-sent"
 
 export default function MinSideLoginPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [mode, setMode] = useState<Mode>("login")
   const [epost, setEpost] = useState("")
   const [passord, setPassord] = useState("")
@@ -36,27 +24,33 @@ export default function MinSideLoginPage() {
   const [feil, setFeil] = useState<string | null>(null)
   const [suksess, setSuksess] = useState<string | null>(null)
   const epostRef = useRef<HTMLInputElement | null>(null)
-  const passordRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     const id = setTimeout(() => {
       ;(async () => {
-        const sb = supabase
+        const sb = createSupabaseBrowserClient()
         if (!sb) return
         try {
-          setEpost(epostRef.current?.value ?? "")
-          setPassord(passordRef.current?.value ?? "")
           const { data } = await sb.auth.getSession()
-          if (data.session) window.location.href = getRedirectTo()
+          if (cancelled) return
+          if (data.session) {
+            const url = new URL(window.location.href)
+            const next = url.searchParams.get("next")
+            window.location.href = next && next.startsWith("/") ? next : "/min-side"
+          }
         } catch {}
       })()
-    }, 0)
-    return () => clearTimeout(id)
-  }, [supabase])
+    }, 150)
+    return () => {
+      cancelled = true
+      clearTimeout(id)
+    }
+  }, [])
 
   async function loggInn() {
     const email = (epostRef.current?.value ?? epost).trim().toLowerCase()
-    const password = (passordRef.current?.value ?? passord).trim()
+    const password = String(passord).trim()
     if (!email) {
       setSuksess(null)
       setFeil("Skriv inn e-post.")
@@ -67,14 +61,15 @@ export default function MinSideLoginPage() {
       setFeil("Skriv inn passord.")
       return
     }
-
     if (loading) return
 
     setFeil(null)
     setSuksess(null)
     setLoading(true)
     try {
-      const next = getRedirectTo()
+      const url = new URL(window.location.href)
+      const n = url.searchParams.get("next")
+      const next = n && n.startsWith("/") ? n : "/min-side"
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 20000)
 
@@ -85,7 +80,6 @@ export default function MinSideLoginPage() {
         cache: "no-store",
         signal: controller.signal,
       })
-
       clearTimeout(timeout)
 
       const payload = (await res.json().catch(() => ({}))) as {
@@ -192,7 +186,6 @@ export default function MinSideLoginPage() {
                 ref={epostRef}
                 value={epost}
                 onChange={(e) => setEpost(e.target.value)}
-                onInput={(e) => setEpost((e.target as HTMLInputElement).value)}
                 placeholder="navn@eksempel.no"
               />
             </div>
@@ -218,10 +211,8 @@ export default function MinSideLoginPage() {
                   name="password"
                   type="password"
                   autoComplete="current-password"
-                  ref={passordRef}
                   value={passord}
                   onChange={(e) => setPassord(e.target.value)}
-                  onInput={(e) => setPassord((e.target as HTMLInputElement).value)}
                   placeholder="••••••••"
                 />
               </div>
@@ -261,7 +252,7 @@ export default function MinSideLoginPage() {
             </Button>
           </form>
 
-          {(mode === "forgot" || mode === "forgot-sent") ? (
+          {mode === "forgot" || mode === "forgot-sent" ? (
             <div className="text-center text-sm">
               <button
                 type="button"
