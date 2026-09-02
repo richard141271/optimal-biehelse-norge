@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
+import { createClient } from "@supabase/supabase-js"
 
 export const runtime = "nodejs"
 
@@ -18,8 +17,10 @@ function ensureAbsoluteOrigin(
 ): { origin: string; kind: string } {
   const raw = String(candidate ?? "").trim()
   if (/^https?:\/\//i.test(raw)) {
-    const u = new URL(raw)
-    return { origin: `${u.protocol}//${u.host}`, kind: "explicit" }
+    try {
+      const u = new URL(raw)
+      return { origin: `${u.protocol}//${u.host}`, kind: "explicit" }
+    } catch {}
   }
   const host = raw || fallbackHost || "obno.no"
   return { origin: `https://${host}`, kind: "derived" }
@@ -72,19 +73,8 @@ export async function POST(request: Request) {
     )
   }
 
-  const cookieStore = await cookies()
-  const response = NextResponse.next()
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll()
-      },
-      setAll(cookiesToSet) {
-        for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options)
-        }
-      },
-    },
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
   })
 
   const redirectTo = absRedirectTo("/auth/reset-password")
@@ -96,7 +86,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             ok: false as const,
-            feil: `Tilbakelenken er ikke tillatt for din Supabase e-postmal: ${redirectTo}`,
+            feil: `Tilbakelenken er ikke tillatt i Supabase (legg til denne i Redirect URLs: ${redirectTo})`,
           },
           { status: 502 }
         )
@@ -112,7 +102,7 @@ export async function POST(request: Request) {
         )
       }
       return NextResponse.json(
-        { ok: false as const, feil: "Kunne ikke sende e-post. Prøv igjen litt senere." },
+        { ok: false as const, feil: msg || "Kunne ikke sende e-post. Prøv igjen litt senere." },
         { status: 502 }
       )
     }
@@ -121,17 +111,13 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false as const,
-        feil: msg
-          ? `Kunne ikke sende e-post: ${msg}`
-          : "Kunne ikke sende e-post. Prøv igjen litt senere.",
+        feil: msg ? `Kunne ikke sende e-post: ${msg}` : "Kunne ikke sende e-post. Prøv igjen litt senere.",
       },
       { status: 502 }
     )
   }
 
-  return NextResponse.json(
-    { ok: true as const },
-    { headers: response.headers, status: 200 }
-  )
+  return NextResponse.json({ ok: true as const }, { status: 200 })
 }
+
 

@@ -1,10 +1,55 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
 export const runtime = "nodejs"
 
-export async function POST(request: Request) {
+function copyCookies(from: NextResponse, to: NextResponse) {
+  try {
+    for (const cookie of from.cookies.getAll()) {
+      const opts: {
+        path?: string
+        domain?: string
+        sameSite?: "strict" | "lax" | "none"
+        secure?: boolean
+        httpOnly?: boolean
+        expires?: Date
+        maxAge?: number
+        priority?: "low" | "medium" | "high"
+        partitioned?: boolean
+      } = {}
+      if ("path" in cookie && (cookie as unknown as { path?: string }).path) {
+        opts.path = (cookie as unknown as { path?: string }).path
+      }
+      if ("domain" in cookie && (cookie as unknown as { domain?: string }).domain) {
+        opts.domain = (cookie as unknown as { domain?: string }).domain
+      }
+      if ("sameSite" in cookie && (cookie as unknown as { sameSite?: string }).sameSite) {
+        const s = (cookie as unknown as { sameSite?: string }).sameSite ?? "lax"
+        if (s === "strict" || s === "lax" || s === "none") opts.sameSite = s as "strict" | "lax" | "none"
+      } else {
+        opts.sameSite = "lax"
+      }
+      if ("secure" in cookie && typeof (cookie as unknown as { secure?: boolean }).secure === "boolean") {
+        opts.secure = (cookie as unknown as { secure?: boolean }).secure
+      } else {
+        opts.secure = process.env.NODE_ENV === "production"
+      }
+      if ("httpOnly" in cookie && typeof (cookie as unknown as { httpOnly?: boolean }).httpOnly === "boolean") {
+        opts.httpOnly = (cookie as unknown as { httpOnly?: boolean }).httpOnly
+      }
+      if ("expires" in cookie && (cookie as unknown as { expires?: Date }).expires) {
+        opts.expires = (cookie as unknown as { expires?: Date }).expires
+      }
+      if ("maxAge" in cookie && typeof (cookie as unknown as { maxAge?: number }).maxAge === "number") {
+        opts.maxAge = (cookie as unknown as { maxAge?: number }).maxAge
+      }
+      to.cookies.set({ name: cookie.name, value: cookie.value, ...opts })
+    }
+  } catch {}
+}
+
+export async function POST(request: NextRequest) {
   let body: { email?: unknown; password?: unknown; next?: unknown }
   try {
     body = (await request.json()) as { email?: unknown; password?: unknown; next?: unknown }
@@ -44,7 +89,9 @@ export async function POST(request: Request) {
   }
 
   const cookieStore = await cookies()
-  const response = NextResponse.next()
+  const cookieResponse = NextResponse.next({
+    request: { headers: request.headers },
+  })
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
@@ -53,7 +100,7 @@ export async function POST(request: Request) {
       },
       setAll(cookiesToSet) {
         for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options)
+          cookieResponse.cookies.set(name, value, options)
         }
       },
     },
@@ -62,11 +109,21 @@ export async function POST(request: Request) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
   if (error || !data?.session) {
+    const msg = String(error?.message || "").trim()
+    const fallback = msg && /invalid|password|email/i.test(msg)
+      ? "Kunne ikke logge inn. Sjekk e-post og passord."
+      : "Kunne ikke logge inn. Sjekk e-post og passord."
     return NextResponse.json(
-      { ok: false as const, feil: "Kunne ikke logge inn. Sjekk e-post og passord." },
+      { ok: false as const, feil: msg || fallback },
       { status: 401 }
     )
   }
 
-  return NextResponse.json({ ok: true as const, next }, { headers: response.headers })
+  const finalResponse = NextResponse.json(
+    { ok: true as const, next },
+    { status: 200, headers: { "x-obno-auth": "ok" } }
+  )
+  copyCookies(cookieResponse, finalResponse)
+  return finalResponse
 }
+

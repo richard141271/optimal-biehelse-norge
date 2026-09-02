@@ -126,54 +126,59 @@ export default function MinSidePage() {
   const [showProsjektSkjema, setShowProsjektSkjema] = useState(false)
 
   useEffect(() => {
-    const id = setTimeout(() => {
-      ;(async () => {
-        if (!supabase) {
-          setState({
-            type: "error",
-            message: "Supabase er ikke konfigurert (mangler miljøvariabler).",
-          })
-          return
-        }
+    let cancelled = false
+    ;(async () => {
+      if (!supabase) {
+        setState({
+          type: "error",
+          message: "Supabase er ikke konfigurert (mangler miljøvariabler).",
+        })
+        return
+      }
 
-        const res = await fetch("/api/min-side/me", { cache: "no-store" })
-        if (res.status === 401) {
-          router.push("/min-side/login")
-          router.refresh()
-          return
-        }
-        const data = (await res.json()) as {
-          ok?: boolean
-          feil?: string
-          medlem?: Medlem
-        }
-        if (!res.ok || !data.ok || !data.medlem) {
-          setState({
-            type: "error",
-            message: data.feil ?? "Kunne ikke hente medlemsdata.",
-            status: res.status,
-          })
-          return
-        }
-        setState({ type: "ready", medlem: data.medlem })
-        setMedlemsnummer((prev) =>
-          prev ? prev : data.medlem?.medlemsnummer != null ? String(data.medlem.medlemsnummer) : ""
-        )
-        setNavn((prev) => (prev ? prev : String(data.medlem?.navn ?? "")))
-        setEpost((prev) => (prev ? prev : String(data.medlem?.epost ?? "")))
-        setTelefon((prev) => (prev ? prev : String(data.medlem?.telefon ?? "")))
+      const res = await fetch("/api/min-side/me", { cache: "no-store" })
+      if (cancelled) return
+      if (res.status === 401) {
+        const loginUrl = new URL("/min-side/login", window.location.origin)
+        loginUrl.searchParams.set("next", window.location.pathname)
+        window.location.href = String(loginUrl)
+        return
+      }
+      const data = (await res.json()) as {
+        ok?: boolean
+        feil?: string
+        medlem?: Medlem
+      }
+      if (cancelled) return
+      if (!res.ok || !data.ok || !data.medlem) {
+        setState({
+          type: "error",
+          message: data.feil ?? "Kunne ikke hente medlemsdata.",
+          status: res.status,
+        })
+        return
+      }
+      setState({ type: "ready", medlem: data.medlem })
+      setMedlemsnummer((prev) =>
+        prev ? prev : data.medlem?.medlemsnummer != null ? String(data.medlem.medlemsnummer) : ""
+      )
+      setNavn((prev) => (prev ? prev : String(data.medlem?.navn ?? "")))
+      setEpost((prev) => (prev ? prev : String(data.medlem?.epost ?? "")))
+      setTelefon((prev) => (prev ? prev : String(data.medlem?.telefon ?? "")))
 
-        try {
-          const roleRes = await fetch(`/api/admin/me?ts=${Date.now()}`, { cache: "no-store" })
-          const roleData = (await roleRes.json()) as { ok?: boolean }
-          setIsAdmin(!!roleData.ok)
-        } catch {
-          setIsAdmin(false)
-        }
-      })()
-    }, 0)
-    return () => clearTimeout(id)
-  }, [router, supabase])
+      try {
+        const roleRes = await fetch(`/api/admin/me?ts=${Date.now()}`, { cache: "no-store" })
+        if (cancelled) return
+        const roleData = (await roleRes.json()) as { ok?: boolean }
+        setIsAdmin(!!roleData.ok)
+      } catch {
+        setIsAdmin(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const kontingentGyldigTil = state.type === "ready" ? (state.medlem.kontingent_gyldig_til ?? null) : null
 

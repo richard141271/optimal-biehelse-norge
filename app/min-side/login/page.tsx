@@ -23,28 +23,26 @@ export default function MinSideLoginPage() {
   const [loading, setLoading] = useState(false)
   const [feil, setFeil] = useState<string | null>(null)
   const [suksess, setSuksess] = useState<string | null>(null)
+  const [harGyldigSession, setHarGyldigSession] = useState<string | null>(null)
   const epostRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    const id = setTimeout(() => {
-      ;(async () => {
-        const sb = createSupabaseBrowserClient()
-        if (!sb) return
-        try {
-          const { data } = await sb.auth.getSession()
-          if (cancelled) return
-          if (data.session) {
-            const url = new URL(window.location.href)
-            const next = url.searchParams.get("next")
-            window.location.href = next && next.startsWith("/") ? next : "/min-side"
-          }
-        } catch {}
-      })()
-    }, 150)
+    ;(async () => {
+      const sb = createSupabaseBrowserClient()
+      if (!sb) return
+      try {
+        const { data } = await sb.auth.getSession()
+        if (cancelled) return
+        if (data.session?.user?.email) {
+          const url = new URL(window.location.href)
+          const next = url.searchParams.get("next")
+          setHarGyldigSession(next && next.startsWith("/") ? next : "/min-side")
+        }
+      } catch {}
+    })()
     return () => {
       cancelled = true
-      clearTimeout(id)
     }
   }, [])
 
@@ -162,6 +160,16 @@ export default function MinSideLoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {harGyldigSession ? (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-800">
+              Du er allerede logget inn.{" "}
+              <a
+                href={harGyldigSession} className="underline underline-offset-4 font-medium">
+                Gå rett til Min side
+              </a>
+              .
+            </div>
+          ) : null}
           <form
             className="space-y-4"
             onSubmit={(e) => {
