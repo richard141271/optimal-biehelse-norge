@@ -51,13 +51,7 @@ export default function MinSideLoginPage() {
   }, [supabase])
 
   async function loggInn() {
-    const sb = supabase
-    if (!sb) {
-      setFeil("Supabase er ikke konfigurert (mangler miljøvariabler).")
-      return
-    }
-
-    const email = (epostRef.current?.value ?? epost).trim()
+    const email = (epostRef.current?.value ?? epost).trim().toLowerCase()
     const password = (passordRef.current?.value ?? passord).trim()
     if (!email) {
       setFeil("Skriv inn e-post.")
@@ -73,23 +67,39 @@ export default function MinSideLoginPage() {
     setFeil(null)
     setLoading(true)
     try {
-      const timeout = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("timeout")), 15000)
+      const next = getRedirectTo()
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 20000)
+
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, next }),
+        cache: "no-store",
+        signal: controller.signal,
       })
 
-      const { data, error } = (await Promise.race([
-        sb.auth.signInWithPassword({ email, password }),
-        timeout,
-      ])) as Awaited<ReturnType<typeof sb.auth.signInWithPassword>>
+      clearTimeout(timeout)
 
-      if (error || !data?.session) {
-        setFeil("Kunne ikke logge inn. Sjekk e-post og passord.")
+      const payload = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        feil?: string
+        next?: string
+      }
+
+      if (!res.ok || !payload.ok) {
+        setFeil(payload.feil ?? "Kunne ikke logge inn. Sjekk e-post og passord.")
         return
       }
 
-      window.location.href = getRedirectTo()
-    } catch {
-      setFeil("Innlogging tok for lang tid. Prøv igjen.")
+      const target = payload.next && payload.next.startsWith("/") ? payload.next : next
+      window.location.href = target
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        setFeil("Innlogging tok for lang tid. Prøv igjen.")
+      } else {
+        setFeil("Kunne ikke logge inn. Prøv igjen.")
+      }
     } finally {
       setLoading(false)
     }
@@ -150,7 +160,7 @@ export default function MinSideLoginPage() {
 
             <Button
               type="submit"
-              disabled={loading || !supabase}
+              disabled={loading}
               className="w-full"
             >
               {loading ? "Logger inn…" : "Logg inn"}
