@@ -1,108 +1,59 @@
-import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
-import { canAccessAdminPath, normalizeRole } from "@/lib/roller"
 
-function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+function redirectToLogin(request: NextRequest) {
+  const url = request.nextUrl.clone()
+  const isAdmin =
+    request.nextUrl.pathname.startsWith("/admin") &&
+    request.nextUrl.pathname !== "/admin/login"
+  url.pathname = isAdmin ? "/admin/login" : "/min-side/login"
+  url.search = ""
+  const pathname = request.nextUrl.pathname
+  if (
+    pathname !== "/admin/login" &&
+    pathname !== "/min-side/login" &&
+    pathname !== "/admin/logout" &&
+    pathname !== "/min-side/logout"
+  ) {
+    url.searchParams.set("next", pathname)
+  }
+  return NextResponse.redirect(url)
 }
 
-function isAdminPath(pathname: string) {
-  if (!pathname.startsWith("/admin")) return false
-  if (pathname === "/admin/login") return false
-  if (pathname.startsWith("/admin/login/")) return false
-  return true
+function hasAnySupabaseAuthCookie(request: NextRequest) {
+  for (const c of request.cookies.getAll()) {
+    const name = c.name.toLowerCase()
+    if (
+      name.includes("sb-access-token") ||
+      name.includes("sb-refresh-token") ||
+      name.includes("supabase-auth-token")
+    ) {
+      if ((c.value || "").trim()) return true
+    }
+  }
+  return false
 }
 
-function isMemberPath(pathname: string) {
-  if (!pathname.startsWith("/min-side")) return false
-  if (pathname === "/min-side/login") return false
-  if (pathname.startsWith("/min-side/login/")) return false
-  return true
-}
+export function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
 
-export async function middleware(request: NextRequest) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (
+    pathname === "/min-side/login" ||
+    pathname === "/admin/login" ||
+    pathname.startsWith("/min-side/logout") ||
+    pathname.startsWith("/admin/logout")
+  ) {
     return NextResponse.next()
   }
 
-  const response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
+  const needsLogin = pathname.startsWith("/min-side") || pathname.startsWith("/admin")
+  if (!needsLogin) return NextResponse.next()
 
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll()
-      },
-      setAll(cookiesToSet) {
-        for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options)
-        }
-      },
-    },
-  })
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (isAdminPath(request.nextUrl.pathname) && !user) {
-    const url = request.nextUrl.clone()
-    url.pathname = "/min-side/login"
-    url.searchParams.set("next", request.nextUrl.pathname)
-    return NextResponse.redirect(url)
+  if (!hasAnySupabaseAuthCookie(request)) {
+    return redirectToLogin(request)
   }
 
-  if (isAdminPath(request.nextUrl.pathname) && user) {
-    const email = String(user.email ?? "").trim().toLowerCase()
-    if (!serviceRoleKey || !email || !isValidEmail(email)) {
-      const url = request.nextUrl.clone()
-      url.pathname = "/min-side"
-      return NextResponse.redirect(url)
-    }
-
-    const medlemUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/medlemmer?select=role&epost=eq.${encodeURIComponent(email)}&limit=1`
-    try {
-      const medlemRes = await fetch(medlemUrl, {
-        headers: {
-          apikey: serviceRoleKey,
-          authorization: `Bearer ${serviceRoleKey}`,
-          accept: "application/json",
-        },
-      })
-      const medlemRows = (await medlemRes.json()) as Array<{ role?: string | null }>
-      const ownerEmail = String(
-        process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
-      )
-        .trim()
-        .toLowerCase()
-      const role =
-        ownerEmail && email === ownerEmail ? "superadmin" : normalizeRole(medlemRows?.[0]?.role)
-      if (!canAccessAdminPath(request.nextUrl.pathname, role)) {
-        const url = request.nextUrl.clone()
-        url.pathname = "/min-side"
-        return NextResponse.redirect(url)
-      }
-    } catch {
-      const url = request.nextUrl.clone()
-      url.pathname = "/min-side"
-      return NextResponse.redirect(url)
-    }
-  }
-
-  if (isMemberPath(request.nextUrl.pathname) && !user) {
-    const url = request.nextUrl.clone()
-    url.pathname = "/min-side/login"
-    url.searchParams.set("next", request.nextUrl.pathname)
-    return NextResponse.redirect(url)
-  }
-
+  const response = NextResponse.next()
+  response.headers.set("x-obno-auth-gate", "cookie")
   return response
 }
 
