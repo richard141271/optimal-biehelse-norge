@@ -28,7 +28,13 @@ export async function GET() {
       },
       setAll(cookiesToSet) {
         for (const { name, value, options } of cookiesToSet) {
-          cookieStore.set(name, value, options)
+          cookieStore.set(name, value, {
+            path: "/",
+            sameSite: "lax",
+            secure: process.env.NODE_ENV === "production",
+            httpOnly: false,
+            ...options,
+          })
         }
       },
     },

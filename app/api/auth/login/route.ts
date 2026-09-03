@@ -4,47 +4,11 @@ import { cookies } from "next/headers"
 
 export const runtime = "nodejs"
 
-function copyCookies(from: NextResponse, to: NextResponse) {
+function mergeSetCookieHeaders(from: Headers, to: NextResponse) {
   try {
-    for (const cookie of from.cookies.getAll()) {
-      const opts: {
-        path?: string
-        domain?: string
-        sameSite?: "strict" | "lax" | "none"
-        secure?: boolean
-        httpOnly?: boolean
-        expires?: Date
-        maxAge?: number
-        priority?: "low" | "medium" | "high"
-        partitioned?: boolean
-      } = {}
-      if ("path" in cookie && (cookie as unknown as { path?: string }).path) {
-        opts.path = (cookie as unknown as { path?: string }).path
-      }
-      if ("domain" in cookie && (cookie as unknown as { domain?: string }).domain) {
-        opts.domain = (cookie as unknown as { domain?: string }).domain
-      }
-      if ("sameSite" in cookie && (cookie as unknown as { sameSite?: string }).sameSite) {
-        const s = (cookie as unknown as { sameSite?: string }).sameSite ?? "lax"
-        if (s === "strict" || s === "lax" || s === "none") opts.sameSite = s as "strict" | "lax" | "none"
-      } else {
-        opts.sameSite = "lax"
-      }
-      if ("secure" in cookie && typeof (cookie as unknown as { secure?: boolean }).secure === "boolean") {
-        opts.secure = (cookie as unknown as { secure?: boolean }).secure
-      } else {
-        opts.secure = process.env.NODE_ENV === "production"
-      }
-      if ("httpOnly" in cookie && typeof (cookie as unknown as { httpOnly?: boolean }).httpOnly === "boolean") {
-        opts.httpOnly = (cookie as unknown as { httpOnly?: boolean }).httpOnly
-      }
-      if ("expires" in cookie && (cookie as unknown as { expires?: Date }).expires) {
-        opts.expires = (cookie as unknown as { expires?: Date }).expires
-      }
-      if ("maxAge" in cookie && typeof (cookie as unknown as { maxAge?: number }).maxAge === "number") {
-        opts.maxAge = (cookie as unknown as { maxAge?: number }).maxAge
-      }
-      to.cookies.set({ name: cookie.name, value: cookie.value, ...opts })
+    const setCookies = from.getSetCookie()
+    for (const raw of setCookies) {
+      to.headers.append("set-cookie", raw)
     }
   } catch {}
 }
@@ -90,7 +54,7 @@ export async function POST(request: NextRequest) {
 
   const cookieStore = await cookies()
   const cookieResponse = NextResponse.next({
-    request: { headers: request.headers },
+    request: { headers: new Headers(request.headers) },
   })
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
@@ -100,7 +64,13 @@ export async function POST(request: NextRequest) {
       },
       setAll(cookiesToSet) {
         for (const { name, value, options } of cookiesToSet) {
-          cookieResponse.cookies.set(name, value, options)
+          cookieResponse.cookies.set(name, value, {
+            path: "/",
+            sameSite: "lax",
+            secure: process.env.NODE_ENV === "production",
+            httpOnly: false,
+            ...options,
+          })
         }
       },
     },
@@ -110,11 +80,13 @@ export async function POST(request: NextRequest) {
 
   if (error || !data?.session) {
     const msg = String(error?.message || "").trim()
-    const fallback = msg && /invalid|password|email/i.test(msg)
-      ? "Kunne ikke logge inn. Sjekk e-post og passord."
-      : "Kunne ikke logge inn. Sjekk e-post og passord."
     return NextResponse.json(
-      { ok: false as const, feil: msg || fallback },
+      {
+        ok: false as const,
+        feil: msg && /invalid|password|email/i.test(msg)
+          ? "Kunne ikke logge inn. Sjekk e-post og passord."
+          : msg || "Kunne ikke logge inn. Sjekk e-post og passord.",
+      },
       { status: 401 }
     )
   }
@@ -123,7 +95,8 @@ export async function POST(request: NextRequest) {
     { ok: true as const, next },
     { status: 200, headers: { "x-obno-auth": "ok" } }
   )
-  copyCookies(cookieResponse, finalResponse)
+  mergeSetCookieHeaders(cookieResponse.headers, finalResponse)
   return finalResponse
 }
+
 

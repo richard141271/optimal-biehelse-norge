@@ -1,8 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
+import { useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,27 +22,13 @@ export default function MinSideLoginPage() {
   const [loading, setLoading] = useState(false)
   const [feil, setFeil] = useState<string | null>(null)
   const [suksess, setSuksess] = useState<string | null>(null)
-  const [harGyldigSession, setHarGyldigSession] = useState<string | null>(null)
   const epostRef = useRef<HTMLInputElement | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const sb = createSupabaseBrowserClient()
-      if (!sb) return
-      try {
-        const { data } = await sb.auth.getSession()
-        if (cancelled) return
-        if (data.session?.user?.email) {
-          const url = new URL(window.location.href)
-          const next = url.searchParams.get("next")
-          setHarGyldigSession(next && next.startsWith("/") ? next : "/min-side")
-        }
-      } catch {}
-    })()
-    return () => {
-      cancelled = true
-    }
+  const nextParam = useMemo(() => {
+    if (typeof window === "undefined") return ""
+    const url = new URL(window.location.href)
+    const n = url.searchParams.get("next")
+    return n && n.startsWith("/") ? n : "/min-side"
   }, [])
 
   async function loggInn() {
@@ -65,16 +50,13 @@ export default function MinSideLoginPage() {
     setSuksess(null)
     setLoading(true)
     try {
-      const url = new URL(window.location.href)
-      const n = url.searchParams.get("next")
-      const next = n && n.startsWith("/") ? n : "/min-side"
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 20000)
 
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, next }),
+        body: JSON.stringify({ email, password, next: nextParam }),
         cache: "no-store",
         signal: controller.signal,
       })
@@ -91,7 +73,7 @@ export default function MinSideLoginPage() {
         return
       }
 
-      const target = payload.next && payload.next.startsWith("/") ? payload.next : next
+      const target = payload.next && payload.next.startsWith("/") ? payload.next : nextParam
       window.location.href = target
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
@@ -160,16 +142,6 @@ export default function MinSideLoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {harGyldigSession ? (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-800">
-              Du er allerede logget inn.{" "}
-              <a
-                href={harGyldigSession} className="underline underline-offset-4 font-medium">
-                Gå rett til Min side
-              </a>
-              .
-            </div>
-          ) : null}
           <form
             className="space-y-4"
             onSubmit={(e) => {

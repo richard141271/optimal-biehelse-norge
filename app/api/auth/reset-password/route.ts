@@ -1,10 +1,19 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
 export const runtime = "nodejs"
 
-export async function POST(request: Request) {
+function mergeSetCookieHeaders(from: Headers, to: NextResponse) {
+  try {
+    const setCookies = from.getSetCookie()
+    for (const raw of setCookies) {
+      to.headers.append("set-cookie", raw)
+    }
+  } catch {}
+}
+
+export async function POST(request: NextRequest) {
   let body: { password?: unknown }
   try {
     body = (await request.json()) as { password?: unknown }
@@ -36,7 +45,10 @@ export async function POST(request: Request) {
   }
 
   const cookieStore = await cookies()
-  const response = NextResponse.next()
+  const cookieResponse = NextResponse.next({
+    request: { headers: new Headers(request.headers) },
+  })
+
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
@@ -44,7 +56,13 @@ export async function POST(request: Request) {
       },
       setAll(cookiesToSet) {
         for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options)
+          cookieResponse.cookies.set(name, value, {
+            path: "/",
+            sameSite: "lax",
+            secure: process.env.NODE_ENV === "production",
+            httpOnly: false,
+            ...options,
+          })
         }
       },
     },
@@ -65,5 +83,11 @@ export async function POST(request: Request) {
     )
   }
 
-  return NextResponse.json({ ok: true as const }, { headers: response.headers })
+  const finalResponse = NextResponse.json(
+    { ok: true as const },
+    { status: 200, headers: { "x-obno-auth": "reset" } }
+  )
+  mergeSetCookieHeaders(cookieResponse.headers, finalResponse)
+  return finalResponse
 }
+
