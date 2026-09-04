@@ -57,6 +57,23 @@ function formatBelop(value?: number | null) {
   }).format(value)
 }
 
+function renderStatus(raw?: string | null) {
+  const s = String(raw ?? "mottatt").trim().toLowerCase()
+  switch (s) {
+    case "avsluttet":
+      return "✅ Avsluttet"
+    case "godkjent":
+      return "Godkjent"
+    case "avslått":
+      return "Avslått"
+    case "under behandling":
+      return "Under behandling"
+    case "mottatt":
+    default:
+      return "Mottatt"
+  }
+}
+
 export default function MinSideProsjektDetailPage() {
   const params = useParams<{ id?: string }>()
   const prosjektId = String(params?.id ?? "").trim()
@@ -394,7 +411,7 @@ export default function MinSideProsjektDetailPage() {
           <div className="rounded-2xl border bg-card p-6">
             <h2 className="text-lg font-semibold">Status</h2>
             <div className="mt-2 text-sm">
-              {state.prosjekt.status ?? "mottatt"}
+              {renderStatus(state.prosjekt.status)}
             </div>
           </div>
 

@@ -18,7 +18,12 @@ type Prosjekt = {
   status?: string | null
   vedlegg_paths?: string[] | null
   vedlegg_signed_urls?: string[] | null
+  avsluttet_at?: string | null
+  avsluttet_resultat?: string[] | null
+  avsluttet_kommentar?: string | null
 }
+
+type Filter = "apne" | "arkiv"
 
 type State =
   | { type: "loading" }
@@ -44,9 +49,18 @@ function formatBelop(value?: number | null) {
   }).format(value)
 }
 
+const ARKIV_STATUSER = new Set(["avsluttet", "avslått"])
+
+function erArkiv(p: Prosjekt) {
+  if (p.avsluttet_at) return true
+  const s = String(p.status ?? "").trim().toLowerCase()
+  return ARKIV_STATUSER.has(s)
+}
+
 export default function AdminProsjekterPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [query, setQuery] = useState("")
+  const [filter, setFilter] = useState<Filter>("apne")
 
   async function apneVedlegg(url: string) {
     window.open(url, "_blank", "noopener,noreferrer")
@@ -83,6 +97,8 @@ export default function AdminProsjekterPage() {
   const filtered =
     state.type === "ready"
       ? state.prosjekter.filter((p) => {
+          if (filter === "apne" && erArkiv(p)) return false
+          if (filter === "arkiv" && !erArkiv(p)) return false
           const hay = `${p.tittel ?? ""} ${p.sted ?? ""} ${p.navn ?? ""} ${p.epost ?? ""} ${p.medlemsnummer ?? ""} ${p.status ?? ""}`
             .toLowerCase()
             .trim()
@@ -91,6 +107,18 @@ export default function AdminProsjekterPage() {
           return hay.includes(q)
         })
       : []
+
+  const apneCount =
+    state.type === "ready" ? state.prosjekter.filter((p) => !erArkiv(p)).length : 0
+  const arkivCount =
+    state.type === "ready" ? state.prosjekter.filter((p) => erArkiv(p)).length : 0
+
+  function filterButtonClass(value: Filter) {
+    const aktiv = filter === value
+    return `inline-flex items-center rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+      aktiv ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "hover:bg-muted/40"
+    }`
+  }
 
   return (
     <div className="space-y-6">
@@ -115,8 +143,18 @@ export default function AdminProsjekterPage() {
           placeholder="Søk på tittel, sted, navn, medlemsnummer eller status"
           className="sm:max-w-sm"
         />
-        <div className="text-sm text-muted-foreground">
-          {state.type === "ready" ? `${filtered.length} treff` : ""}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center rounded-lg border p-1">
+            <button type="button" className={filterButtonClass("apne")} onClick={() => setFilter("apne")}>
+              Åpne {apneCount ? `(${apneCount})` : ""}
+            </button>
+            <button type="button" className={filterButtonClass("arkiv")} onClick={() => setFilter("arkiv")}>
+              Arkiv {arkivCount ? `(${arkivCount})` : ""}
+            </button>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {state.type === "ready" ? `${filtered.length} treff` : ""}
+          </div>
         </div>
       </div>
 
