@@ -1,10 +1,46 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function findCookieByPrefix(
+  all: Array<{ name: string; value: string }>,
+  prefixes: string[]
+): string {
+  for (const c of all) {
+    const n = c.name.toLowerCase()
+    for (const p of prefixes) {
+      if (n.startsWith(p.toLowerCase())) {
+        const v = String(c.value || "").trim()
+        if (v) return v
+      }
+    }
+  }
+  return ""
+}
+
+function findAccessTokenFromCookies(
+  all: Array<{ name: string; value: string }>
+): string {
+  for (const c of all) {
+    const name = c.name.toLowerCase()
+    if (name === "sb-access-token" || name.endsWith("-sb-access-token")) {
+      const v = String(c.value || "").trim()
+      if (v) return v
+    }
+    if (name === "supabase-auth-token" || name.endsWith("-supabase-auth-token")) {
+      const raw = String(c.value || "").trim()
+      try {
+        const parsed = JSON.parse(decodeURIComponent(raw)) as unknown[]
+        const token = String((parsed as Array<unknown>)[0] ?? "").trim()
+        if (token) return token
+      } catch {}
+    }
+  }
+  return ""
 }
 
 async function getAuth() {
@@ -14,38 +50,57 @@ async function getAuth() {
     return { ok: false as const, status: 500 as const, feil: "Supabase er ikke konfigurert." }
   }
 
-  const cookieStore = await cookies()
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll()
-      },
-      setAll(cookiesToSet) {
-        for (const { name, value, options } of cookiesToSet) {
-          cookieStore.set(name, value, {
-            path: "/",
-            sameSite: "lax",
-            secure: process.env.NODE_ENV === "production",
-            httpOnly: false,
-            ...options,
-          })
-        }
-      },
-    },
-  })
+  const all = (await cookies()).getAll()
+  const accessToken =
+    findAccessTokenFromCookies(all) || findCookieByPrefix(all, ["sb-access-token"])
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  const userId = user?.id ?? null
-  const email = String(user?.email ?? "").trim().toLowerCase()
-  if (!userId || !email || !isValidEmail(email)) {
+  if (!accessToken) {
     return { ok: false as const, status: 401 as const, feil: "Ikke innlogget." }
   }
 
-  return { ok: true as const, userId, email, supabaseUrl }
+  try {
+    const url = new URL(supabaseUrl)
+    const res = await fetch(`${url.protocol}//${url.host}/auth/v1/user`, {
+      method: "GET",
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+    })
+    const data = (await res.json().catch(() => ({}))) as {
+      id?: unknown
+      email?: unknown
+      app_metadata?: unknown
+      user_metadata?: unknown
+      aud?: unknown
+    }
+    if (!res.ok || !data.id) {
+      return {
+        ok: false as const,
+        status: 401 as const,
+        feil: "Innlogging er utløpt, logg inn på nytt.",
+      }
+    }
+    const userId = String(data.id).trim()
+    const email = String(data.email ?? "").trim().toLowerCase()
+    if (!userId || !email || !isValidEmail(email)) {
+      return {
+        ok: false as const,
+        status: 401 as const,
+        feil: "Innloggingsbruker mangler e-post. Logg inn på nytt.",
+      }
+    }
+    return { ok: true as const, userId, email, supabaseUrl }
+  } catch {
+    return {
+      ok: false as const,
+      status: 502 as const,
+      feil: "Kunne ikke verifisere innlogging. Prøv igjen.",
+    }
+  }
 }
+
 
 function selectMedlem() {
   return "id, created_at, user_id, medlemsnummer, medlemskap_type, navn, adresse, postnr, sted, epost, telefon, kontingent_betalt_at, kontingent_gyldig_til, aktiv, utbetaling_kontonummer"
