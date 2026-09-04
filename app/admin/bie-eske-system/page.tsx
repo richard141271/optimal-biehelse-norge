@@ -127,8 +127,9 @@ export default function BieEskeSystemPage() {
 
   const [transferFrom, setTransferFrom] = useState("")
   const [transferTo, setTransferTo] = useState("")
-  const [transferItem, setTransferItem] = useState<"bie_eske" | "glass">("bie_eske")
-  const [transferQty, setTransferQty] = useState(1)
+  const [transferBoxes, setTransferBoxes] = useState(0)
+  const [transferGlasses, setTransferGlasses] = useState(0)
+  const lastAutoTransferGlasses = useRef(0)
   const [transferNote, setTransferNote] = useState("")
 
   const [deployFromPerson, setDeployFromPerson] = useState("")
@@ -349,15 +350,24 @@ export default function BieEskeSystemPage() {
       setMsg("Velg fra/til lager.")
       return
     }
-    const qty = clampInt(transferQty, 1, 1_000_000)
+    if (transferFrom === transferTo) {
+      setMsg("Fra og til lager kan ikke være samme.")
+      return
+    }
+    const boxes = clampInt(transferBoxes, 0, 1_000_000)
+    const glasses = clampInt(transferGlasses, 0, 1_000_000)
+    if (boxes <= 0 && glasses <= 0) {
+      setMsg("Flytt minst én eske eller ett glass.")
+      return
+    }
     setBusy(true)
     setMsg(null)
     const fd = new FormData()
     fd.set("action", "transfer")
     fd.set("fromId", transferFrom)
     fd.set("toId", transferTo)
-    fd.set("item", transferItem)
-    fd.set("qty", String(qty))
+    fd.set("boxes", String(boxes))
+    fd.set("glasses", String(glasses))
     if (transferNote.trim()) fd.set("note", transferNote.trim())
     const out = await postForm(fd)
     setBusy(false)
@@ -366,10 +376,12 @@ export default function BieEskeSystemPage() {
       return
     }
     setTransferNote("")
+    setTransferBoxes(0)
+    setTransferGlasses(0)
     setMsg("✅ Flyttet.")
     await fetchOverview()
     setTimeout(() => setMsg(null), 1200)
-  }, [busy, fetchOverview, postForm, transferFrom, transferItem, transferNote, transferQty, transferTo])
+  }, [busy, fetchOverview, postForm, transferBoxes, transferFrom, transferGlasses, transferNote, transferTo])
 
   const onDeploy = useCallback(async () => {
     if (busy) return
@@ -794,22 +806,45 @@ export default function BieEskeSystemPage() {
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 <div>
-                  <Label>Vare</Label>
-                  <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={transferItem} onChange={(e) => setTransferItem(e.target.value as "bie_eske" | "glass")}>
-                    <option value="bie_eske">Eske</option>
-                    <option value="glass">Glass</option>
-                  </select>
+                  <Label>Antall esker</Label>
+                  <Input
+                    value={String(transferBoxes)}
+                    onChange={(e) => {
+                      const v = clampInt(Number(e.target.value), 0, 1_000_000)
+                      setTransferBoxes(v)
+                      const auto = v * 15
+                      if (lastAutoTransferGlasses.current === transferGlasses) {
+                        lastAutoTransferGlasses.current = auto
+                        setTimeout(() => setTransferGlasses(auto), 0)
+                      } else {
+                        lastAutoTransferGlasses.current = auto
+                      }
+                    }}
+                    inputMode="numeric"
+                  />
                 </div>
                 <div>
-                  <Label>Antall</Label>
-                  <Input value={String(transferQty)} onChange={(e) => setTransferQty(clampInt(Number(e.target.value), 1, 1_000_000))} inputMode="numeric" />
+                  <Label>Antall glass</Label>
+                  <Input
+                    value={String(transferGlasses)}
+                    onChange={(e) => {
+                      setTransferGlasses(clampInt(Number(e.target.value), 0, 1_000_000))
+                    }}
+                    inputMode="numeric"
+                  />
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Standard: esker × 15. Overskriv hvis esker er delvis tomme.
+                  </div>
                 </div>
                 <div>
                   <Label>Notat</Label>
                   <Input value={transferNote} onChange={(e) => setTransferNote(e.target.value)} />
                 </div>
               </div>
-              <div className="mt-4">
+              <div className="mt-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                <div className="text-xs text-muted-foreground">
+                  Esker og glass flyttes uavhengig. Standard setter 1 eske = 15 glass, men kan endres for delvis tomme esker.
+                </div>
                 <Button onClick={onTransfer} disabled={busy}>
                   Flytt
                 </Button>

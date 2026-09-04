@@ -647,12 +647,9 @@ export async function POST(request: Request) {
   if (action === "transfer") {
     const fromId = String(form.get("fromId") ?? "").trim()
     const toId = String(form.get("toId") ?? "").trim()
-    const item = String(form.get("item") ?? "").trim()
-    const qty = toInt(form.get("qty"))
     const note = String(form.get("note") ?? "").trim()
     if (!fromId || !toId) return NextResponse.json({ ok: false, feil: "Mangler lager." }, { status: 400 })
-    if (item !== "bie_eske" && item !== "glass") return NextResponse.json({ ok: false, feil: "Ugyldig vare." }, { status: 400 })
-    if (!qty || qty <= 0) return NextResponse.json({ ok: false, feil: "Ugyldig antall." }, { status: 400 })
+    if (fromId === toId) return NextResponse.json({ ok: false, feil: "Fra og til kan ikke være samme lager." }, { status: 400 })
 
     const { data: kinds, error: kindErr } = await admin.from("lek_v2_lager").select("id, kind").in("id", [fromId, toId]).limit(2)
     if (kindErr) {
@@ -664,89 +661,96 @@ export async function POST(request: Request) {
     const toKind = String(rows.find((r) => String(r.id ?? "") === toId)?.kind ?? "")
     if (!fromKind || !toKind) return NextResponse.json({ ok: false, feil: "Lager finnes ikke." }, { status: 404 })
 
+    const rawBoxes = toInt(form.get("boxes"))
+    const rawGlasses = toInt(form.get("glasses"))
+    const legacyItem = String(form.get("item") ?? "").trim()
+    const legacyQty = toInt(form.get("qty"))
+
+    let boxes = Math.max(0, Math.trunc(Number.isFinite(rawBoxes) ? rawBoxes : 0))
+    let glasses = Math.max(0, Math.trunc(Number.isFinite(rawGlasses) ? rawGlasses : 0))
+
+    if (legacyItem && (legacyItem === "bie_eske" || legacyItem === "glass") && Number.isFinite(legacyQty) && legacyQty > 0 && boxes === 0 && glasses === 0) {
+      if (legacyItem === "bie_eske") boxes = Math.max(0, Math.trunc(legacyQty))
+      if (legacyItem === "glass") glasses = Math.max(0, Math.trunc(legacyQty))
+    }
+
+    if (boxes <= 0 && glasses <= 0) {
+      return NextResponse.json(
+        { ok: false, feil: "Flytt minst én eske eller ett glass." },
+        { status: 400 }
+      )
+    }
+
     const saldo = await getSaldo(admin, [fromId, toId])
-    const currFromItem = Number((saldo.get(fromId) ?? {})[item] ?? 0)
-    if (!Number.isFinite(currFromItem) || currFromItem < qty) return NextResponse.json({ ok: false, feil: "Ikke nok på lager." }, { status: 400 })
+    const currFromBoxes = Math.max(0, Math.trunc(Number((saldo.get(fromId) ?? {})["bie_eske"] ?? 0)))
+    const currFromGlass = Math.max(0, Math.trunc(Number((saldo.get(fromId) ?? {})["glass"] ?? 0)))
+
+    if (boxes > 0 && currFromBoxes < boxes) {
+      return NextResponse.json(
+        { ok: false, feil: `Ikke nok esker på lager (har ${currFromBox}, trenger ${boxes}).` },
+        { status: 400 }
+      )
+    }
+    if (glasses > 0 && currFromGlass < glasses) {
+      return NextResponse.json(
+        { ok: false, feil: `Ikke nok glass på lager (har ${currFromGlass}, trenger ${glasses}).` },
+        { status: 400 }
+      )
+    }
 
     const movements: Array<Record<string, unknown>> = []
+    const revert: Array<{ lagerId: string; item: "bie_eske" | "glass"; delta: number }> = []
 
-    const dec = await applyDelta(admin, fromId, item, -qty)
-    if (!dec.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-    const inc = await applyDelta(admin, toId, item, qty)
-    if (!inc.ok) {
-      await applyDelta(admin, fromId, item, qty)
-      return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-    }
-    movements.push({
-      id: crypto.randomUUID(),
-      created_at: nowIso,
-      from_lager_id: fromId,
-      to_lager_id: toId,
-      item,
-      qty,
-      reason: "transfer",
-      note: note || null,
-      actor_epost: gate.email,
-      actor_role: gate.role,
-    })
-
-    if (item === "bie_eske") {
-      const currFromGlass = Math.max(0, Math.trunc(Number((saldo.get(fromId) ?? {})["glass"] ?? 0)))
-      const assumeFull = fromKind !== "location" && toKind !== "location"
-      const desired = qty * 15
-      const autoGlass = assumeFull ? desired : Math.min(currFromGlass, desired)
-      if (autoGlass > 0) {
-        let toppedUp = 0
-        if (assumeFull && currFromGlass < autoGlass) {
-          const missing = autoGlass - currFromGlass
-          const topup = await applyDelta(admin, fromId, "glass", missing)
-          if (!topup.ok) {
-            await applyDelta(admin, fromId, "bie_eske", qty)
-            await applyDelta(admin, toId, "bie_eske", -qty)
-            return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere glass for esker." }, { status: 400 })
-          }
-          toppedUp = missing
-          movements.push({
-            id: crypto.randomUUID(),
-            created_at: nowIso,
-            from_lager_id: null,
-            to_lager_id: fromId,
-            item: "glass",
-            qty: missing,
-            reason: "box_includes_glass",
-            note: "Eske inkluderer glass",
-            actor_epost: gate.email,
-            actor_role: gate.role,
-          })
-        }
-        const decG = await applyDelta(admin, fromId, "glass", -autoGlass)
-        if (!decG.ok) {
-          if (toppedUp > 0) await applyDelta(admin, fromId, "glass", -toppedUp)
-          await applyDelta(admin, fromId, "bie_eske", qty)
-          await applyDelta(admin, toId, "bie_eske", -qty)
-          return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere glass for esker." }, { status: 400 })
-        }
-        const incG = await applyDelta(admin, toId, "glass", autoGlass)
-        if (!incG.ok) {
-          await applyDelta(admin, fromId, "glass", autoGlass)
-          if (toppedUp > 0) await applyDelta(admin, fromId, "glass", -toppedUp)
-          await applyDelta(admin, fromId, "bie_eske", qty)
-          await applyDelta(admin, toId, "bie_eske", -qty)
-          return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere glass for esker." }, { status: 400 })
-        }
-        movements.push({
-          id: crypto.randomUUID(),
-          created_at: nowIso,
-          from_lager_id: fromId,
-          to_lager_id: toId,
-          item: "glass",
-          qty: autoGlass,
-          reason: "transfer_in_box",
-          note: "Flytt med eske",
-          actor_epost: gate.email,
-          actor_role: gate.role,
-        })
+    if (boxes > 0) {
+      const decBox = await applyDelta(admin, fromId, "bie_eske", -boxes)
+      if (!decBox.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere eske-lager." }, { status: 400 })
+      revert.push({ lagerId: fromId, item: "bie_eske", delta: boxes })
+      const incBox = await applyDelta(admin, toId, "bie_eske", boxes)
+      if (!incBox.ok) {
+        for (const r of revert) await applyDelta(admin, r.lagerId, r.item, r.delta)
+        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere eske-lager." }, { status: 400 })
       }
+      revert.push({ lagerId: toId, item: "bie_eske", delta: -boxes })
+      movements.push({
+        id: crypto.randomUUID(),
+        created_at: nowIso,
+        from_lager_id: fromId,
+        to_lager_id: toId,
+        item: "bie_eske",
+        qty: boxes,
+        reason: "transfer",
+        note: note || null,
+        actor_epost: gate.email,
+        actor_role: gate.role,
+      })
+    }
+
+    if (glasses > 0) {
+      const decG = await applyDelta(admin, fromId, "glass", -glasses)
+      if (!decG.ok) {
+        for (const r of revert) await applyDelta(admin, r.lagerId, r.item, r.delta)
+        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere glass-lager." }, { status: 400 })
+      }
+      revert.push({ lagerId: fromId, item: "glass", delta: glasses })
+      const incG = await applyDelta(admin, toId, "glass", glasses)
+      if (!incG.ok) {
+        for (const r of revert) await applyDelta(admin, r.lagerId, r.item, r.delta)
+        await applyDelta(admin, fromId, "glass", glasses)
+        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere glass-lager." }, { status: 400 })
+      }
+      revert.push({ lagerId: toId, item: "glass", delta: -glasses })
+      movements.push({
+        id: crypto.randomUUID(),
+        created_at: nowIso,
+        from_lager_id: fromId,
+        to_lager_id: toId,
+        item: "glass",
+        qty: glasses,
+        reason: "transfer",
+        note: note || null,
+        actor_epost: gate.email,
+        actor_role: gate.role,
+      })
     }
 
     const { error } = await admin.from("lek_v2_lager_bevegelser").insert(movements as unknown as never)
