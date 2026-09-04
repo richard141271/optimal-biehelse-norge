@@ -72,6 +72,12 @@ export default function MinSideProsjektDetailPage() {
     | { type: "success"; message: string }
     | { type: "error"; message: string }
   >({ type: "idle" })
+  const [kommentarStatus, setKommentarStatus] = useState<
+    | { type: "idle" }
+    | { type: "saving" }
+    | { type: "success"; message: string }
+    | { type: "error"; message: string }
+  >({ type: "idle" })
 
   const hent = useCallback(async () => {
     setState({ type: "loading" })
@@ -149,11 +155,73 @@ export default function MinSideProsjektDetailPage() {
 </body>
 </html>`
 
-    const w = window.open("", "_blank", "noopener,noreferrer")
-    if (!w) return
-    w.document.open()
-    w.document.write(html)
-    w.document.close()
+    try {
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      const w = window.open(url, "_blank", "noopener,noreferrer")
+      if (w) {
+        setTimeout(() => {
+          try {
+            URL.revokeObjectURL(url)
+          } catch {}
+        }, 10000)
+        return
+      }
+    } catch {}
+
+    try {
+      const a = document.createElement("a")
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      a.href = url
+      const navn = (p.tittel ?? "prosjekt")
+        .replace(/[^\p{L}\p{N}\s_-]+/gu, "-")
+        .replace(/\s+/g, "-")
+        .slice(0, 60)
+      a.download = `${navn || "prosjekt"}.html`
+      document.body.appendChild(a)
+      a.click()
+      setTimeout(() => {
+        a.remove()
+        try {
+          URL.revokeObjectURL(url)
+        } catch {}
+      }, 10000)
+    } catch {}
+  }
+
+  async function lagreKommentar() {
+    const kommentar = vedleggKommentar.trim()
+    if (!kommentar) {
+      setKommentarStatus({ type: "error", message: "Skriv en kommentar først." })
+      return
+    }
+    if (kommentarStatus.type === "saving" || vedleggStatus.type === "uploading") return
+
+    setKommentarStatus({ type: "saving" })
+    try {
+      const res = await fetch(
+        `/api/min-side/prosjekter/${encodeURIComponent(prosjektId)}/kommentar`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kommentar }),
+        }
+      )
+      const payload = (await res.json().catch(() => ({}))) as { ok?: boolean; feil?: string }
+      if (!res.ok || !payload.ok) {
+        setKommentarStatus({
+          type: "error",
+          message: payload.feil ?? "Kunne ikke lagre kommentaren. Prøv igjen.",
+        })
+        return
+      }
+      setVedleggKommentar("")
+      setKommentarStatus({ type: "success", message: "Kommentaren din er lagret." })
+      await hent()
+    } catch {
+      setKommentarStatus({ type: "error", message: "Kunne ikke lagre kommentaren. Prøv igjen." })
+    }
   }
 
   async function lastOppVedlegg(event: React.FormEvent<HTMLFormElement>) {
@@ -422,10 +490,24 @@ export default function MinSideProsjektDetailPage() {
                 <Textarea
                   id="prosjekt_kommentar"
                   value={vedleggKommentar}
-                  onChange={(e) => setVedleggKommentar(e.target.value)}
+                  onChange={(e) => {
+                    setVedleggKommentar(e.target.value)
+                    if (kommentarStatus.type !== "idle") setKommentarStatus({ type: "idle" })
+                    if (vedleggStatus.type === "error") setVedleggStatus({ type: "idle" })
+                  }}
                   placeholder="F.eks. her kommer bilder av fremdrift, eller kvitteringer/fakturaer som er betalt."
                   className="min-h-24"
                 />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void lagreKommentar()}
+                    disabled={kommentarStatus.type === "saving" || vedleggStatus.type === "uploading"}
+                  >
+                    {kommentarStatus.type === "saving" ? "Lagrer kommentar…" : "Lagre kommentar"}
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="prosjekt_vedlegg">Velg filer</Label>
@@ -434,7 +516,10 @@ export default function MinSideProsjektDetailPage() {
                   id="prosjekt_vedlegg"
                   type="file"
                   multiple
-                  onChange={(e) => setVedleggFiles(Array.from(e.target.files ?? []))}
+                  onChange={(e) => {
+                    setVedleggFiles(Array.from(e.target.files ?? []))
+                    if (vedleggStatus.type === "error") setVedleggStatus({ type: "idle" })
+                  }}
                 />
                 {vedleggFiles.length ? (
                   <div className="text-sm text-muted-foreground">
@@ -443,12 +528,18 @@ export default function MinSideProsjektDetailPage() {
                 ) : null}
               </div>
               <div className="flex flex-wrap justify-end gap-2">
-                <Button type="submit" disabled={vedleggStatus.type === "uploading"}>
+                <Button type="submit" disabled={vedleggStatus.type === "uploading" || kommentarStatus.type === "saving"}>
                   {vedleggStatus.type === "uploading"
                     ? `Laster opp… (${vedleggStatus.uploaded}/${vedleggStatus.total})`
                     : "Last opp vedlegg"}
                 </Button>
               </div>
+              {kommentarStatus.type === "success" ? (
+                <div className="text-sm text-emerald-700">{kommentarStatus.message}</div>
+              ) : null}
+              {kommentarStatus.type === "error" ? (
+                <div className="text-sm text-destructive">{kommentarStatus.message}</div>
+              ) : null}
               {vedleggStatus.type === "success" ? (
                 <div className="text-sm text-emerald-700">{vedleggStatus.message}</div>
               ) : null}
