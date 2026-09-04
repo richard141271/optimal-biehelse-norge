@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,6 +16,80 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 
 type Mode = "login" | "forgot" | "forgot-sent"
 
+function cookieSerialize(
+  name: string,
+  value: string,
+  options: {
+    path?: string
+    domain?: string
+    expires?: Date
+    maxAge?: number
+    httpOnly?: boolean
+    secure?: boolean
+    sameSite?: true | false | "lax" | "strict" | "none"
+  } = {}
+) {
+  const parts: string[] = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`]
+  const p = options.path ?? "/"
+  if (p) parts.push(`Path=${p}`)
+  if (options.domain) parts.push(`Domain=${options.domain}`)
+  if (options.maxAge && Number.isFinite(options.maxAge)) {
+    parts.push(`Max-Age=${Math.floor(options.maxAge)}`)
+  }
+  if (options.expires && options.expires instanceof Date) {
+    parts.push(`Expires=${options.expires.toUTCString()}`)
+  }
+  const isSecure = options.secure ?? (typeof window !== "undefined" && window.location.protocol === "https:")
+  if (isSecure) parts.push("Secure")
+  if (options.httpOnly) parts.push("HttpOnly")
+  const ss = options.sameSite
+  if (ss === "strict") parts.push("SameSite=Strict")
+  else if (ss === "none") parts.push("SameSite=None")
+  else parts.push("SameSite=Lax")
+  return parts.join("; ")
+}
+
+function serializeCookie(
+  name: string,
+  value: string,
+  options?: {
+    path?: string
+    domain?: string
+    expires?: Date
+    maxAge?: number
+    httpOnly?: boolean
+    secure?: boolean
+    sameSite?: true | false | "lax" | "strict" | "none"
+  }
+) {
+  try {
+    document.cookie = cookieSerialize(name, value, options)
+  } catch {}
+}
+
+function writeAuthCookiesFromSession(session: {
+  access_token: string
+  refresh_token: string
+  expires_at?: number | null
+}) {
+  const access = String(session.access_token ?? "")
+  const refresh = String(session.refresh_token ?? "")
+  if (!access) return
+
+  const expiresAt = session.expires_at && Number.isFinite(session.expires_at)
+    ? new Date(session.expires_at * 1000)
+    : new Date(Date.now() + 60 * 60 * 1000 * 24 * 7)
+
+  serializeCookie("sb-access-token", access, { expires: expiresAt })
+  serializeCookie("sb-refresh-token", refresh, { expires: expiresAt })
+  try {
+    const combined = encodeURIComponent(JSON.stringify([access, refresh]))
+    serializeCookie("supabase-auth-token", combined, { expires: expiresAt })
+  } catch {}
+}
+
+
+
 export default function MinSideLoginPage() {
   const [mode, setMode] = useState<Mode>("login")
   const [epost, setEpost] = useState("")
@@ -24,13 +98,6 @@ export default function MinSideLoginPage() {
   const [feil, setFeil] = useState<string | null>(null)
   const [suksess, setSuksess] = useState<string | null>(null)
   const epostRef = useRef<HTMLInputElement | null>(null)
-
-  const nextParam = useMemo(() => {
-    if (typeof window === "undefined") return ""
-    const url = new URL(window.location.href)
-    const n = url.searchParams.get("next")
-    return n && n.startsWith("/") ? n : "/min-side"
-  }, [])
 
   async function loggInn() {
     const email = (epostRef.current?.value ?? epost).trim().toLowerCase()
@@ -53,32 +120,51 @@ export default function MinSideLoginPage() {
     try {
       const sb = createSupabaseBrowserClient()
       if (!sb) {
-        setFeil("Innlogging er ikke konfigurert (mangler miljøvariabler i frontend).")
-        return
+        throw new Error("Innlogging er ikke konfigurert (mangler miljøvariabler i frontend).")
       }
 
-      const { data, error } = await sb.auth.signInWithPassword({ email, password })
-      if (error || !data?.session) {
-        const msg = String(error?.message || "").trim()
-        setFeil(
-          msg && /invalid|password|email/i.test(msg)
-            ? "Kunne ikke logge inn. Sjekk e-post og passord."
-            : msg || "Kunne ikke logge inn. Sjekk e-post og passord."
-        )
-        return
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15000)
+      const pending = sb.auth.signInWithPassword({ email, password })
+      const wrapped = new Promise<typeof pending extends Promise<infer T> ? T : never>((resolve, reject) => {
+        controller.signal.addEventListener("abort", () => reject(new Error("Innlogging tok for lang tid. Sjekk nettverket ditt og prøv igjen.")))
+        pending.then(resolve, reject)
+      })
+      const { data, error } = await wrapped
+      clearTimeout(timeout)
+
+      if (error) throw error
+      if (!data?.session) {
+        throw new Error("Innlogging returnerte ingen sesjon. Prøv igjen.")
       }
+
+      writeAuthCookiesFromSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at ?? null,
+      })
 
       const url = new URL(window.location.href)
       const nextRaw = (url.searchParams.get("next") || "").trim()
       const next = nextRaw.startsWith("/") ? nextRaw : "/min-side"
-      window.location.replace(next)
+      setTimeout(() => window.location.replace(next), 0)
+
     } catch (err) {
-      const m = err instanceof Error ? err.message : ""
-      setFeil(m ? m : "Kunne ikke logge inn. Prøv igjen.")
+      const original = err instanceof Error ? err.message : String(err ?? "")
+      const msg = original && /invalid|password|email/i.test(original)
+        ? "Kunne ikke logge inn. Sjekk e-post og passord."
+        : original && /abort|timeout|tok for lang/i.test(original)
+          ? original
+          : original || "Kunne ikke logge inn. Prøv igjen."
+      try {
+        console.error("[login]", err)
+      } catch {}
+      setFeil(msg)
     } finally {
       setLoading(false)
     }
   }
+
 
 
   async function sendGlemtPassord() {
