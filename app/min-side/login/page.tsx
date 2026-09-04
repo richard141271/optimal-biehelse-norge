@@ -53,7 +53,7 @@ export default function MinSideLoginPage() {
     try {
       const sb = createSupabaseBrowserClient()
       if (!sb) {
-        setFeil("Innlogging er ikke konfigurert (mangler miljøvariabler).")
+        setFeil("Innlogging er ikke konfigurert (mangler miljøvariabler i frontend).")
         return
       }
 
@@ -68,13 +68,18 @@ export default function MinSideLoginPage() {
         return
       }
 
-      window.location.href = nextParam
-    } catch {
-      setFeil("Kunne ikke logge inn. Prøv igjen.")
+      const url = new URL(window.location.href)
+      const nextRaw = (url.searchParams.get("next") || "").trim()
+      const next = nextRaw.startsWith("/") ? nextRaw : "/min-side"
+      window.location.replace(next)
+    } catch (err) {
+      const m = err instanceof Error ? err.message : ""
+      setFeil(m ? m : "Kunne ikke logge inn. Prøv igjen.")
     } finally {
       setLoading(false)
     }
   }
+
 
   async function sendGlemtPassord() {
     const email = (epostRef.current?.value ?? epost).trim().toLowerCase()
