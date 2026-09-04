@@ -129,8 +129,6 @@ export default function BieEskeSystemPage() {
   const [transferTo, setTransferTo] = useState("")
   const [transferBoxes, setTransferBoxes] = useState(0)
   const [transferGlasses, setTransferGlasses] = useState(0)
-  const lastAutoTransferGlasses = useRef(0)
-  const transferGlassesEdited = useRef(false)
   const [transferNote, setTransferNote] = useState("")
 
   const [deployFromPerson, setDeployFromPerson] = useState("")
@@ -260,13 +258,11 @@ export default function BieEskeSystemPage() {
 
   const onChangeTransferFrom = useCallback((id: string) => {
     setTransferFrom(id)
-    transferGlassesEdited.current = false
     if (api.type !== "ready") return
     const l = api.lagre.find((x) => x.id === id)
     if (!l) {
       setTransferBoxes(0)
       setTransferGlasses(0)
-      lastAutoTransferGlasses.current = 0
       return
     }
     const b = l.balances ?? {}
@@ -274,20 +270,13 @@ export default function BieEskeSystemPage() {
     const currGlass = Math.max(0, Math.trunc(Number(b["glass"] ?? 0)))
     setTransferBoxes(currBoxes)
     setTransferGlasses(currGlass)
-    lastAutoTransferGlasses.current = currGlass
   }, [api])
 
   const onChangeTransferBoxes = useCallback((rawBoxes: number) => {
     const maxB = clampInt(transferMaxBoxes, 0, 1_000_000)
     const boxes = clampInt(rawBoxes, 0, maxB)
     setTransferBoxes(boxes)
-    if (!transferGlassesEdited.current) {
-      const proposed = boxes * 15
-      const auto = Math.min(proposed, transferMaxGlasses)
-      lastAutoTransferGlasses.current = auto
-      setTimeout(() => setTransferGlasses(auto), 0)
-    }
-  }, [transferMaxBoxes, transferMaxGlasses])
+  }, [transferMaxBoxes])
 
   useEffect(() => {
     if (!adjustLagerId && defaultMainId) {
@@ -866,16 +855,13 @@ export default function BieEskeSystemPage() {
                   <Input
                     value={String(transferGlasses)}
                     onChange={(e) => {
-                      const v = clampInt(Number(e.target.value), 0, transferMaxGlasses)
-                      transferGlassesEdited.current = true
-                      setTransferGlasses(v)
+                      setTransferGlasses(clampInt(Number(e.target.value), 0, transferMaxGlasses))
                     }}
                     inputMode="numeric"
                   />
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {transferMaxBoxes > 0 && transferBoxes * 15 !== transferGlasses
-                      ? `Merknad: ${transferBoxes} eske(r) × 15 = ${transferBoxes * 15} glass. Du har manuelt endret til ${transferGlasses} glass.`
-                      : "Velg fra lager: forvalgte tall er alt som finnes derfra. Du kan overstyre hvis du vil flytte færre glass enn det som finnes (f.eks. løse glass)."}
+                    Velg først «Fra»-lager – så setter vi antall esker og glass lik det som faktisk finnes derfra (fra siste kontroll).
+                    Flytt gjerne esker og løse glass i egne operasjoner. For å gi medlem 1 eske + 5 løse glass: flytt først 1 eske (også 15 glass), deretter flytt 5 løse glass i et nytt flytt.
                   </div>
                 </div>
                 <div>
