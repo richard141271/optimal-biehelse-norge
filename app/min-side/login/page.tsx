@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 
 type Mode = "login" | "forgot" | "forgot-sent"
 
@@ -50,37 +51,26 @@ export default function MinSideLoginPage() {
     setSuksess(null)
     setLoading(true)
     try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 20000)
-
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, next: nextParam }),
-        cache: "no-store",
-        signal: controller.signal,
-      })
-      clearTimeout(timeout)
-
-      const payload = (await res.json().catch(() => ({}))) as {
-        ok?: boolean
-        feil?: string
-        next?: string
-      }
-
-      if (!res.ok || !payload.ok) {
-        setFeil(payload.feil ?? "Kunne ikke logge inn. Sjekk e-post og passord.")
+      const sb = createSupabaseBrowserClient()
+      if (!sb) {
+        setFeil("Innlogging er ikke konfigurert (mangler miljøvariabler).")
         return
       }
 
-      const target = payload.next && payload.next.startsWith("/") ? payload.next : nextParam
-      window.location.href = target
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        setFeil("Innlogging tok for lang tid. Prøv igjen.")
-      } else {
-        setFeil("Kunne ikke logge inn. Prøv igjen.")
+      const { data, error } = await sb.auth.signInWithPassword({ email, password })
+      if (error || !data?.session) {
+        const msg = String(error?.message || "").trim()
+        setFeil(
+          msg && /invalid|password|email/i.test(msg)
+            ? "Kunne ikke logge inn. Sjekk e-post og passord."
+            : msg || "Kunne ikke logge inn. Sjekk e-post og passord."
+        )
+        return
       }
+
+      window.location.href = nextParam
+    } catch {
+      setFeil("Kunne ikke logge inn. Prøv igjen.")
     } finally {
       setLoading(false)
     }
