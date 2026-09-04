@@ -130,6 +130,7 @@ export default function BieEskeSystemPage() {
   const [transferBoxes, setTransferBoxes] = useState(0)
   const [transferGlasses, setTransferGlasses] = useState(0)
   const lastAutoTransferGlasses = useRef(0)
+  const transferGlassesEdited = useRef(false)
   const [transferNote, setTransferNote] = useState("")
 
   const [deployFromPerson, setDeployFromPerson] = useState("")
@@ -243,14 +244,59 @@ export default function BieEskeSystemPage() {
 
   const defaultMainId = useMemo(() => warehouses.main[0]?.id ?? "", [warehouses.main])
 
+  const warehouseFromBalances = useMemo(() => {
+    if (api.type !== "ready") return { boxes: 0, glasses: 0 }
+    const l = api.lagre.find((x) => x.id === transferFrom)
+    if (!l) return { boxes: 0, glasses: 0 }
+    const b = l.balances ?? {}
+    return {
+      boxes: Math.max(0, Math.trunc(Number(b["bie_eske"] ?? 0))),
+      glasses: Math.max(0, Math.trunc(Number(b["glass"] ?? 0))),
+    }
+  }, [api, transferFrom])
+
+  const transferMaxBoxes = warehouseFromBalances.boxes
+  const transferMaxGlasses = warehouseFromBalances.glasses
+
+  const onChangeTransferFrom = useCallback((id: string) => {
+    setTransferFrom(id)
+    transferGlassesEdited.current = false
+    if (api.type !== "ready") return
+    const l = api.lagre.find((x) => x.id === id)
+    if (!l) {
+      setTransferBoxes(0)
+      setTransferGlasses(0)
+      lastAutoTransferGlasses.current = 0
+      return
+    }
+    const b = l.balances ?? {}
+    const currBoxes = Math.max(0, Math.trunc(Number(b["bie_eske"] ?? 0)))
+    const currGlass = Math.max(0, Math.trunc(Number(b["glass"] ?? 0)))
+    setTransferBoxes(currBoxes)
+    setTransferGlasses(currGlass)
+    lastAutoTransferGlasses.current = currGlass
+  }, [api])
+
+  const onChangeTransferBoxes = useCallback((rawBoxes: number) => {
+    const maxB = clampInt(transferMaxBoxes, 0, 1_000_000)
+    const boxes = clampInt(rawBoxes, 0, maxB)
+    setTransferBoxes(boxes)
+    if (!transferGlassesEdited.current) {
+      const proposed = boxes * 15
+      const auto = Math.min(proposed, transferMaxGlasses)
+      lastAutoTransferGlasses.current = auto
+      setTimeout(() => setTransferGlasses(auto), 0)
+    }
+  }, [transferMaxBoxes, transferMaxGlasses])
+
   useEffect(() => {
     if (!adjustLagerId && defaultMainId) {
       setTimeout(() => setAdjustLagerId(defaultMainId), 0)
     }
     if (!transferFrom && defaultMainId) {
-      setTimeout(() => setTransferFrom(defaultMainId), 0)
+      setTimeout(() => onChangeTransferFrom(defaultMainId), 0)
     }
-  }, [adjustLagerId, defaultMainId, transferFrom])
+  }, [adjustLagerId, defaultMainId, onChangeTransferFrom, transferFrom])
 
   const openLocation = useCallback(async (id: string) => {
     const nextId = String(id ?? "").trim()
@@ -779,7 +825,7 @@ export default function BieEskeSystemPage() {
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label>Fra</Label>
-                  <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={transferFrom} onChange={(e) => setTransferFrom(e.target.value)}>
+                  <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={transferFrom} onChange={(e) => onChangeTransferFrom(e.target.value)}>
                     <option value="" disabled>
                       Velg…
                     </option>
@@ -806,34 +852,30 @@ export default function BieEskeSystemPage() {
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 <div>
-                  <Label>Antall esker</Label>
+                  <Label>Antall esker (maks {transferMaxBoxes})</Label>
                   <Input
                     value={String(transferBoxes)}
                     onChange={(e) => {
-                      const v = clampInt(Number(e.target.value), 0, 1_000_000)
-                      setTransferBoxes(v)
-                      const auto = v * 15
-                      if (lastAutoTransferGlasses.current === transferGlasses) {
-                        lastAutoTransferGlasses.current = auto
-                        setTimeout(() => setTransferGlasses(auto), 0)
-                      } else {
-                        lastAutoTransferGlasses.current = auto
-                      }
+                      onChangeTransferBoxes(Number(e.target.value))
                     }}
                     inputMode="numeric"
                   />
                 </div>
                 <div>
-                  <Label>Antall glass</Label>
+                  <Label>Antall glass (maks {transferMaxGlasses})</Label>
                   <Input
                     value={String(transferGlasses)}
                     onChange={(e) => {
-                      setTransferGlasses(clampInt(Number(e.target.value), 0, 1_000_000))
+                      const v = clampInt(Number(e.target.value), 0, transferMaxGlasses)
+                      transferGlassesEdited.current = true
+                      setTransferGlasses(v)
                     }}
                     inputMode="numeric"
                   />
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Standard: esker × 15. Overskriv hvis esker er delvis tomme.
+                    {transferMaxBoxes > 0 && transferBoxes * 15 !== transferGlasses
+                      ? `Merknad: ${transferBoxes} eske(r) × 15 = ${transferBoxes * 15} glass. Du har manuelt endret til ${transferGlasses} glass.`
+                      : "Velg fra lager: forvalgte tall er alt som finnes derfra. Du kan overstyre hvis du vil flytte færre glass enn det som finnes (f.eks. løse glass)."}
                   </div>
                 </div>
                 <div>
@@ -843,7 +885,9 @@ export default function BieEskeSystemPage() {
               </div>
               <div className="mt-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                 <div className="text-xs text-muted-foreground">
-                  Esker og glass flyttes uavhengig. Standard setter 1 eske = 15 glass, men kan endres for delvis tomme esker.
+                  {transferFrom
+                    ? `Saldo på fra-lager: ${transferMaxBoxes} esker, ${transferMaxGlasses} glass.`
+                    : "Velg fra-lager for å se saldo og standard-verdier."}
                 </div>
                 <Button onClick={onTransfer} disabled={busy}>
                   Flytt

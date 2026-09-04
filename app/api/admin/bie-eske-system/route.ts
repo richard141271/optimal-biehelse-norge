@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import { hasPermission, normalizeRole } from "@/lib/roller"
+import { canTransferMainWarehouse } from "@/lib/roller"
 import { arkiverTilMediaBibliotek } from "@/lib/media-bibliotek-arkiv"
 
 export const dynamic = "force-dynamic"
@@ -651,15 +652,28 @@ export async function POST(request: Request) {
     if (!fromId || !toId) return NextResponse.json({ ok: false, feil: "Mangler lager." }, { status: 400 })
     if (fromId === toId) return NextResponse.json({ ok: false, feil: "Fra og til kan ikke være samme lager." }, { status: 400 })
 
-    const { data: kinds, error: kindErr } = await admin.from("lek_v2_lager").select("id, kind").in("id", [fromId, toId]).limit(2)
+    const { data: kinds, error: kindErr } = await admin.from("lek_v2_lager").select("id, kind, name").in("id", [fromId, toId]).limit(2)
     if (kindErr) {
       const msg = String((kindErr as { message?: string } | null)?.message ?? "")
       return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente lager." }, { status: isSchemaError(msg) ? 500 : 400 })
     }
     const rows = (kinds ?? []) as Array<Record<string, unknown>>
-    const fromKind = String(rows.find((r) => String(r.id ?? "") === fromId)?.kind ?? "")
-    const toKind = String(rows.find((r) => String(r.id ?? "") === toId)?.kind ?? "")
+    const fromRow = rows.find((r) => String(r.id ?? "") === fromId)
+    const toRow = rows.find((r) => String(r.id ?? "") === toId)
+    const fromKind = String(fromRow?.kind ?? "")
+    const toKind = String(toRow?.kind ?? "")
+    const fromName = String(fromRow?.name ?? fromId)
+    const toName = String(toRow?.name ?? toId)
     if (!fromKind || !toKind) return NextResponse.json({ ok: false, feil: "Lager finnes ikke." }, { status: 404 })
+
+    const fromMain = fromKind === "main"
+    const toMain = toKind === "main"
+    if ((fromMain || toMain) && !canTransferMainWarehouse(gate.role)) {
+      const msg = fromMain
+        ? `Du har ikke tilgang til å ta glass/esker ut av hovedlager (${fromName}). Kun superbruker, admin og styret kan gjøre det.`
+        : `Du har ikke tilgang til å legge glass/esker inn i hovedlager (${toName}). Kun superbruker, admin og styret kan gjøre det.`
+      return NextResponse.json({ ok: false, feil: msg }, { status: 403 })
+    }
 
     const rawBoxes = toInt(form.get("boxes"))
     const rawGlasses = toInt(form.get("glasses"))
@@ -685,15 +699,22 @@ export async function POST(request: Request) {
     const currFromBoxes = Math.max(0, Math.trunc(Number((saldo.get(fromId) ?? {})["bie_eske"] ?? 0)))
     const currFromGlass = Math.max(0, Math.trunc(Number((saldo.get(fromId) ?? {})["glass"] ?? 0)))
 
+    if (currFromBoxes <= 0 && currFromGlass <= 0) {
+      return NextResponse.json(
+        { ok: false, feil: `Kilde-lageret ${fromName} er tomt. Det finnes ingenting å flytte derfra.` },
+        { status: 400 }
+      )
+    }
+
     if (boxes > 0 && currFromBoxes < boxes) {
       return NextResponse.json(
-        { ok: false, feil: `Ikke nok esker på lager (har ${currFromBox}, trenger ${boxes}).` },
+        { ok: false, feil: `Ikke nok esker på lager (har ${currFromBox}, trenger ${boxes}) i ${fromName}.` },
         { status: 400 }
       )
     }
     if (glasses > 0 && currFromGlass < glasses) {
       return NextResponse.json(
-        { ok: false, feil: `Ikke nok glass på lager (har ${currFromGlass}, trenger ${glasses}).` },
+        { ok: false, feil: `Ikke nok glass på lager (har ${currFromGlass}, trenger ${glasses}) i ${fromName}.` },
         { status: 400 }
       )
     }

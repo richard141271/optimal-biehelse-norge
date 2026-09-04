@@ -119,6 +119,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "manage_finance",
     "manage_projects",
     "manage_lottery",
+    "manage_bie_eske",
   ],
   nestleder: [
     "admin_home",
@@ -130,6 +131,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "manage_campaigns",
     "view_finance",
     "manage_projects",
+    "manage_bie_eske",
   ],
   kasserer: [
     "admin_home",
@@ -138,8 +140,9 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "view_finance",
     "manage_finance",
     "manage_finance_settings",
+    "manage_bie_eske",
   ],
-  sekretaer: ["admin_home", "view_members", "send_member_email", "manage_projects"],
+  sekretaer: ["admin_home", "view_members", "send_member_email", "manage_projects", "manage_bie_eske"],
   medlemsansvarlig: [
     "admin_home",
     "view_members",
@@ -148,6 +151,7 @@ const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     "mark_membership_payment",
     "send_member_email",
     "manage_campaigns",
+    "manage_bie_eske",
   ],
   kursleder: ["admin_home", "view_members", "send_member_email"],
   teamleder: ["admin_home", "manage_bie_eske"],
@@ -218,4 +222,20 @@ export function canAccessAdminPath(pathname: string, role: string | null | undef
     return permissions.manage_bie_eske
   }
   return true
+}
+
+export function canTransferMainWarehouse(role: string | null | undefined): boolean {
+  const r = normalizeRole(role)
+  switch (r) {
+    case "superadmin":
+    case "admin":
+    case "styreleder":
+    case "nestleder":
+    case "kasserer":
+    case "sekretaer":
+    case "medlemsansvarlig":
+      return true
+    default:
+      return false
+  }
 }
