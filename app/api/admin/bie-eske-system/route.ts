@@ -563,7 +563,7 @@ export async function GET(request: Request) {
     })
     .filter((m) => Boolean(m.lagerId))
 
-  return NextResponse.json({ ok: true, role: gate.role, lagre: enriched, locations, totals, members, warning })
+  return NextResponse.json({ ok: true, role: gate.role, email: gate.email, lagre: enriched, locations, totals, members, warning })
 }
 
 export async function POST(request: Request) {

@@ -79,6 +79,7 @@ type ApiState =
   | {
       type: "ready"
       role: string
+      email: string
       lagre: Lager[]
       locations: Lager[]
       members: MedlemPersonlager[]
@@ -182,6 +183,7 @@ export default function BieEskeSystemPage() {
       setApi({
         type: "ready",
         role: String(json.role ?? ""),
+        email: String(json.email ?? ""),
         lagre: (json.lagre as Lager[]) ?? [],
         locations: (json.locations as Lager[]) ?? [],
         members: (json.members as MedlemPersonlager[]) ?? [],
@@ -256,6 +258,89 @@ export default function BieEskeSystemPage() {
   const transferMaxBoxes = warehouseFromBalances.boxes
   const transferMaxGlasses = warehouseFromBalances.glasses
 
+  const controlLocationBalances = useMemo(() => {
+    if (!locationDetails) return { boxes: 0, glasses: 0 }
+    const b = locationDetails.balances ?? {}
+    return {
+      boxes: Math.max(0, Math.trunc(Number(b["bie_eske"] ?? 0))),
+      glasses: Math.max(0, Math.trunc(Number(b["glass"] ?? 0))),
+    }
+  }, [locationDetails])
+
+  const controlFromBalances = useMemo(() => {
+    if (api.type !== "ready" || !controlFromLagerId) return { boxes: 0, glasses: 0 }
+    const l = api.lagre.find((x) => x.id === controlFromLagerId)
+    if (!l) return { boxes: 0, glasses: 0 }
+    const b = l.balances ?? {}
+    return {
+      boxes: Math.max(0, Math.trunc(Number(b["bie_eske"] ?? 0))),
+      glasses: Math.max(0, Math.trunc(Number(b["glass"] ?? 0))),
+    }
+  }, [api, controlFromLagerId])
+
+  const controlFromName = useMemo(() => {
+    if (api.type !== "ready" || !controlFromLagerId) return ""
+    const l = api.lagre.find((x) => x.id === controlFromLagerId)
+    if (!l) return ""
+    return String(l.name ?? "")
+  }, [api, controlFromLagerId])
+
+  const controlPreview = useMemo(() => {
+    const locBoxesNow = controlLocationBalances.boxes
+    const locGlassesNow = controlLocationBalances.glasses
+    const filled = clampInt(controlFilledAdded, 0, 1_000_000)
+    const collected = clampInt(controlCollectedGlasses, 0, 1_000_000)
+    const pickedUp = Boolean(controlPickedUp)
+    const leftTarget = clampInt(controlGlassesLeft, 0, 1_000_000)
+
+    let fromGlassDelta = 0
+    let locGlassDelta = 0
+    let fromBoxesDelta = 0
+    let locBoxesDelta = 0
+
+    if (filled > 0) {
+      fromGlassDelta -= filled
+      locGlassDelta += filled
+    }
+    if (collected > 0) {
+      fromGlassDelta += collected
+      locGlassDelta -= collected
+    }
+
+    let locIntermediateGlass = locGlassesNow + locGlassDelta
+    const countDelta = leftTarget - locIntermediateGlass
+    locGlassDelta += countDelta
+
+    const pickedUpBoxes = pickedUp ? Math.min(locBoxesNow, 1) : 0
+    if (pickedUpBoxes > 0) {
+      fromBoxesDelta += pickedUpBoxes
+      locBoxesDelta -= pickedUpBoxes
+    }
+
+    const finalLocGlasses = Math.max(0, locGlassesNow + locGlassDelta)
+    const finalLocBoxes = Math.max(0, locBoxesNow + locBoxesDelta)
+    const finalFromGlasses = Math.max(0, controlFromBalances.glasses + fromGlassDelta)
+    const finalFromBoxes = Math.max(0, controlFromBalances.boxes + fromBoxesDelta)
+
+    return {
+      locBefore: { boxes: locBoxesNow, glasses: locGlassesNow },
+      fromBefore: { boxes: controlFromBalances.boxes, glasses: controlFromBalances.glasses },
+      locAfter: { boxes: finalLocBoxes, glasses: finalLocGlasses },
+      fromAfter: { boxes: finalFromBoxes, glasses: finalFromGlasses },
+      filled,
+      collected,
+      pickedUpBoxes,
+      countDelta,
+    }
+  }, [
+    controlLocationBalances,
+    controlFromBalances,
+    controlFilledAdded,
+    controlCollectedGlasses,
+    controlPickedUp,
+    controlGlassesLeft,
+  ])
+
   const onChangeTransferFrom = useCallback((id: string) => {
     setTransferFrom(id)
     if (api.type !== "ready") return
@@ -314,7 +399,15 @@ export default function BieEskeSystemPage() {
       setControlComment("")
       setControlImages([])
       const responsible = String((json.location as Lager | null)?.responsible_lager_id ?? "").trim()
-      setControlFromLagerId(responsible)
+      const defaultFromLager = (() => {
+        const currentEmail = api.type === "ready" ? String(api.email ?? "").trim().toLowerCase() : ""
+        if (currentEmail && api.type === "ready" && api.members) {
+          const me = api.members.find((m) => String(m.epost ?? "").trim().toLowerCase() === currentEmail)
+          if (me && me.lagerId) return me.lagerId
+        }
+        return responsible
+      })()
+      setControlFromLagerId(defaultFromLager)
       setEditingLocation(false)
       setEditLocName(String((json.location as Lager | null)?.name ?? ""))
       setEditLocType(String((json.location as Lager | null)?.location_type ?? ""))
@@ -326,7 +419,7 @@ export default function BieEskeSystemPage() {
       setBusy(false)
       setMsg("Kunne ikke åpne lokasjon.")
     }
-  }, [busy, requestGps])
+  }, [api, busy, requestGps])
 
   const postForm = useCallback(async (fd: FormData) => {
     const res = await fetch("/api/admin/bie-eske-system", { method: "POST", body: fd })
@@ -1200,37 +1293,94 @@ export default function BieEskeSystemPage() {
                     ) : null}
                   </div>
 
-                  <div className="rounded-lg border bg-background p-4">
-                    <div className="text-sm font-medium">Oppfølging / kontroll</div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      <div>
-                        <Label>Glass igjen</Label>
-                        <Input
-                          value={String(controlGlassesLeft)}
-                          onChange={(e) => {
-                            setControlGlassesManual(true)
-                            setControlGlassesLeft(clampInt(Number(e.target.value), 0, 1_000_000))
-                          }}
-                          inputMode="numeric"
-                        />
+                  <div className="rounded-lg border-2 border-green-600/40 bg-background p-4 shadow">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="text-base font-semibold">📋 KONTROLL</div>
+                      {controlFromName ? (
+                        <div className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                          Utfører: <span className="font-medium text-foreground">{controlFromName}</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="mb-4 rounded-lg border bg-card p-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium">Nåværende saldo på lokasjonen</div>
                       </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {controlPreview.locBefore.boxes} esker · {controlPreview.locBefore.glasses} glass
+                      </div>
+                    </div>
+
+                    <div className="mb-4 space-y-2">
+                      <Label className="text-sm font-semibold">📸 Ta bilde av esken (valgfri, men anbefalt)</Label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        capture="environment"
+                        onChange={(e) => {
+                          pickImages(e.currentTarget.files, setControlImages)
+                          e.currentTarget.value = ""
+                        }}
+                        className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-green-600 file:px-5 file:py-3 text-sm font-semibold file:text-white hover:file:bg-green-700"
+                      />
+                      {controlImages.length ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span className="font-medium text-green-700">{controlImages.slice(0, 3).length} bilde(r) valgt</span>
+                          {controlImages.slice(0, 3).map((f) => (
+                            <span key={f.name} className="rounded-md bg-muted px-2 py-0.5">
+                              {f.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
                       <div>
-                        <Label>Påfylt (antall)</Label>
+                        <Label>Påfylt (antall glass du legger ut)</Label>
                         <Input
                           value={String(controlFilledAdded)}
                           onChange={(e) => {
-                            const nextFilled = clampInt(Number(e.target.value), 0, 1000)
+                            const nextFilled = clampInt(Number(e.target.value), 0, 1_000_000)
                             setControlFilledAdded(nextFilled)
-                            if (!controlGlassesManual) {
-                              setControlGlassesLeft(clampInt(controlBaseGlasses + nextFilled - clampInt(controlCollectedGlasses, 0, 1_000_000), 0, 1_000_000))
-                            }
+                            setControlGlassesManual(false)
+                            const nextLeft = clampInt(
+                              controlBaseGlasses + nextFilled - clampInt(controlCollectedGlasses, 0, 1_000_000),
+                              0,
+                              1_000_000
+                            )
+                            setControlGlassesLeft(nextLeft)
                           }}
                           inputMode="numeric"
                         />
                       </div>
                       <div>
-                        <Label>Lager/person (besøk)</Label>
-                        <select className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" value={controlFromLagerId} onChange={(e) => setControlFromLagerId(e.target.value)}>
+                        <Label>Glass hentes inn (tar med deg)</Label>
+                        <Input
+                          value={String(controlCollectedGlasses)}
+                          onChange={(e) => {
+                            const nextCollected = clampInt(Number(e.target.value), 0, 1_000_000)
+                            setControlCollectedGlasses(nextCollected)
+                            setControlGlassesManual(false)
+                            const nextLeft = clampInt(
+                              controlBaseGlasses + clampInt(controlFilledAdded, 0, 1_000_000) - nextCollected,
+                              0,
+                              1_000_000
+                            )
+                            setControlGlassesLeft(nextLeft)
+                          }}
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div>
+                        <Label>Lager/person (utfører)</Label>
+                        <select
+                          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm"
+                          value={controlFromLagerId}
+                          onChange={(e) => setControlFromLagerId(e.target.value)}
+                        >
                           <option value="">Velg…</option>
                           {api.lagre
                             .filter((l) => String(l.kind ?? "") !== "location")
@@ -1242,24 +1392,26 @@ export default function BieEskeSystemPage() {
                         </select>
                       </div>
                     </div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <div>
-                        <Label>Glass hentes inn</Label>
+                        <Label>Glass igjen (etter påfyll/innsamling)</Label>
                         <Input
-                          value={String(controlCollectedGlasses)}
+                          value={String(controlGlassesLeft)}
                           onChange={(e) => {
-                            const nextCollected = clampInt(Number(e.target.value), 0, 1_000_000)
-                            setControlCollectedGlasses(nextCollected)
-                            if (!controlGlassesManual) {
-                              setControlGlassesLeft(clampInt(controlBaseGlasses + clampInt(controlFilledAdded, 0, 1000) - nextCollected, 0, 1_000_000))
-                            }
+                            setControlGlassesManual(true)
+                            setControlGlassesLeft(clampInt(Number(e.target.value), 0, 1_000_000))
                           }}
                           inputMode="numeric"
                         />
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {controlGlassesManual
+                            ? "Du har manuelt justert dette tallet (etter bildekontroll)."
+                            : "Auto-beregnet. Trykk på feltet hvis bildet viser et annet antall."}
+                        </div>
                       </div>
-                      <div className="sm:col-span-2">
-                        <Label>Eske</Label>
-                        <div className="mt-2 flex items-center gap-2">
+                      <div className="rounded-md bg-muted p-3">
+                        <div className="flex items-start gap-2">
                           <input
                             id="pickedUp"
                             type="checkbox"
@@ -1268,45 +1420,81 @@ export default function BieEskeSystemPage() {
                               const next = Boolean(e.target.checked)
                               setControlPickedUp(next)
                               if (next) {
-                                const prevLeft = clampInt(controlGlassesLeft, 0, 1_000_000)
-                                if (controlCollectedGlasses === 0 && prevLeft > 0) setControlCollectedGlasses(prevLeft)
+                                setControlCollectedGlasses(0)
                                 setControlGlassesLeft(0)
+                                setControlGlassesManual(false)
+                              } else {
+                                setControlGlassesManual(false)
+                                const nextLeft = clampInt(
+                                  controlBaseGlasses + clampInt(controlFilledAdded, 0, 1_000_000) - clampInt(controlCollectedGlasses, 0, 1_000_000),
+                                  0,
+                                  1_000_000
+                                )
+                                setControlGlassesLeft(nextLeft)
                               }
                             }}
-                            className="h-4 w-4 rounded border"
+                            className="mt-0.5 h-4 w-4 rounded border"
                           />
                           <label htmlFor="pickedUp" className="text-sm">
-                            Hentet inn (esken tas med)
+                            <span className="font-medium">✅ Hentet inn (hele esken tas med)</span>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              Eske + resterende glass går til ditt lager. Lokasjonen blir tom og settes inaktiv.
+                            </div>
                           </label>
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground">Når hentet inn settes glass igjen automatisk til 0.</div>
                       </div>
                     </div>
+
                     <div className="mt-3">
                       <Label>Kommentar</Label>
                       <Input value={controlComment} onChange={(e) => setControlComment(e.target.value)} placeholder="Valgfri" />
                     </div>
-                    <div className="mt-3">
-                      <Label>Bilde ved kontroll</Label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={(e) => {
-                          pickImages(e.currentTarget.files, setControlImages)
-                          e.currentTarget.value = ""
-                        }}
-                        className="mt-2 block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-muted file:px-4 file:py-2 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
-                      />
-                      {controlImages.length ? (
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          Valgt: {controlImages.slice(0, 3).map((f) => f.name).join(", ")}
+
+                    <div className="mt-4 rounded-lg border-2 border-amber-200 bg-amber-50 p-3 dark:bg-amber-950/20 dark:border-amber-800">
+                      <div className="text-sm font-semibold">🔍 Forhåndsvisning av endringer</div>
+                      <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+                        <div className="rounded-md border bg-background p-2">
+                          <div className="font-medium">📍 Lokasjonen</div>
+                          <div className="text-muted-foreground">
+                            Før: {controlPreview.locBefore.boxes} esker · {controlPreview.locBefore.glasses} glass
+                          </div>
+                          <div className="text-sm font-semibold text-green-700">
+                            Etter: {controlPreview.locAfter.boxes} esker · {controlPreview.locAfter.glasses} glass
+                          </div>
+                          <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+                            {controlPreview.filled > 0 ? <div>+{controlPreview.filled} glass (påfylt)</div> : null}
+                            {controlPreview.collected > 0 ? <div>−{controlPreview.collected} glass (hentet inn)</div> : null}
+                            {controlPreview.countDelta !== 0 ? (
+                              <div>
+                                {controlPreview.countDelta > 0 ? "+" : ""}
+                                {controlPreview.countDelta} glass (justering pga. bilde)
+                              </div>
+                            ) : null}
+                            {controlPreview.pickedUpBoxes > 0 ? <div>−{controlPreview.pickedUpBoxes} eske (hentet inn)</div> : null}
+                          </div>
                         </div>
-                      ) : null}
+                        <div className="rounded-md border bg-background p-2">
+                          <div className="font-medium">🧑 {controlFromName || "Din lager"}</div>
+                          <div className="text-muted-foreground">
+                            Før: {controlPreview.fromBefore.boxes} esker · {controlPreview.fromBefore.glasses} glass
+                          </div>
+                          <div className="text-sm font-semibold text-green-700">
+                            Etter: {controlPreview.fromAfter.boxes} esker · {controlPreview.fromAfter.glasses} glass
+                          </div>
+                          <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+                            {controlPreview.filled > 0 ? <div>−{controlPreview.filled} glass (gitt til lokasjonen)</div> : null}
+                            {controlPreview.collected > 0 ? <div>+{controlPreview.collected} glass (hentet hjem)</div> : null}
+                            {controlPreview.pickedUpBoxes > 0 ? (
+                              <div>+{controlPreview.pickedUpBoxes} eske · +{controlPreview.locBefore.glasses} glass (avhentet)</div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
                     </div>
+
                     <div className="mt-4">
-                      <Button onClick={onControl} disabled={busy}>
-                        Lagre kontroll
+                      <Button onClick={onControl} disabled={busy} size="lg" className="w-full sm:w-auto">
+                        💾 Lagre kontroll
                       </Button>
                     </div>
                   </div>
