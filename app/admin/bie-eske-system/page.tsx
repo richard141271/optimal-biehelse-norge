@@ -144,6 +144,7 @@ export default function BieEskeSystemPage() {
 
   const [selectedLocationId, setSelectedLocationId] = useState<string>("")
   const [locationDetails, setLocationDetails] = useState<LocationDetails | null>(null)
+  const [controlModalLocationId, setControlModalLocationId] = useState<string>("")
   const [editingLocation, setEditingLocation] = useState(false)
   const [editLocName, setEditLocName] = useState("")
   const [editLocType, setEditLocType] = useState("")
@@ -604,7 +605,13 @@ export default function BieEskeSystemPage() {
     setControlImages([])
     setMsg("✅ Kontroll lagret.")
     await fetchOverview()
+    const modalOpenStill = Boolean(controlModalLocationId)
     if (locationOpenRef.current) await openLocation(locationOpenRef.current)
+    if (modalOpenStill) {
+      setTimeout(() => {
+        setControlModalLocationId("")
+      }, 900)
+    }
     setTimeout(() => setMsg(null), 1400)
   }, [
     busy,
@@ -614,6 +621,7 @@ export default function BieEskeSystemPage() {
     controlFromLagerId,
     controlGlassesLeft,
     controlImages,
+    controlModalLocationId,
     controlPickedUp,
     fetchOverview,
     gps,
@@ -1187,28 +1195,53 @@ export default function BieEskeSystemPage() {
                         const respName = respId ? lagerNameById.get(respId) ?? respId : "—"
                         const comment = String(l.last_comment ?? "").trim()
                         return (
-                          <button
+                          <div
                             key={l.id}
-                            type="button"
-                            className="rounded-lg border bg-card p-3 text-left hover:bg-muted/40"
-                            onClick={() => {
-                              setLocationsOpen(false)
-                              openLocation(l.id)
-                            }}
-                            disabled={busy}
+                            className="rounded-lg border bg-card p-3"
                           >
                             <div className="flex items-start justify-between gap-3">
-                              <div className="text-sm font-medium">{String(l.name ?? "")}</div>
-                              <div className="text-xs text-muted-foreground">{formatWhen(l.updated_at)}</div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-medium">{String(l.name ?? "")}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {String(l.location_type ?? "").trim() || "Ukjent type"} · {boxes} esker · {glass} glass
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {respName} · {String(l.address ?? "").trim() || "Ukjent adresse"}
+                                </div>
+                                {comment ? <div className="mt-2 text-sm">{comment}</div> : null}
+                              </div>
+                              <div className="text-xs text-muted-foreground shrink-0">{formatWhen(l.updated_at)}</div>
                             </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {String(l.location_type ?? "").trim() || "Ukjent type"} · {boxes} esker · {glass} glass
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setControlModalLocationId(l.id)
+                                  setLocationsOpen(false)
+                                  openLocation(l.id)
+                                }}
+                                disabled={busy}
+                                size="sm"
+                                className="flex-1 min-w-[160px] bg-green-600 hover:bg-green-700 text-white"
+                              >
+                                📋 KONTROLL
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setLocationsOpen(false)
+                                  openLocation(l.id)
+                                }}
+                                disabled={busy}
+                                size="sm"
+                              >
+                                Mer
+                              </Button>
                             </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {respName} · {String(l.address ?? "").trim() || "Ukjent adresse"}
-                            </div>
-                            {comment ? <div className="mt-2 text-sm">{comment}</div> : null}
-                          </button>
+                          </div>
                         )
                       })}
                       {!filteredSortedLocations.length ? <div className="p-3 text-sm text-muted-foreground">Ingen treff.</div> : null}
@@ -1223,21 +1256,43 @@ export default function BieEskeSystemPage() {
                     .filter((l) => l.active !== false)
                     .slice(0, 12)
                     .map((l) => (
-                    <button
+                    <div
                       key={l.id}
-                      type="button"
-                      className="rounded-lg border bg-background p-3 text-left hover:bg-muted/40"
-                      onClick={() => openLocation(l.id)}
-                      disabled={busy}
+                      className="rounded-lg border bg-background p-3"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium">{String(l.name ?? "")}</div>
-                        <div className="text-xs text-muted-foreground">{formatWhen(l.updated_at)}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium">{String(l.name ?? "")}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {String(l.location_type ?? "").trim() || "Ukjent type"} · {balancesText(l)}
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground shrink-0">{formatWhen(l.updated_at)}</div>
                       </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {String(l.location_type ?? "").trim() || "Ukjent type"} · {balancesText(l)}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setControlModalLocationId(l.id)
+                            openLocation(l.id)
+                          }}
+                          disabled={busy}
+                          size="sm"
+                          className="flex-1 min-w-[140px] bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          📋 KONTROLL
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => openLocation(l.id)}
+                          disabled={busy}
+                          size="sm"
+                        >
+                          Mer
+                        </Button>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -1569,5 +1624,272 @@ export default function BieEskeSystemPage() {
         <div className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">{api.type === "loading" ? "Laster…" : "Klar."}</div>
       )}
     </div>
+
+    {controlModalLocationId && api.type === "ready" ? (
+      <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 backdrop-blur-sm sm:items-center p-0 sm:p-4" onClick={() => setControlModalLocationId("")}>
+        <div
+          className="w-full max-w-3xl bg-background sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[100vh] sm:max-h-[90vh]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="sticky top-0 z-10 border-b bg-background px-4 py-3 sm:px-5 sm:py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-lg font-bold flex items-center gap-2">
+                  📋 Kontroll
+                  <span className="rounded-md bg-green-100 px-2 py-0.5 text-sm text-green-800 dark:bg-green-900/40 dark:text-green-200">
+                    {selectedLocationName || "Lokasjon"}
+                  </span>
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Nåværende beholdning: {controlPreview.locBefore.boxes} esker · {controlPreview.locBefore.glasses} glass
+                  {controlFromName ? (
+                    <>
+                      {" · "}
+                      Utfører: <span className="font-medium text-foreground">{controlFromName}</span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setControlModalLocationId("")}
+                className="shrink-0 rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+                disabled={busy}
+              >
+                ✕ Lukk
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+            <div className="space-y-5">
+              <div className="rounded-xl border-2 border-green-500/30 bg-green-50/50 dark:bg-green-950/10 dark:border-green-700/40 p-4 sm:p-5">
+                <div className="mb-3 flex items-center gap-2">
+                  <Label className="text-base font-bold text-green-800 dark:text-green-300">📸 1. Ta bilde av esken FØR alt annet</Label>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  capture="environment"
+                  onChange={(e) => {
+                    pickImages(e.currentTarget.files, setControlImages)
+                    e.currentTarget.value = ""
+                  }}
+                  className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-lg file:border-0 file:bg-green-600 file:px-6 file:py-4 text-base font-bold file:text-white hover:file:bg-green-700 file:cursor-pointer cursor-pointer"
+                />
+                {controlImages.length ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-bold text-green-700 dark:text-green-300">
+                      {controlImages.slice(0, 3).length} bilde(r) tatt
+                    </span>
+                    {controlImages.slice(0, 3).map((f) => (
+                      <span key={f.name} className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                        {f.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Trykk på den grønne knappen over for å åpne kameraet på telefonen.
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border bg-background p-4 sm:p-5">
+                <div className="mb-3 text-base font-bold">2. Endre beholdningen</div>
+
+                <div className="grid gap-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label className="font-medium">➕ Legg til glass (Påfylt)</Label>
+                      <Input
+                        size={4}
+                        value={String(controlFilledAdded)}
+                        onChange={(e) => {
+                          const nextFilled = clampInt(Number(e.target.value), 0, 1_000_000)
+                          setControlFilledAdded(nextFilled)
+                          setControlGlassesManual(false)
+                          const nextLeft = clampInt(
+                            controlBaseGlasses + nextFilled - clampInt(controlCollectedGlasses, 0, 1_000_000),
+                            0,
+                            1_000_000
+                          )
+                          setControlGlassesLeft(nextLeft)
+                        }}
+                        inputMode="numeric"
+                        className="mt-2 h-12 text-lg"
+                      />
+                    </div>
+                    <div>
+                      <Label className="font-medium">➖ Ta med glass (Hentes inn delvis)</Label>
+                      <Input
+                        value={String(controlCollectedGlasses)}
+                        onChange={(e) => {
+                          const nextCollected = clampInt(Number(e.target.value), 0, 1_000_000)
+                          setControlCollectedGlasses(nextCollected)
+                          setControlGlassesManual(false)
+                          const nextLeft = clampInt(
+                            controlBaseGlasses + clampInt(controlFilledAdded, 0, 1_000_000) - nextCollected,
+                            0,
+                            1_000_000
+                          )
+                          setControlGlassesLeft(nextLeft)
+                        }}
+                        inputMode="numeric"
+                        className="mt-2 h-12 text-lg"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label className="font-medium">🧑 Lager/person som utfører</Label>
+                      <select
+                        className="mt-2 h-12 w-full rounded-md border bg-background px-3 text-base"
+                        value={controlFromLagerId}
+                        onChange={(e) => setControlFromLagerId(e.target.value)}
+                      >
+                        <option value="">Velg…</option>
+                        {api.lagre
+                          .filter((l) => String(l.kind ?? "") !== "location")
+                          .map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {String(l.name ?? "")} ({balancesText(l)})
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="font-medium">🔢 Glass igjen SIST (etter bildekontroll)</Label>
+                      <Input
+                        value={String(controlGlassesLeft)}
+                        onChange={(e) => {
+                          setControlGlassesManual(true)
+                          setControlGlassesLeft(clampInt(Number(e.target.value), 0, 1_000_000))
+                        }}
+                        inputMode="numeric"
+                        className="mt-2 h-12 text-lg font-bold"
+                      />
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {controlGlassesManual
+                          ? "✋ Manuelt justert (hvis bildet viste et annet tall)."
+                          : "🤖 Auto-beregnet. Endre hvis bildet ditt viser et annet antall."}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md bg-muted p-4">
+                    <div className="flex items-start gap-3">
+                      <input
+                        id="control-pickedup-modal"
+                        type="checkbox"
+                        checked={controlPickedUp}
+                        onChange={(e) => {
+                          const next = Boolean(e.target.checked)
+                          setControlPickedUp(next)
+                          if (next) {
+                            setControlCollectedGlasses(0)
+                            setControlGlassesLeft(0)
+                            setControlGlassesManual(false)
+                          } else {
+                            setControlGlassesManual(false)
+                            const nextLeft = clampInt(
+                              controlBaseGlasses + clampInt(controlFilledAdded, 0, 1_000_000) - clampInt(controlCollectedGlasses, 0, 1_000_000),
+                              0,
+                              1_000_000
+                            )
+                            setControlGlassesLeft(nextLeft)
+                          }
+                        }}
+                        className="mt-1 h-6 w-6 rounded border"
+                      />
+                      <label htmlFor="control-pickedup-modal" className="block flex-1">
+                        <span className="text-base font-bold">✅ HENTET INN (hele esken tas med)</span>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          Eske + ALLE resterende glass går til ditt lager ovenfor. Lokasjonen blir tom og inaktivert.
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="font-medium">Kommentar (valgfri)</Label>
+                    <Input value={controlComment} onChange={(e) => setControlComment(e.target.value)} placeholder="Hvorfor ble det forskjellig antall? annet?" className="mt-2" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 sm:p-5 dark:bg-amber-950/20 dark:border-amber-800">
+                <div className="text-base font-bold">🔍 3. Forhåndsvisning (FØR lagring!)</div>
+                <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                  <div className="rounded-lg border bg-background p-3">
+                    <div className="font-bold">📍 Lokasjonen</div>
+                    <div className="text-muted-foreground">
+                      Før: {controlPreview.locBefore.boxes} esker · {controlPreview.locBefore.glasses} glass
+                    </div>
+                    <div className="mt-1 text-lg font-bold text-green-700">
+                      Etter: {controlPreview.locAfter.boxes} esker · {controlPreview.locAfter.glasses} glass
+                    </div>
+                    <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                      {controlPreview.filled > 0 ? <div>✅ +{controlPreview.filled} glass (påfylt)</div> : null}
+                      {controlPreview.collected > 0 ? <div>➖ −{controlPreview.collected} glass (hentet inn)</div> : null}
+                      {controlPreview.countDelta !== 0 ? (
+                        <div>
+                          🔢 {controlPreview.countDelta > 0 ? "+" : ""}
+                          {controlPreview.countDelta} glass (justering)
+                        </div>
+                      ) : null}
+                      {controlPreview.pickedUpBoxes > 0 ? <div>📦 −{controlPreview.pickedUpBoxes} eske (hentet inn)</div> : null}
+                      {controlPreview.pickedUpGlass > 0 ? (
+                        <div>🥃 −{controlPreview.pickedUpGlass} glass (med esken)</div>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border bg-background p-3">
+                    <div className="font-bold">🧑 {controlFromName || "Lageret ditt"}</div>
+                    <div className="text-muted-foreground">
+                      Før: {controlPreview.fromBefore.boxes} esker · {controlPreview.fromBefore.glasses} glass
+                    </div>
+                    <div className="mt-1 text-lg font-bold text-green-700">
+                      Etter: {controlPreview.fromAfter.boxes} esker · {controlPreview.fromAfter.glasses} glass
+                    </div>
+                    <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                      {controlPreview.filled > 0 ? <div>➖ −{controlPreview.filled} glass (gitt til lokasjonen)</div> : null}
+                      {controlPreview.collected > 0 ? <div>✅ +{controlPreview.collected} glass (hentet hjem)</div> : null}
+                      {controlPreview.pickedUpBoxes > 0 ? (
+                        <div>📦 +{controlPreview.pickedUpBoxes} eske (avhentet)</div>
+                      ) : null}
+                      {controlPreview.pickedUpGlass > 0 ? (
+                        <div>🥃 +{controlPreview.pickedUpGlass} glass (med esken)</div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <button
+                  type="button"
+                  onClick={() => setControlModalLocationId("")}
+                  className="h-12 rounded-md border px-5 text-sm font-medium hover:bg-muted sm:order-1"
+                  disabled={busy}
+                >
+                  Avbryt / Lukk
+                </button>
+                <Button
+                  onClick={onControl}
+                  disabled={busy}
+                  size="lg"
+                  className="h-14 text-lg font-bold bg-green-600 hover:bg-green-700 text-white sm:order-2 w-full sm:w-auto px-8"
+                >
+                  💾 4. LAGRE KONTROLL
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null}
   )
 }
