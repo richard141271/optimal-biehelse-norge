@@ -310,11 +310,19 @@ export default function BieEskeSystemPage() {
     let locIntermediateGlass = locGlassesNow + locGlassDelta
     const countDelta = leftTarget - locIntermediateGlass
     locGlassDelta += countDelta
+    locIntermediateGlass = locGlassesNow + locGlassDelta
 
     const pickedUpBoxes = pickedUp ? Math.min(locBoxesNow, 1) : 0
+    let pickedUpGlass = 0
     if (pickedUpBoxes > 0) {
       fromBoxesDelta += pickedUpBoxes
       locBoxesDelta -= pickedUpBoxes
+      const remaining = Math.max(0, locIntermediateGlass)
+      if (remaining > 0) {
+        fromGlassDelta += remaining
+        locGlassDelta -= remaining
+        pickedUpGlass = remaining
+      }
     }
 
     const finalLocGlasses = Math.max(0, locGlassesNow + locGlassDelta)
@@ -330,6 +338,7 @@ export default function BieEskeSystemPage() {
       filled,
       collected,
       pickedUpBoxes,
+      pickedUpGlass,
       countDelta,
     }
   }, [
@@ -1471,6 +1480,9 @@ export default function BieEskeSystemPage() {
                               </div>
                             ) : null}
                             {controlPreview.pickedUpBoxes > 0 ? <div>−{controlPreview.pickedUpBoxes} eske (hentet inn)</div> : null}
+                            {controlPreview.pickedUpGlass > 0 ? (
+                              <div>−{controlPreview.pickedUpGlass} glass (hentet med esken)</div>
+                            ) : null}
                           </div>
                         </div>
                         <div className="rounded-md border bg-background p-2">
@@ -1485,7 +1497,10 @@ export default function BieEskeSystemPage() {
                             {controlPreview.filled > 0 ? <div>−{controlPreview.filled} glass (gitt til lokasjonen)</div> : null}
                             {controlPreview.collected > 0 ? <div>+{controlPreview.collected} glass (hentet hjem)</div> : null}
                             {controlPreview.pickedUpBoxes > 0 ? (
-                              <div>+{controlPreview.pickedUpBoxes} eske · +{controlPreview.locBefore.glasses} glass (avhentet)</div>
+                              <div>+{controlPreview.pickedUpBoxes} eske (avhentet)</div>
+                            ) : null}
+                            {controlPreview.pickedUpGlass > 0 ? (
+                              <div>+{controlPreview.pickedUpGlass} glass (med esken, avhentet)</div>
                             ) : null}
                           </div>
                         </div>

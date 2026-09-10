@@ -1097,10 +1097,11 @@ export async function POST(request: Request) {
     if (pickedUp) {
       const qty = Math.min(currLocBoxes, 1)
       if (qty <= 0) return NextResponse.json({ ok: false, feil: "Ingen eske på lokasjonen å hente inn." }, { status: 400 })
-      const dec = await applyDelta(admin, locationId, "bie_eske", -qty)
-      if (!dec.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-      const inc = await applyDelta(admin, fromLagerId, "bie_eske", qty)
-      if (!inc.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+
+      const decBox = await applyDelta(admin, locationId, "bie_eske", -qty)
+      if (!decBox.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager (eske)." }, { status: 400 })
+      const incBox = await applyDelta(admin, fromLagerId, "bie_eske", qty)
+      if (!incBox.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager (eske)." }, { status: 400 })
       pickedUpBoxes = qty
       movements.push({
         id: crypto.randomUUID(),
@@ -1114,6 +1115,28 @@ export async function POST(request: Request) {
         actor_epost: gate.email,
         actor_role: gate.role,
       })
+
+      const remainingGlass = Math.max(0, locGlass)
+      if (remainingGlass > 0) {
+        const decGlass = await applyDelta(admin, locationId, "glass", -remainingGlass)
+        if (!decGlass.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager (henting av gjenværende glass)." }, { status: 400 })
+        const incGlass = await applyDelta(admin, fromLagerId, "glass", remainingGlass)
+        if (!incGlass.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager (henting av gjenværende glass)." }, { status: 400 })
+        locGlass -= remainingGlass
+        movements.push({
+          id: crypto.randomUUID(),
+          created_at: nowIso,
+          from_lager_id: locationId,
+          to_lager_id: fromLagerId,
+          item: "glass",
+          qty: remainingGlass,
+          reason: "pickup_remaining",
+          note: comment ? `${comment} · Gjenværende glass ved avhenting` : "Gjenværende glass ved avhenting",
+          actor_epost: gate.email,
+          actor_role: gate.role,
+        })
+      }
+
       if (currLocBoxes - qty <= 0) {
         await admin.from("lek_v2_lager").update({ active: false, updated_at: nowIso } as unknown as never).eq("id", locationId)
       }
