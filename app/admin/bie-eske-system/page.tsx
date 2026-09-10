@@ -308,9 +308,6 @@ export default function BieEskeSystemPage() {
     }
 
     let locIntermediateGlass = locGlassesNow + locGlassDelta
-    const countDelta = leftTarget - locIntermediateGlass
-    locGlassDelta += countDelta
-    locIntermediateGlass = locGlassesNow + locGlassDelta
 
     const pickedUpBoxes = pickedUp ? Math.min(locBoxesNow, 1) : 0
     let pickedUpGlass = 0
@@ -322,7 +319,13 @@ export default function BieEskeSystemPage() {
         fromGlassDelta += remaining
         locGlassDelta -= remaining
         pickedUpGlass = remaining
+        locIntermediateGlass -= remaining
       }
+    }
+
+    const countDelta = leftTarget - locIntermediateGlass
+    if (countDelta !== 0) {
+      locGlassDelta += countDelta
     }
 
     const finalLocGlasses = Math.max(0, locGlassesNow + locGlassDelta)
