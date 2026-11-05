@@ -33,7 +33,7 @@ function hasAnySupabaseAuthCookie(request: NextRequest) {
   return false
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   if (

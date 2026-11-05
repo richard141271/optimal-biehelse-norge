@@ -1,50 +1,50 @@
-import { NextResponse } from "next/server"
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
-import { createClient, type SupabaseClient } from "@supabase/supabase-js"
-import { hasPermission, normalizeRole } from "@/lib/roller"
-import { canTransferMainWarehouse } from "@/lib/roller"
-import { arkiverTilMediaBibliotek } from "@/lib/media-bibliotek-arkiv"
+import { NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { hasPermission, normalizeRole } from "@/lib/roller";
+import { canTransferMainWarehouse } from "@/lib/roller";
+import { arkiverTilMediaBibliotek } from "@/lib/media-bibliotek-arkiv";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
-const bucket = "bie-eske-system"
+const bucket = "bie-eske-system";
 
 type Db = {
   public: {
     Tables: Record<
       string,
       {
-        Row: Record<string, unknown>
-        Insert: Record<string, unknown>
-        Update: Record<string, unknown>
-        Relationships: unknown[]
+        Row: Record<string, unknown>;
+        Insert: Record<string, unknown>;
+        Update: Record<string, unknown>;
+        Relationships: unknown[];
       }
-    >
+    >;
     Views: Record<
       string,
       {
-        Row: Record<string, unknown>
-        Relationships: unknown[]
+        Row: Record<string, unknown>;
+        Relationships: unknown[];
       }
-    >
+    >;
     Functions: Record<
       string,
       {
-        Args: Record<string, unknown>
-        Returns: unknown
+        Args: Record<string, unknown>;
+        Returns: unknown;
       }
-    >
-    Enums: Record<string, string>
-    CompositeTypes: Record<string, Record<string, unknown>>
-  }
-}
+    >;
+    Enums: Record<string, string>;
+    CompositeTypes: Record<string, Record<string, unknown>>;
+  };
+};
 
-type AdminClient = SupabaseClient<Db>
+type AdminClient = SupabaseClient<Db>;
 
 const schemaFeil =
   "Bie-Eske System mangler tabeller i Supabase. Kjør denne SQL-en i Supabase (SQL Editor), og prøv igjen:\n\n" +
-  "create extension if not exists \"pgcrypto\";\n" +
+  'create extension if not exists "pgcrypto";\n' +
   "create table if not exists public.lek_v2_lager (\n" +
   "  id uuid primary key default gen_random_uuid(),\n" +
   "  created_at timestamptz not null default now(),\n" +
@@ -99,78 +99,90 @@ const schemaFeil =
   "  actor_role text\n" +
   ");\n" +
   "create index if not exists lek_v2_lokasjon_hendelser_created_at_idx on public.lek_v2_lokasjon_hendelser (created_at desc);\n" +
-  "create index if not exists lek_v2_lokasjon_hendelser_location_created_at_idx on public.lek_v2_lokasjon_hendelser (location_lager_id, created_at desc);\n"
+  "create index if not exists lek_v2_lokasjon_hendelser_location_created_at_idx on public.lek_v2_lokasjon_hendelser (location_lager_id, created_at desc);\n";
 
 type Medlem = {
-  id: string
-  user_id: string | null
-  navn: string | null
-  epost: string | null
-  role: string | null
-  aktiv: boolean | null
-}
+  id: string;
+  user_id: string | null;
+  navn: string | null;
+  epost: string | null;
+  role: string | null;
+  aktiv: boolean | null;
+};
 
 function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function isSchemaError(msg: string) {
-  const m = msg.toLowerCase()
-  if (m.includes("42p01")) return true
-  if (m.includes("schema cache") && m.includes("lek_v2_")) return true
-  if (m.includes("relation") && m.includes("does not exist")) return true
-  if (m.includes("could not find the table")) return true
-  if (m.includes("not found")) return true
-  if (m.includes("does not exist")) return true
-  if (m.includes("column") && m.includes("lek_v2_")) return true
-  return false
+  const m = msg.toLowerCase();
+  if (m.includes("42p01")) return true;
+  if (m.includes("schema cache") && m.includes("lek_v2_")) return true;
+  if (m.includes("relation") && m.includes("does not exist")) return true;
+  if (m.includes("could not find the table")) return true;
+  if (m.includes("not found")) return true;
+  if (m.includes("does not exist")) return true;
+  if (m.includes("column") && m.includes("lek_v2_")) return true;
+  return false;
 }
 
 function toInt(v: unknown) {
-  const n = Number(String(v ?? "").trim())
-  if (!Number.isFinite(n)) return null
-  return Math.trunc(n)
+  const n = Number(String(v ?? "").trim());
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
 }
 
 function toNumber(v: unknown) {
-  const s = String(v ?? "").trim()
-  if (!s) return null
-  const n = Number(s.replace(",", "."))
-  return Number.isFinite(n) ? n : null
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  const n = Number(s.replace(",", "."));
+  return Number.isFinite(n) ? n : null;
 }
 
 function normalizeText(v: string) {
   return String(v ?? "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, " ")
+    .replace(/\s+/g, " ");
 }
 
 function roundCoord(v: number) {
-  return Math.round(v * 10_000) / 10_000
+  return Math.round(v * 10_000) / 10_000;
 }
 
-function makeDedupeKey(kind: string, name: string, lat: number | null, lng: number | null) {
-  const k = normalizeText(kind)
-  const n = normalizeText(name)
-  if (!k || !n) return ""
-  if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
-    return `${k}|${n}|${roundCoord(lat)},${roundCoord(lng)}`
+function makeDedupeKey(
+  kind: string,
+  name: string,
+  lat: number | null,
+  lng: number | null,
+) {
+  const k = normalizeText(kind);
+  const n = normalizeText(name);
+  if (!k || !n) return "";
+  if (
+    lat != null &&
+    lng != null &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng)
+  ) {
+    return `${k}|${n}|${roundCoord(lat)},${roundCoord(lng)}`;
   }
-  return `${k}|${n}`
+  return `${k}|${n}`;
 }
 
 function personKeyFromMember(m: Medlem) {
-  const uid = String(m.user_id ?? "").trim()
-  if (uid) return `user:${uid}`
-  const email = String(m.epost ?? "").trim().toLowerCase()
-  if (email) return `email:${email}`
-  return ""
+  const uid = String(m.user_id ?? "").trim();
+  if (uid) return `user:${uid}`;
+  const email = String(m.epost ?? "")
+    .trim()
+    .toLowerCase();
+  if (email) return `email:${email}`;
+  return "";
 }
 
 function personDedupeKeyFromMember(m: Medlem) {
-  const key = personKeyFromMember(m)
-  return key ? `person|${key}` : ""
+  const key = personKeyFromMember(m);
+  return key ? `person|${key}` : "";
 }
 
 async function fetchOperativeMembers(admin: AdminClient) {
@@ -178,14 +190,19 @@ async function fetchOperativeMembers(admin: AdminClient) {
     .from("medlemmer")
     .select("id, user_id, navn, epost, role, aktiv")
     .order("navn", { ascending: true })
-    .limit(2000)
+    .limit(2000);
 
   if (error) {
-    const msg = String((error as { message?: string } | null)?.message ?? "")
-    return { ok: false as const, feil: msg ? `Kunne ikke hente medlemmer: ${msg}` : "Kunne ikke hente medlemmer." }
+    const msg = String((error as { message?: string } | null)?.message ?? "");
+    return {
+      ok: false as const,
+      feil: msg
+        ? `Kunne ikke hente medlemmer: ${msg}`
+        : "Kunne ikke hente medlemmer.",
+    };
   }
 
-  const members = (data ?? []) as Array<Partial<Medlem>>
+  const members = (data ?? []) as Array<Partial<Medlem>>;
   const cleaned: Medlem[] = members
     .map((m) => ({
       id: String(m.id ?? "").trim(),
@@ -195,19 +212,22 @@ async function fetchOperativeMembers(admin: AdminClient) {
       role: m.role ? String(m.role).trim().toLowerCase() : null,
       aktiv: typeof m.aktiv === "boolean" ? m.aktiv : null,
     }))
-    .filter((m) => Boolean(m.id))
+    .filter((m) => Boolean(m.id));
 
-  return { ok: true as const, members: cleaned }
+  return { ok: true as const, members: cleaned };
 }
 
-async function syncPersonWarehousesFromMembers(admin: AdminClient, members: Medlem[]) {
-  const nowIso = new Date().toISOString()
+async function syncPersonWarehousesFromMembers(
+  admin: AdminClient,
+  members: Medlem[],
+) {
+  const nowIso = new Date().toISOString();
   const rows = members
     .map((m) => {
-      const dedupe = personDedupeKeyFromMember(m)
-      if (!dedupe) return null
-      const name = String(m.navn ?? m.epost ?? "").trim()
-      if (!name) return null
+      const dedupe = personDedupeKeyFromMember(m);
+      if (!dedupe) return null;
+      const name = String(m.navn ?? m.epost ?? "").trim();
+      if (!name) return null;
       return {
         updated_at: nowIso,
         kind: "person",
@@ -215,43 +235,64 @@ async function syncPersonWarehousesFromMembers(admin: AdminClient, members: Medl
         person_name: name,
         dedupe_key: dedupe,
         active: true,
-      }
+      };
     })
-    .filter(Boolean) as Array<Record<string, unknown>>
+    .filter(Boolean) as Array<Record<string, unknown>>;
 
-  if (!rows.length) return { ok: true as const }
+  if (!rows.length) return { ok: true as const };
 
-  const { error } = await admin.from("lek_v2_lager").upsert(rows as unknown as never, { onConflict: "dedupe_key" })
+  const { error } = await admin
+    .from("lek_v2_lager")
+    .upsert(rows as unknown as never, { onConflict: "dedupe_key" });
   if (error) {
-    const msg = String((error as { message?: string } | null)?.message ?? "")
-    if (isSchemaError(msg)) return { ok: false as const, feil: schemaFeil }
-    if (/unique|exclusion|on conflict/i.test(msg) && /dedupe_key|conflict/i.test(msg)) {
+    const msg = String((error as { message?: string } | null)?.message ?? "");
+    if (isSchemaError(msg)) return { ok: false as const, feil: schemaFeil };
+    if (
+      /unique|exclusion|on conflict/i.test(msg) &&
+      /dedupe_key|conflict/i.test(msg)
+    ) {
       return {
         ok: false as const,
         feil:
           "Bie-Eske System: mangler unik indeks på dedupe_key i lek_v2_lager. Kjør dette i Supabase (SQL Editor):\n\n" +
           "create unique index if not exists lek_v2_lager_dedupe_key_uq on public.lek_v2_lager (dedupe_key);",
-      }
+      };
     }
-    return { ok: false as const, feil: msg ? `Kunne ikke synke personlager: ${msg}` : "Kunne ikke synke personlager." }
+    return {
+      ok: false as const,
+      feil: msg
+        ? `Kunne ikke synke personlager: ${msg}`
+        : "Kunne ikke synke personlager.",
+    };
   }
-  return { ok: true as const }
+  return { ok: true as const };
 }
 
 function derivedBalances(_kind: string, balances: Record<string, number>) {
-  return balances
+  return balances;
 }
 
 function chunk<T>(arr: T[], size: number) {
-  const out: T[][] = []
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
-  return out
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
 }
 
-async function fetchLatestEventsForLocations(admin: AdminClient, locationIds: string[]) {
-  const latest = new Map<string, { at: string | null; type: string | null; comment: string | null; actor: string | null }>()
-  const ids = locationIds.map((v) => String(v ?? "").trim()).filter(Boolean)
-  if (!ids.length) return { ok: true as const, latest }
+async function fetchLatestEventsForLocations(
+  admin: AdminClient,
+  locationIds: string[],
+) {
+  const latest = new Map<
+    string,
+    {
+      at: string | null;
+      type: string | null;
+      comment: string | null;
+      actor: string | null;
+    }
+  >();
+  const ids = locationIds.map((v) => String(v ?? "").trim()).filter(Boolean);
+  if (!ids.length) return { ok: true as const, latest };
 
   for (const part of chunk(ids, 800)) {
     const { data, error } = await admin
@@ -259,298 +300,433 @@ async function fetchLatestEventsForLocations(admin: AdminClient, locationIds: st
       .select("location_lager_id, created_at, type, comment, actor_epost")
       .in("location_lager_id", part)
       .order("created_at", { ascending: false })
-      .limit(8000)
+      .limit(8000);
 
     if (error) {
-      const msg = String((error as { message?: string } | null)?.message ?? "")
-      if (isSchemaError(msg)) return { ok: false as const, feil: schemaFeil }
-      return { ok: false as const, feil: "Kunne ikke hente lokasjonshistorikk." }
+      const msg = String((error as { message?: string } | null)?.message ?? "");
+      if (isSchemaError(msg)) return { ok: false as const, feil: schemaFeil };
+      return {
+        ok: false as const,
+        feil: "Kunne ikke hente lokasjonshistorikk.",
+      };
     }
 
     for (const r of (data ?? []) as Array<Record<string, unknown>>) {
-      const id = String(r.location_lager_id ?? "").trim()
-      if (!id || latest.has(id)) continue
+      const id = String(r.location_lager_id ?? "").trim();
+      if (!id || latest.has(id)) continue;
       latest.set(id, {
         at: String(r.created_at ?? "").trim() || null,
         type: String(r.type ?? "").trim() || null,
         comment: String(r.comment ?? "").trim() || null,
         actor: String(r.actor_epost ?? "").trim() || null,
-      })
+      });
     }
   }
 
-  return { ok: true as const, latest }
+  return { ok: true as const, latest };
 }
 
 function toSafeStorageKey(v: string) {
-  const s = String(v ?? "").trim()
-  if (!s) return "x"
+  const s = String(v ?? "").trim();
+  if (!s) return "x";
   const cleaned = s
     .replace(/[^\p{L}\p{N}_-]+/gu, "-")
     .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-  return cleaned || "x"
+    .replace(/^-|-$/g, "");
+  return cleaned || "x";
 }
 
 function extFromNameAndType(filename: string, type: string) {
-  const name = String(filename ?? "").trim()
-  const last = name.lastIndexOf(".")
-  const ext = last > 0 ? name.slice(last + 1).trim().toLowerCase() : ""
-  if (ext && ext.length <= 10) return ext
-  const t = String(type ?? "").toLowerCase()
-  if (t.includes("png")) return "png"
-  if (t.includes("webp")) return "webp"
-  if (t.includes("jpeg") || t.includes("jpg")) return "jpg"
-  if (t.includes("heic")) return "heic"
-  if (t.includes("heif")) return "heif"
-  return "bin"
+  const name = String(filename ?? "").trim();
+  const last = name.lastIndexOf(".");
+  const ext =
+    last > 0
+      ? name
+          .slice(last + 1)
+          .trim()
+          .toLowerCase()
+      : "";
+  if (ext && ext.length <= 10) return ext;
+  const t = String(type ?? "").toLowerCase();
+  if (t.includes("png")) return "png";
+  if (t.includes("webp")) return "webp";
+  if (t.includes("jpeg") || t.includes("jpg")) return "jpg";
+  if (t.includes("heic")) return "heic";
+  if (t.includes("heif")) return "heif";
+  return "bin";
 }
 
 async function getAuth() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseAnonKey) {
-    return { ok: false as const, status: 500 as const, feil: "Supabase er ikke konfigurert." }
+    return {
+      ok: false as const,
+      status: 500 as const,
+      feil: "Supabase er ikke konfigurert.",
+    };
   }
 
-  const cookieStore = await cookies()
+  const cookieStore = await cookies();
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
-        return cookieStore.getAll()
+        return cookieStore.getAll();
       },
       setAll(cookiesToSet) {
         for (const { name, value, options } of cookiesToSet) {
-          cookieStore.set(name, value, options)
+          cookieStore.set(name, value, options);
         }
       },
     },
-  })
+  });
 
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await supabase.auth.getUser();
 
-  const userId = user?.id ?? null
-  const email = String(user?.email ?? "").trim().toLowerCase()
+  const userId = user?.id ?? null;
+  const email = String(user?.email ?? "")
+    .trim()
+    .toLowerCase();
   if (!userId || !email || !isValidEmail(email)) {
-    return { ok: false as const, status: 401 as const, feil: "Ikke innlogget." }
+    return {
+      ok: false as const,
+      status: 401 as const,
+      feil: "Ikke innlogget.",
+    };
   }
 
-  return { ok: true as const, userId, email, supabaseUrl }
+  return { ok: true as const, userId, email, supabaseUrl };
 }
 
 async function requireAccess() {
-  const auth = await getAuth()
-  if (!auth.ok) return auth
+  const auth = await getAuth();
+  if (!auth.ok) return auth;
 
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serviceRoleKey) return { ok: false as const, status: 500 as const, feil: "Mangler SUPABASE_SERVICE_ROLE_KEY." }
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey)
+    return {
+      ok: false as const,
+      status: 500 as const,
+      feil: "Mangler SUPABASE_SERVICE_ROLE_KEY.",
+    };
 
   const admin = createClient<Db>(auth.supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
-  })
+  });
 
-  const { data, error } = await admin.from("medlemmer").select("role, aktiv").eq("user_id", auth.userId).maybeSingle()
-  if (error) return { ok: false as const, status: 400 as const, feil: "Kunne ikke hente tilgang." }
-  if ((data as { aktiv?: unknown } | null)?.aktiv === false) return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
+  const { data, error } = await admin
+    .from("medlemmer")
+    .select("role, aktiv")
+    .eq("user_id", auth.userId)
+    .maybeSingle();
+  if (error)
+    return {
+      ok: false as const,
+      status: 400 as const,
+      feil: "Kunne ikke hente tilgang.",
+    };
+  if ((data as { aktiv?: unknown } | null)?.aktiv === false)
+    return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." };
 
   const ownerEmail = String(
-    process.env.ADMIN_SUPERADMIN_EMAIL ?? process.env.ADMIN_BOOTSTRAP_EMAIL ?? ""
+    process.env.ADMIN_SUPERADMIN_EMAIL ??
+      process.env.ADMIN_BOOTSTRAP_EMAIL ??
+      "",
   )
     .trim()
-    .toLowerCase()
-  const storedRole = (data as { role?: unknown } | null)?.role
-  const role = ownerEmail && auth.email === ownerEmail ? "superadmin" : normalizeRole(String(storedRole ?? ""))
+    .toLowerCase();
+  const storedRole = (data as { role?: unknown } | null)?.role;
+  const role =
+    ownerEmail && auth.email === ownerEmail
+      ? "superadmin"
+      : normalizeRole(String(storedRole ?? ""));
   if (!hasPermission(role, "manage_bie_eske")) {
-    return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
+    return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." };
   }
 
-  return { ok: true as const, admin, role, email: auth.email }
+  return { ok: true as const, admin, role, email: auth.email };
 }
 
 async function ensureBucket(admin: AdminClient) {
-  const { error } = await admin.storage.createBucket(bucket, { public: false })
-  if (!error) return { ok: true as const }
-  const msg = String((error as { message?: string } | null)?.message ?? "")
-  if (/(exists|already|duplicate|conflict|409)/i.test(msg)) return { ok: true as const }
-  return { ok: false as const }
+  const { error } = await admin.storage.createBucket(bucket, { public: false });
+  if (!error) return { ok: true as const };
+  const msg = String((error as { message?: string } | null)?.message ?? "");
+  if (/(exists|already|duplicate|conflict|409)/i.test(msg))
+    return { ok: true as const };
+  return { ok: false as const };
 }
 
 async function getSaldo(admin: AdminClient, lagerIds: string[]) {
-  if (!lagerIds.length) return new Map<string, Record<string, number>>()
+  if (!lagerIds.length) return new Map<string, Record<string, number>>();
   const { data, error } = await admin
     .from("lek_v2_lager_saldo")
     .select("lager_id, item, qty")
-    .in("lager_id", lagerIds)
-  if (error) return new Map<string, Record<string, number>>()
-  const m = new Map<string, Record<string, number>>()
-  for (const r of (data ?? []) as Array<{ lager_id?: unknown; item?: unknown; qty?: unknown }>) {
-    const id = String(r.lager_id ?? "")
-    const item = String(r.item ?? "")
-    const qty = Number(r.qty ?? 0)
-    if (!id || !item || !Number.isFinite(qty)) continue
-    const row = m.get(id) ?? {}
-    row[item] = Math.trunc(qty)
-    m.set(id, row)
+    .in("lager_id", lagerIds);
+  if (error) return new Map<string, Record<string, number>>();
+  const m = new Map<string, Record<string, number>>();
+  for (const r of (data ?? []) as Array<{
+    lager_id?: unknown;
+    item?: unknown;
+    qty?: unknown;
+  }>) {
+    const id = String(r.lager_id ?? "");
+    const item = String(r.item ?? "");
+    const qty = Number(r.qty ?? 0);
+    if (!id || !item || !Number.isFinite(qty)) continue;
+    const row = m.get(id) ?? {};
+    row[item] = Math.trunc(qty);
+    m.set(id, row);
   }
-  return m
+  return m;
 }
 
-async function applyDelta(admin: AdminClient, lagerId: string, item: string, delta: number) {
-  const d = Math.trunc(delta)
-  if (!lagerId || !item || !Number.isFinite(d) || d === 0) return { ok: true as const }
+async function applyDelta(
+  admin: AdminClient,
+  lagerId: string,
+  item: string,
+  delta: number,
+) {
+  const d = Math.trunc(delta);
+  if (!lagerId || !item || !Number.isFinite(d) || d === 0)
+    return { ok: true as const };
   const { data: existing, error: selErr } = await admin
     .from("lek_v2_lager_saldo")
     .select("qty")
     .eq("lager_id", lagerId)
     .eq("item", item)
-    .maybeSingle()
-  if (selErr) return { ok: false as const }
-  const curr = Number((existing as { qty?: unknown } | null)?.qty ?? 0)
-  const next = Math.trunc((Number.isFinite(curr) ? curr : 0) + d)
-  const nowIso = new Date().toISOString()
+    .maybeSingle();
+  if (selErr) return { ok: false as const };
+  const curr = Number((existing as { qty?: unknown } | null)?.qty ?? 0);
+  const next = Math.trunc((Number.isFinite(curr) ? curr : 0) + d);
+  const nowIso = new Date().toISOString();
   const { error: upErr } = await admin
     .from("lek_v2_lager_saldo")
-    .upsert({ lager_id: lagerId, item, qty: next, updated_at: nowIso } as unknown as never, { onConflict: "lager_id,item" })
-  if (upErr) return { ok: false as const }
-  return { ok: true as const, qty: next }
+    .upsert(
+      {
+        lager_id: lagerId,
+        item,
+        qty: next,
+        updated_at: nowIso,
+      } as unknown as never,
+      { onConflict: "lager_id,item" },
+    );
+  if (upErr) return { ok: false as const };
+  return { ok: true as const, qty: next };
 }
 
 export async function GET(request: Request) {
-  const gate = await requireAccess()
-  if (!gate.ok) return NextResponse.json({ ok: false, feil: gate.feil }, { status: gate.status })
-  const admin = gate.admin as AdminClient
+  const gate = await requireAccess();
+  if (!gate.ok)
+    return NextResponse.json(
+      { ok: false, feil: gate.feil },
+      { status: gate.status },
+    );
+  const admin = gate.admin as AdminClient;
 
-  const url = new URL(request.url)
-  const action = String(url.searchParams.get("action") ?? "").trim() || "overview"
+  const url = new URL(request.url);
+  const action =
+    String(url.searchParams.get("action") ?? "").trim() || "overview";
 
   if (action === "searchLocations") {
-    const q = String(url.searchParams.get("q") ?? "").trim()
-    if (q.length < 2) return NextResponse.json({ ok: true, results: [] })
+    const q = String(url.searchParams.get("q") ?? "").trim();
+    if (q.length < 2) return NextResponse.json({ ok: true, results: [] });
     const { data, error } = await admin
       .from("lek_v2_lager")
-      .select("id, kind, name, location_type, address, lat, lng, responsible_lager_id, updated_at, active")
+      .select(
+        "id, kind, name, location_type, address, lat, lng, responsible_lager_id, updated_at, active",
+      )
       .eq("kind", "location")
       .or(`name.ilike.%${q}%,address.ilike.%${q}%,location_type.ilike.%${q}%`)
       .order("updated_at", { ascending: false })
-      .limit(20)
+      .limit(20);
     if (error) {
-      const msg = String((error as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke søke lokasjoner." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String((error as { message?: string } | null)?.message ?? "");
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke søke lokasjoner.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
-    return NextResponse.json({ ok: true, results: data ?? [] })
+    return NextResponse.json({ ok: true, results: data ?? [] });
   }
 
   if (action === "getLocation") {
-    const id = String(url.searchParams.get("id") ?? "").trim()
-    if (!id) return NextResponse.json({ ok: false, feil: "Mangler lokasjon." }, { status: 400 })
+    const id = String(url.searchParams.get("id") ?? "").trim();
+    if (!id)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler lokasjon." },
+        { status: 400 },
+      );
     const { data: location, error: locErr } = await admin
       .from("lek_v2_lager")
-      .select("id, kind, name, location_type, address, lat, lng, responsible_lager_id, updated_at, active")
+      .select(
+        "id, kind, name, location_type, address, lat, lng, responsible_lager_id, updated_at, active",
+      )
       .eq("id", id)
-      .maybeSingle()
+      .maybeSingle();
     if (locErr) {
-      const msg = String((locErr as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente lokasjon." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String(
+        (locErr as { message?: string } | null)?.message ?? "",
+      );
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente lokasjon.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
     const { data: events, error: evErr } = await admin
       .from("lek_v2_lokasjon_hendelser")
-      .select("id, created_at, location_lager_id, type, glasses_left, filled_added, comment, lat, lng, image1_path, image2_path, image3_path, actor_epost")
+      .select(
+        "id, created_at, location_lager_id, type, glasses_left, filled_added, comment, lat, lng, image1_path, image2_path, image3_path, actor_epost",
+      )
       .eq("location_lager_id", id)
       .order("created_at", { ascending: false })
-      .limit(80)
+      .limit(80);
     if (evErr) {
-      const msg = String((evErr as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente historikk." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String((evErr as { message?: string } | null)?.message ?? "");
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente historikk.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
 
-    const saldo = await getSaldo(admin, [id])
-    const balances = saldo.get(id) ?? {}
+    const saldo = await getSaldo(admin, [id]);
+    const balances = saldo.get(id) ?? {};
 
-    const bucketOk = await ensureBucket(admin)
-    if (!bucketOk.ok) return NextResponse.json({ ok: false, feil: "Storage er ikke satt opp." }, { status: 500 })
+    const bucketOk = await ensureBucket(admin);
+    if (!bucketOk.ok)
+      return NextResponse.json(
+        { ok: false, feil: "Storage er ikke satt opp." },
+        { status: 500 },
+      );
 
-    const signed: Record<string, string> = {}
-    for (const e of (events ?? []) as Array<{ image1_path?: unknown; image2_path?: unknown; image3_path?: unknown }>) {
+    const signed: Record<string, string> = {};
+    for (const e of (events ?? []) as Array<{
+      image1_path?: unknown;
+      image2_path?: unknown;
+      image3_path?: unknown;
+    }>) {
       for (const p of [e.image1_path, e.image2_path, e.image3_path]) {
-        const path = String(p ?? "").trim()
-        if (!path || signed[path]) continue
-        const { data } = await admin.storage.from(bucket).createSignedUrl(path, 60 * 10)
-        const url = String((data as { signedUrl?: unknown } | null)?.signedUrl ?? "")
-        if (url) signed[path] = url
+        const path = String(p ?? "").trim();
+        if (!path || signed[path]) continue;
+        const { data } = await admin.storage
+          .from(bucket)
+          .createSignedUrl(path, 60 * 10);
+        const url = String(
+          (data as { signedUrl?: unknown } | null)?.signedUrl ?? "",
+        );
+        if (url) signed[path] = url;
       }
     }
 
-    return NextResponse.json({ ok: true, location: location ?? null, balances, events: events ?? [], signed })
+    return NextResponse.json({
+      ok: true,
+      location: location ?? null,
+      balances,
+      events: events ?? [],
+      signed,
+    });
   }
 
-  let warning: string | null = null
-  const membersRes = await fetchOperativeMembers(admin)
-  const membersList = membersRes.ok ? membersRes.members : []
+  let warning: string | null = null;
+  const membersRes = await fetchOperativeMembers(admin);
+  const membersList = membersRes.ok ? membersRes.members : [];
   if (!membersRes.ok) {
-    warning = String(membersRes.feil ?? "Kunne ikke hente medlemmer.")
+    warning = String(membersRes.feil ?? "Kunne ikke hente medlemmer.");
   } else {
-    const syncRes = await syncPersonWarehousesFromMembers(admin, membersRes.members)
+    const syncRes = await syncPersonWarehousesFromMembers(
+      admin,
+      membersRes.members,
+    );
     if (!syncRes.ok) {
-      warning = String(syncRes.feil ?? "Kunne ikke synke personlager.")
+      warning = String(syncRes.feil ?? "Kunne ikke synke personlager.");
     }
   }
 
   const { data: lagre, error: lagreErr } = await admin
     .from("lek_v2_lager")
-    .select("id, kind, name, person_name, dedupe_key, location_type, address, lat, lng, responsible_lager_id, updated_at, active")
+    .select(
+      "id, kind, name, person_name, dedupe_key, location_type, address, lat, lng, responsible_lager_id, updated_at, active",
+    )
     .order("updated_at", { ascending: false })
-    .limit(5000)
+    .limit(5000);
   if (lagreErr) {
-    const msg = String((lagreErr as { message?: string } | null)?.message ?? "")
-    return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente oversikt." }, { status: isSchemaError(msg) ? 500 : 400 })
+    const msg = String(
+      (lagreErr as { message?: string } | null)?.message ?? "",
+    );
+    return NextResponse.json(
+      {
+        ok: false,
+        feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente oversikt.",
+      },
+      { status: isSchemaError(msg) ? 500 : 400 },
+    );
   }
 
-  const ids = (lagre ?? []).map((l: unknown) => String((l as { id?: unknown }).id ?? "")).filter(Boolean)
-  const saldo = await getSaldo(admin, ids)
+  const ids = (lagre ?? [])
+    .map((l: unknown) => String((l as { id?: unknown }).id ?? ""))
+    .filter(Boolean);
+  const saldo = await getSaldo(admin, ids);
 
   const enriched = (lagre ?? []).map((l: unknown) => {
-    const id = String((l as { id?: unknown }).id ?? "")
-    const kind = String((l as Record<string, unknown>).kind ?? "")
-    const balances = derivedBalances(kind, saldo.get(id) ?? {})
-    return { ...(l as Record<string, unknown>), balances } as Record<string, unknown>
-  })
+    const id = String((l as { id?: unknown }).id ?? "");
+    const kind = String((l as Record<string, unknown>).kind ?? "");
+    const balances = derivedBalances(kind, saldo.get(id) ?? {});
+    return { ...(l as Record<string, unknown>), balances } as Record<
+      string,
+      unknown
+    >;
+  });
 
-  const locations = (enriched as Array<Record<string, unknown>>).filter((l) => String(l.kind ?? "") === "location")
-  const locationIds = locations.map((l) => String(l.id ?? "").trim()).filter(Boolean)
-  const latestRes = await fetchLatestEventsForLocations(admin, locationIds)
+  const locations = (enriched as Array<Record<string, unknown>>).filter(
+    (l) => String(l.kind ?? "") === "location",
+  );
+  const locationIds = locations
+    .map((l) => String(l.id ?? "").trim())
+    .filter(Boolean);
+  const latestRes = await fetchLatestEventsForLocations(admin, locationIds);
   if (!latestRes.ok) {
-    const w = String((latestRes as { feil?: unknown }).feil ?? "")
-    warning = warning ? `${warning}\n${w}` : w
+    const w = String((latestRes as { feil?: unknown }).feil ?? "");
+    warning = warning ? `${warning}\n${w}` : w;
   } else {
     for (const l of locations) {
-      const id = String(l.id ?? "").trim()
-      const ev = latestRes.latest.get(id) ?? null
-      l.last_event_at = ev?.at ?? null
-      l.last_event_type = ev?.type ?? null
-      l.last_comment = ev?.comment ?? null
-      l.last_actor_epost = ev?.actor ?? null
+      const id = String(l.id ?? "").trim();
+      const ev = latestRes.latest.get(id) ?? null;
+      l.last_event_at = ev?.at ?? null;
+      l.last_event_type = ev?.type ?? null;
+      l.last_comment = ev?.comment ?? null;
+      l.last_actor_epost = ev?.actor ?? null;
     }
   }
   const totals = {
     totalLagere: (enriched as Array<unknown>).length,
     totalLokasjoner: locations.filter((l) => l.active !== false).length,
-  }
+  };
 
-  const personWarehouses = (enriched as Array<Record<string, unknown>>).filter((l) => String(l.kind ?? "") === "person")
-  const personByDedupe = new Map<string, Record<string, unknown>>()
+  const personWarehouses = (enriched as Array<Record<string, unknown>>).filter(
+    (l) => String(l.kind ?? "") === "person",
+  );
+  const personByDedupe = new Map<string, Record<string, unknown>>();
   for (const p of personWarehouses) {
-    const dk = String(p.dedupe_key ?? "").trim()
-    if (dk) personByDedupe.set(dk, p)
+    const dk = String(p.dedupe_key ?? "").trim();
+    if (dk) personByDedupe.set(dk, p);
   }
 
   const members = membersList
     .map((m) => {
-      const dk = personDedupeKeyFromMember(m)
-      const wh = dk ? personByDedupe.get(dk) : null
-      const lagerId = String(wh?.id ?? "").trim() || null
-      const balances = (wh?.balances ?? {}) as Record<string, number>
+      const dk = personDedupeKeyFromMember(m);
+      const wh = dk ? personByDedupe.get(dk) : null;
+      const lagerId = String(wh?.id ?? "").trim() || null;
+      const balances = (wh?.balances ?? {}) as Record<string, number>;
       return {
         id: m.id,
         userId: m.user_id,
@@ -559,69 +735,138 @@ export async function GET(request: Request) {
         role: m.role,
         lagerId,
         balances,
-      }
+      };
     })
-    .filter((m) => Boolean(m.lagerId))
+    .filter((m) => Boolean(m.lagerId));
 
-  return NextResponse.json({ ok: true, role: gate.role, email: gate.email, lagre: enriched, locations, totals, members, warning })
+  return NextResponse.json({
+    ok: true,
+    role: gate.role,
+    email: gate.email,
+    lagre: enriched,
+    locations,
+    totals,
+    members,
+    warning,
+  });
 }
 
 export async function POST(request: Request) {
-  const gate = await requireAccess()
-  if (!gate.ok) return NextResponse.json({ ok: false, feil: gate.feil }, { status: gate.status })
-  const admin = gate.admin as AdminClient
+  const gate = await requireAccess();
+  if (!gate.ok)
+    return NextResponse.json(
+      { ok: false, feil: gate.feil },
+      { status: gate.status },
+    );
+  const admin = gate.admin as AdminClient;
 
-  let form: FormData
+  let form: FormData;
   try {
-    form = await request.formData()
+    form = await request.formData();
   } catch {
-    return NextResponse.json({ ok: false, feil: "Ugyldig forespørsel." }, { status: 400 })
+    return NextResponse.json(
+      { ok: false, feil: "Ugyldig forespørsel." },
+      { status: 400 },
+    );
   }
 
-  const action = String(form.get("action") ?? "").trim()
-  if (!action) return NextResponse.json({ ok: false, feil: "Mangler action." }, { status: 400 })
+  const action = String(form.get("action") ?? "").trim();
+  if (!action)
+    return NextResponse.json(
+      { ok: false, feil: "Mangler action." },
+      { status: 400 },
+    );
 
-  const bucketOk = await ensureBucket(admin)
-  if (!bucketOk.ok) return NextResponse.json({ ok: false, feil: "Storage er ikke satt opp." }, { status: 500 })
+  const bucketOk = await ensureBucket(admin);
+  if (!bucketOk.ok)
+    return NextResponse.json(
+      { ok: false, feil: "Storage er ikke satt opp." },
+      { status: 500 },
+    );
 
-  const nowIso = new Date().toISOString()
+  const nowIso = new Date().toISOString();
 
   if (action === "createMain") {
-    const name = String(form.get("name") ?? "").trim() || "Hovedlager"
-    const dedupe = makeDedupeKey("main", name, null, null)
-    const { data: existing, error: exErr } = await admin.from("lek_v2_lager").select("id").eq("dedupe_key", dedupe).maybeSingle()
+    const name = String(form.get("name") ?? "").trim() || "Hovedlager";
+    const dedupe = makeDedupeKey("main", name, null, null);
+    const { data: existing, error: exErr } = await admin
+      .from("lek_v2_lager")
+      .select("id")
+      .eq("dedupe_key", dedupe)
+      .maybeSingle();
     if (exErr) {
-      const msg = String((exErr as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke opprette lager." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String((exErr as { message?: string } | null)?.message ?? "");
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke opprette lager.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
-    if (existing) return NextResponse.json({ ok: true, id: String((existing as { id?: unknown }).id ?? ""), reused: true })
-    const id = crypto.randomUUID()
+    if (existing)
+      return NextResponse.json({
+        ok: true,
+        id: String((existing as { id?: unknown }).id ?? ""),
+        reused: true,
+      });
+    const id = crypto.randomUUID();
     const { error } = await admin
       .from("lek_v2_lager")
-      .insert({ id, created_at: nowIso, updated_at: nowIso, kind: "main", name, dedupe_key: dedupe, active: true } as unknown as never)
+      .insert({
+        id,
+        created_at: nowIso,
+        updated_at: nowIso,
+        kind: "main",
+        name,
+        dedupe_key: dedupe,
+        active: true,
+      } as unknown as never);
     if (error) {
-      const msg = String((error as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke opprette lager." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String((error as { message?: string } | null)?.message ?? "");
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke opprette lager.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
-    return NextResponse.json({ ok: true, id, reused: false })
+    return NextResponse.json({ ok: true, id, reused: false });
   }
 
   if (action === "adjust") {
-    const lagerId = String(form.get("lagerId") ?? "").trim()
-    const item = String(form.get("item") ?? "").trim()
-    const qty = toInt(form.get("qty"))
-    const note = String(form.get("note") ?? "").trim()
-    if (!lagerId) return NextResponse.json({ ok: false, feil: "Mangler lager." }, { status: 400 })
-    if (item !== "bie_eske" && item !== "glass") return NextResponse.json({ ok: false, feil: "Ugyldig vare." }, { status: 400 })
-    if (qty == null || qty < 0) return NextResponse.json({ ok: false, feil: "Ugyldig antall." }, { status: 400 })
+    const lagerId = String(form.get("lagerId") ?? "").trim();
+    const item = String(form.get("item") ?? "").trim();
+    const qty = toInt(form.get("qty"));
+    const note = String(form.get("note") ?? "").trim();
+    if (!lagerId)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler lager." },
+        { status: 400 },
+      );
+    if (item !== "bie_eske" && item !== "glass")
+      return NextResponse.json(
+        { ok: false, feil: "Ugyldig vare." },
+        { status: 400 },
+      );
+    if (qty == null || qty < 0)
+      return NextResponse.json(
+        { ok: false, feil: "Ugyldig antall." },
+        { status: 400 },
+      );
 
-    const saldo = await getSaldo(admin, [lagerId])
-    const curr = Number((saldo.get(lagerId) ?? {})[item] ?? 0)
-    const next = Math.trunc(qty)
-    const delta = next - (Number.isFinite(curr) ? Math.trunc(curr) : 0)
+    const saldo = await getSaldo(admin, [lagerId]);
+    const curr = Number((saldo.get(lagerId) ?? {})[item] ?? 0);
+    const next = Math.trunc(qty);
+    const delta = next - (Number.isFinite(curr) ? Math.trunc(curr) : 0);
     if (delta !== 0) {
-      const updItem = await applyDelta(admin, lagerId, item, delta)
-      if (!updItem.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+      const updItem = await applyDelta(admin, lagerId, item, delta);
+      if (!updItem.ok)
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere lager." },
+          { status: 400 },
+        );
 
       const { error } = await admin.from("lek_v2_lager_bevegelser").insert({
         id: crypto.randomUUID(),
@@ -634,104 +879,177 @@ export async function POST(request: Request) {
         note: note || null,
         actor_epost: gate.email,
         actor_role: gate.role,
-      } as unknown as never)
+      } as unknown as never);
       if (error) {
-        const msg = String((error as { message?: string } | null)?.message ?? "")
-        return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke logge justering." }, { status: isSchemaError(msg) ? 500 : 400 })
+        const msg = String(
+          (error as { message?: string } | null)?.message ?? "",
+        );
+        return NextResponse.json(
+          {
+            ok: false,
+            feil: isSchemaError(msg)
+              ? schemaFeil
+              : "Kunne ikke logge justering.",
+          },
+          { status: isSchemaError(msg) ? 500 : 400 },
+        );
       }
     }
 
-    await admin.from("lek_v2_lager").update({ updated_at: nowIso } as unknown as never).eq("id", lagerId)
-    return NextResponse.json({ ok: true })
+    await admin
+      .from("lek_v2_lager")
+      .update({ updated_at: nowIso } as unknown as never)
+      .eq("id", lagerId);
+    return NextResponse.json({ ok: true });
   }
 
   if (action === "transfer") {
-    const fromId = String(form.get("fromId") ?? "").trim()
-    const toId = String(form.get("toId") ?? "").trim()
-    const note = String(form.get("note") ?? "").trim()
-    if (!fromId || !toId) return NextResponse.json({ ok: false, feil: "Mangler lager." }, { status: 400 })
-    if (fromId === toId) return NextResponse.json({ ok: false, feil: "Fra og til kan ikke være samme lager." }, { status: 400 })
+    const fromId = String(form.get("fromId") ?? "").trim();
+    const toId = String(form.get("toId") ?? "").trim();
+    const note = String(form.get("note") ?? "").trim();
+    if (!fromId || !toId)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler lager." },
+        { status: 400 },
+      );
+    if (fromId === toId)
+      return NextResponse.json(
+        { ok: false, feil: "Fra og til kan ikke være samme lager." },
+        { status: 400 },
+      );
 
-    const { data: kinds, error: kindErr } = await admin.from("lek_v2_lager").select("id, kind, name").in("id", [fromId, toId]).limit(2)
+    const { data: kinds, error: kindErr } = await admin
+      .from("lek_v2_lager")
+      .select("id, kind, name")
+      .in("id", [fromId, toId])
+      .limit(2);
     if (kindErr) {
-      const msg = String((kindErr as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente lager." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String(
+        (kindErr as { message?: string } | null)?.message ?? "",
+      );
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente lager.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
-    const rows = (kinds ?? []) as Array<Record<string, unknown>>
-    const fromRow = rows.find((r) => String(r.id ?? "") === fromId)
-    const toRow = rows.find((r) => String(r.id ?? "") === toId)
-    const fromKind = String(fromRow?.kind ?? "")
-    const toKind = String(toRow?.kind ?? "")
-    const fromName = String(fromRow?.name ?? fromId)
-    const toName = String(toRow?.name ?? toId)
-    if (!fromKind || !toKind) return NextResponse.json({ ok: false, feil: "Lager finnes ikke." }, { status: 404 })
+    const rows = (kinds ?? []) as Array<Record<string, unknown>>;
+    const fromRow = rows.find((r) => String(r.id ?? "") === fromId);
+    const toRow = rows.find((r) => String(r.id ?? "") === toId);
+    const fromKind = String(fromRow?.kind ?? "");
+    const toKind = String(toRow?.kind ?? "");
+    const fromName = String(fromRow?.name ?? fromId);
+    const toName = String(toRow?.name ?? toId);
+    if (!fromKind || !toKind)
+      return NextResponse.json(
+        { ok: false, feil: "Lager finnes ikke." },
+        { status: 404 },
+      );
 
-    const fromMain = fromKind === "main"
-    const toMain = toKind === "main"
+    const fromMain = fromKind === "main";
+    const toMain = toKind === "main";
     if ((fromMain || toMain) && !canTransferMainWarehouse(gate.role)) {
       const msg = fromMain
         ? `Du har ikke tilgang til å ta glass/esker ut av hovedlager (${fromName}). Kun superbruker, admin og styret kan gjøre det.`
-        : `Du har ikke tilgang til å legge glass/esker inn i hovedlager (${toName}). Kun superbruker, admin og styret kan gjøre det.`
-      return NextResponse.json({ ok: false, feil: msg }, { status: 403 })
+        : `Du har ikke tilgang til å legge glass/esker inn i hovedlager (${toName}). Kun superbruker, admin og styret kan gjøre det.`;
+      return NextResponse.json({ ok: false, feil: msg }, { status: 403 });
     }
 
-    const rawBoxes = toInt(form.get("boxes"))
-    const rawGlasses = toInt(form.get("glasses"))
-    const legacyItem = String(form.get("item") ?? "").trim()
-    const legacyQty = toInt(form.get("qty"))
+    const rawBoxes = toInt(form.get("boxes"));
+    const rawGlasses = toInt(form.get("glasses"));
+    const legacyItem = String(form.get("item") ?? "").trim();
+    const legacyQty = toInt(form.get("qty"));
 
-    let boxes = Math.max(0, Math.trunc(Number.isFinite(rawBoxes) ? rawBoxes : 0))
-    let glasses = Math.max(0, Math.trunc(Number.isFinite(rawGlasses) ? rawGlasses : 0))
+      const safeBoxes = rawBoxes != null ? rawBoxes : 0;
+      const safeGlasses = rawGlasses != null ? rawGlasses : 0;
+      let boxes = Math.max(0, Math.trunc(safeBoxes));
+      let glasses = Math.max(0, Math.trunc(safeGlasses));
 
-    if (legacyItem && (legacyItem === "bie_eske" || legacyItem === "glass") && Number.isFinite(legacyQty) && legacyQty > 0 && boxes === 0 && glasses === 0) {
-      if (legacyItem === "bie_eske") boxes = Math.max(0, Math.trunc(legacyQty))
-      if (legacyItem === "glass") glasses = Math.max(0, Math.trunc(legacyQty))
+    if (
+      legacyItem &&
+      (legacyItem === "bie_eske" || legacyItem === "glass") &&
+        legacyQty != null &&
+      legacyQty > 0 &&
+      boxes === 0 &&
+      glasses === 0
+    ) {
+      if (legacyItem === "bie_eske") boxes = Math.max(0, Math.trunc(legacyQty));
+      if (legacyItem === "glass") glasses = Math.max(0, Math.trunc(legacyQty));
     }
 
     if (boxes <= 0 && glasses <= 0) {
       return NextResponse.json(
         { ok: false, feil: "Flytt minst én eske eller ett glass." },
-        { status: 400 }
-      )
+        { status: 400 },
+      );
     }
 
-    const saldo = await getSaldo(admin, [fromId, toId])
-    const currFromBoxes = Math.max(0, Math.trunc(Number((saldo.get(fromId) ?? {})["bie_eske"] ?? 0)))
-    const currFromGlass = Math.max(0, Math.trunc(Number((saldo.get(fromId) ?? {})["glass"] ?? 0)))
+    const saldo = await getSaldo(admin, [fromId, toId]);
+    const currFromBoxes = Math.max(
+      0,
+      Math.trunc(Number((saldo.get(fromId) ?? {})["bie_eske"] ?? 0)),
+    );
+    const currFromGlass = Math.max(
+      0,
+      Math.trunc(Number((saldo.get(fromId) ?? {})["glass"] ?? 0)),
+    );
 
     if (currFromBoxes <= 0 && currFromGlass <= 0) {
       return NextResponse.json(
-        { ok: false, feil: `Kilde-lageret ${fromName} er tomt. Det finnes ingenting å flytte derfra.` },
-        { status: 400 }
-      )
+        {
+          ok: false,
+          feil: `Kilde-lageret ${fromName} er tomt. Det finnes ingenting å flytte derfra.`,
+        },
+        { status: 400 },
+      );
     }
 
     if (boxes > 0 && currFromBoxes < boxes) {
       return NextResponse.json(
-        { ok: false, feil: `Ikke nok esker på lager (har ${currFromBox}, trenger ${boxes}) i ${fromName}.` },
-        { status: 400 }
-      )
+        {
+          ok: false,
+            feil: `Ikke nok esker på lager (har ${currFromBoxes}, trenger ${boxes}) i ${fromName}.`,
+        },
+        { status: 400 },
+      );
     }
     if (glasses > 0 && currFromGlass < glasses) {
       return NextResponse.json(
-        { ok: false, feil: `Ikke nok glass på lager (har ${currFromGlass}, trenger ${glasses}) i ${fromName}.` },
-        { status: 400 }
-      )
+        {
+          ok: false,
+          feil: `Ikke nok glass på lager (har ${currFromGlass}, trenger ${glasses}) i ${fromName}.`,
+        },
+        { status: 400 },
+      );
     }
 
-    const movements: Array<Record<string, unknown>> = []
-    const revert: Array<{ lagerId: string; item: "bie_eske" | "glass"; delta: number }> = []
+    const movements: Array<Record<string, unknown>> = [];
+    const revert: Array<{
+      lagerId: string;
+      item: "bie_eske" | "glass";
+      delta: number;
+    }> = [];
 
     if (boxes > 0) {
-      const decBox = await applyDelta(admin, fromId, "bie_eske", -boxes)
-      if (!decBox.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere eske-lager." }, { status: 400 })
-      revert.push({ lagerId: fromId, item: "bie_eske", delta: boxes })
-      const incBox = await applyDelta(admin, toId, "bie_eske", boxes)
+      const decBox = await applyDelta(admin, fromId, "bie_eske", -boxes);
+      if (!decBox.ok)
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere eske-lager." },
+          { status: 400 },
+        );
+      revert.push({ lagerId: fromId, item: "bie_eske", delta: boxes });
+      const incBox = await applyDelta(admin, toId, "bie_eske", boxes);
       if (!incBox.ok) {
-        for (const r of revert) await applyDelta(admin, r.lagerId, r.item, r.delta)
-        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere eske-lager." }, { status: 400 })
+        for (const r of revert)
+          await applyDelta(admin, r.lagerId, r.item, r.delta);
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere eske-lager." },
+          { status: 400 },
+        );
       }
-      revert.push({ lagerId: toId, item: "bie_eske", delta: -boxes })
+      revert.push({ lagerId: toId, item: "bie_eske", delta: -boxes });
       movements.push({
         id: crypto.randomUUID(),
         created_at: nowIso,
@@ -743,23 +1061,31 @@ export async function POST(request: Request) {
         note: note || null,
         actor_epost: gate.email,
         actor_role: gate.role,
-      })
+      });
     }
 
     if (glasses > 0) {
-      const decG = await applyDelta(admin, fromId, "glass", -glasses)
+      const decG = await applyDelta(admin, fromId, "glass", -glasses);
       if (!decG.ok) {
-        for (const r of revert) await applyDelta(admin, r.lagerId, r.item, r.delta)
-        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere glass-lager." }, { status: 400 })
+        for (const r of revert)
+          await applyDelta(admin, r.lagerId, r.item, r.delta);
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere glass-lager." },
+          { status: 400 },
+        );
       }
-      revert.push({ lagerId: fromId, item: "glass", delta: glasses })
-      const incG = await applyDelta(admin, toId, "glass", glasses)
+      revert.push({ lagerId: fromId, item: "glass", delta: glasses });
+      const incG = await applyDelta(admin, toId, "glass", glasses);
       if (!incG.ok) {
-        for (const r of revert) await applyDelta(admin, r.lagerId, r.item, r.delta)
-        await applyDelta(admin, fromId, "glass", glasses)
-        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere glass-lager." }, { status: 400 })
+        for (const r of revert)
+          await applyDelta(admin, r.lagerId, r.item, r.delta);
+        await applyDelta(admin, fromId, "glass", glasses);
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere glass-lager." },
+          { status: 400 },
+        );
       }
-      revert.push({ lagerId: toId, item: "glass", delta: -glasses })
+      revert.push({ lagerId: toId, item: "glass", delta: -glasses });
       movements.push({
         id: crypto.randomUUID(),
         created_at: nowIso,
@@ -771,49 +1097,91 @@ export async function POST(request: Request) {
         note: note || null,
         actor_epost: gate.email,
         actor_role: gate.role,
-      })
+      });
     }
 
-    const { error } = await admin.from("lek_v2_lager_bevegelser").insert(movements as unknown as never)
+    const { error } = await admin
+      .from("lek_v2_lager_bevegelser")
+      .insert(movements as unknown as never);
     if (error) {
-      const msg = String((error as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke logge flytting." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String((error as { message?: string } | null)?.message ?? "");
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke logge flytting.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
 
-    await admin.from("lek_v2_lager").update({ updated_at: nowIso } as unknown as never).in("id", [fromId, toId])
-    return NextResponse.json({ ok: true })
+    await admin
+      .from("lek_v2_lager")
+      .update({ updated_at: nowIso } as unknown as never)
+      .in("id", [fromId, toId]);
+    return NextResponse.json({ ok: true });
   }
 
   if (action === "updateLocation") {
-    if (gate.role === "birokter") return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
-    const locationId = String(form.get("locationId") ?? "").trim()
-    const name = String(form.get("name") ?? "").trim()
-    const locationType = String(form.get("locationType") ?? "").trim()
-    const address = String(form.get("address") ?? "").trim()
-    const responsibleLagerId = String(form.get("responsibleLagerId") ?? "").trim()
-    if (!locationId) return NextResponse.json({ ok: false, feil: "Mangler lokasjon." }, { status: 400 })
-    if (!name) return NextResponse.json({ ok: false, feil: "Mangler lokasjonsnavn." }, { status: 400 })
-    if (!locationType) return NextResponse.json({ ok: false, feil: "Mangler type sted." }, { status: 400 })
+    if (gate.role === "birokter")
+      return NextResponse.json(
+        { ok: false, feil: "Ingen tilgang." },
+        { status: 403 },
+      );
+    const locationId = String(form.get("locationId") ?? "").trim();
+    const name = String(form.get("name") ?? "").trim();
+    const locationType = String(form.get("locationType") ?? "").trim();
+    const address = String(form.get("address") ?? "").trim();
+    const responsibleLagerId = String(
+      form.get("responsibleLagerId") ?? "",
+    ).trim();
+    if (!locationId)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler lokasjon." },
+        { status: 400 },
+      );
+    if (!name)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler lokasjonsnavn." },
+        { status: 400 },
+      );
+    if (!locationType)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler type sted." },
+        { status: 400 },
+      );
 
     const { data: loc, error: locErr } = await admin
       .from("lek_v2_lager")
       .select("id, kind, lat, lng")
       .eq("id", locationId)
-      .maybeSingle()
+      .maybeSingle();
     if (locErr) {
-      const msg = String((locErr as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente lokasjon." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String(
+        (locErr as { message?: string } | null)?.message ?? "",
+      );
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke hente lokasjon.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
-    const locRow = loc as unknown as Record<string, unknown> | null
-    const locId = String(locRow?.id ?? "").trim()
-    const locKind = String(locRow?.kind ?? "").trim()
+    const locRow = loc as unknown as Record<string, unknown> | null;
+    const locId = String(locRow?.id ?? "").trim();
+    const locKind = String(locRow?.kind ?? "").trim();
     if (!locId || locKind !== "location") {
-      return NextResponse.json({ ok: false, feil: "Lokasjon finnes ikke." }, { status: 404 })
+      return NextResponse.json(
+        { ok: false, feil: "Lokasjon finnes ikke." },
+        { status: 404 },
+      );
     }
 
-    const lat = toNumber(locRow?.lat)
-    const lng = toNumber(locRow?.lng)
-    const dedupe = makeDedupeKey("location", name, lat, lng) || makeDedupeKey("location", name, null, null)
+    const lat = toNumber(locRow?.lat);
+    const lng = toNumber(locRow?.lng);
+    const dedupe =
+      makeDedupeKey("location", name, lat, lng) ||
+      makeDedupeKey("location", name, null, null);
 
     const { error: updErr } = await admin
       .from("lek_v2_lager")
@@ -825,13 +1193,29 @@ export async function POST(request: Request) {
         responsible_lager_id: responsibleLagerId || null,
         dedupe_key: dedupe,
       } as unknown as never)
-      .eq("id", locationId)
+      .eq("id", locationId);
     if (updErr) {
-      const msg = String((updErr as { message?: string } | null)?.message ?? "")
+      const msg = String(
+        (updErr as { message?: string } | null)?.message ?? "",
+      );
       if (/dedupe_key/i.test(msg) && /(duplicate|already|unique)/i.test(msg)) {
-        return NextResponse.json({ ok: false, feil: "Det finnes allerede en lokasjon med samme nøkkel (navn/gps)." }, { status: 400 })
+        return NextResponse.json(
+          {
+            ok: false,
+            feil: "Det finnes allerede en lokasjon med samme nøkkel (navn/gps).",
+          },
+          { status: 400 },
+        );
       }
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke oppdatere lokasjon." }, { status: isSchemaError(msg) ? 500 : 400 })
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg)
+            ? schemaFeil
+            : "Kunne ikke oppdatere lokasjon.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
 
     await admin.from("lek_v2_lokasjon_hendelser").insert({
@@ -842,26 +1226,57 @@ export async function POST(request: Request) {
       comment: `Oppdatert: ${name} · ${locationType}${address ? ` · ${address}` : ""}`,
       actor_epost: gate.email,
       actor_role: gate.role,
-    } as unknown as never)
+    } as unknown as never);
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true });
   }
 
   if (action === "deactivateLocation") {
-    if (gate.role === "birokter") return NextResponse.json({ ok: false, feil: "Ingen tilgang." }, { status: 403 })
-    const locationId = String(form.get("locationId") ?? "").trim()
-    if (!locationId) return NextResponse.json({ ok: false, feil: "Mangler lokasjon." }, { status: 400 })
-    const saldo = await getSaldo(admin, [locationId])
-    const boxes = Math.max(0, Math.trunc(Number((saldo.get(locationId) ?? {})["bie_eske"] ?? 0)))
-    const glass = Math.max(0, Math.trunc(Number((saldo.get(locationId) ?? {})["glass"] ?? 0)))
+    if (gate.role === "birokter")
+      return NextResponse.json(
+        { ok: false, feil: "Ingen tilgang." },
+        { status: 403 },
+      );
+    const locationId = String(form.get("locationId") ?? "").trim();
+    if (!locationId)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler lokasjon." },
+        { status: 400 },
+      );
+    const saldo = await getSaldo(admin, [locationId]);
+    const boxes = Math.max(
+      0,
+      Math.trunc(Number((saldo.get(locationId) ?? {})["bie_eske"] ?? 0)),
+    );
+    const glass = Math.max(
+      0,
+      Math.trunc(Number((saldo.get(locationId) ?? {})["glass"] ?? 0)),
+    );
     if (boxes > 0 || glass > 0) {
-      return NextResponse.json({ ok: false, feil: "Lokasjonen kan ikke deaktiveres før beholdningen er 0 (esker og glass)." }, { status: 400 })
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: "Lokasjonen kan ikke deaktiveres før beholdningen er 0 (esker og glass).",
+        },
+        { status: 400 },
+      );
     }
 
-    const { error } = await admin.from("lek_v2_lager").update({ active: false, updated_at: nowIso } as unknown as never).eq("id", locationId)
+    const { error } = await admin
+      .from("lek_v2_lager")
+      .update({ active: false, updated_at: nowIso } as unknown as never)
+      .eq("id", locationId);
     if (error) {
-      const msg = String((error as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke deaktivere lokasjon." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String((error as { message?: string } | null)?.message ?? "");
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg)
+            ? schemaFeil
+            : "Kunne ikke deaktivere lokasjon.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
 
     await admin.from("lek_v2_lokasjon_hendelser").insert({
@@ -872,38 +1287,70 @@ export async function POST(request: Request) {
       comment: "Lokasjon deaktivert",
       actor_epost: gate.email,
       actor_role: gate.role,
-    } as unknown as never)
+    } as unknown as never);
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true });
   }
 
   if (action === "deploy") {
-    const fromPersonId = String(form.get("fromPersonId") ?? "").trim()
-    const locationName = String(form.get("locationName") ?? "").trim()
-    const locationType = String(form.get("locationType") ?? "").trim()
-    const address = String(form.get("address") ?? "").trim()
-    const lat = toNumber(form.get("lat"))
-    const lng = toNumber(form.get("lng"))
-    const initialBoxes = toInt(form.get("boxes")) ?? 1
-    const initialGlasses = toInt(form.get("glasses")) ?? 15
-    const comment = String(form.get("comment") ?? "").trim()
-    if (!fromPersonId) return NextResponse.json({ ok: false, feil: "Mangler personlager." }, { status: 400 })
-    if (!locationName) return NextResponse.json({ ok: false, feil: "Mangler lokasjon." }, { status: 400 })
-    if (!locationType) return NextResponse.json({ ok: false, feil: "Mangler type sted." }, { status: 400 })
-    if (initialBoxes <= 0) return NextResponse.json({ ok: false, feil: "Ugyldig antall esker." }, { status: 400 })
-    if (initialGlasses < 0) return NextResponse.json({ ok: false, feil: "Ugyldig antall glass." }, { status: 400 })
+    const fromPersonId = String(form.get("fromPersonId") ?? "").trim();
+    const locationName = String(form.get("locationName") ?? "").trim();
+    const locationType = String(form.get("locationType") ?? "").trim();
+    const address = String(form.get("address") ?? "").trim();
+    const lat = toNumber(form.get("lat"));
+    const lng = toNumber(form.get("lng"));
+    const initialBoxes = toInt(form.get("boxes")) ?? 1;
+    const initialGlasses = toInt(form.get("glasses")) ?? 15;
+    const comment = String(form.get("comment") ?? "").trim();
+    if (!fromPersonId)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler personlager." },
+        { status: 400 },
+      );
+    if (!locationName)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler lokasjon." },
+        { status: 400 },
+      );
+    if (!locationType)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler type sted." },
+        { status: 400 },
+      );
+    if (initialBoxes <= 0)
+      return NextResponse.json(
+        { ok: false, feil: "Ugyldig antall esker." },
+        { status: 400 },
+      );
+    if (initialGlasses < 0)
+      return NextResponse.json(
+        { ok: false, feil: "Ugyldig antall glass." },
+        { status: 400 },
+      );
 
-    const dedupe = makeDedupeKey("location", locationName, lat, lng) || makeDedupeKey("location", locationName, null, null)
+    const dedupe =
+      makeDedupeKey("location", locationName, lat, lng) ||
+      makeDedupeKey("location", locationName, null, null);
     const { data: existing, error: exErr } = await admin
       .from("lek_v2_lager")
       .select("id")
       .eq("dedupe_key", dedupe)
-      .maybeSingle()
+      .maybeSingle();
     if (exErr) {
-      const msg = String((exErr as { message?: string } | null)?.message ?? "")
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke opprette lokasjon." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String((exErr as { message?: string } | null)?.message ?? "");
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg)
+            ? schemaFeil
+            : "Kunne ikke opprette lokasjon.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
-    const locationId = existing ? String((existing as { id?: unknown }).id ?? "") : crypto.randomUUID()
+    const locationId = existing
+      ? String((existing as { id?: unknown }).id ?? "")
+      : crypto.randomUUID();
     if (!existing) {
       const { error } = await admin.from("lek_v2_lager").insert({
         id: locationId,
@@ -918,146 +1365,326 @@ export async function POST(request: Request) {
         lat,
         lng,
         responsible_lager_id: fromPersonId,
-      } as unknown as never)
+      } as unknown as never);
       if (error) {
-        const msg = String((error as { message?: string } | null)?.message ?? "")
-        return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke opprette lokasjon." }, { status: isSchemaError(msg) ? 500 : 400 })
+        const msg = String(
+          (error as { message?: string } | null)?.message ?? "",
+        );
+        return NextResponse.json(
+          {
+            ok: false,
+            feil: isSchemaError(msg)
+              ? schemaFeil
+              : "Kunne ikke opprette lokasjon.",
+          },
+          { status: isSchemaError(msg) ? 500 : 400 },
+        );
       }
     } else {
       await admin
         .from("lek_v2_lager")
-        .update({ updated_at: nowIso, location_type: locationType, address: address || null, lat, lng, responsible_lager_id: fromPersonId } as unknown as never)
-        .eq("id", locationId)
+        .update({
+          updated_at: nowIso,
+          location_type: locationType,
+          address: address || null,
+          lat,
+          lng,
+          responsible_lager_id: fromPersonId,
+        } as unknown as never)
+        .eq("id", locationId);
     }
 
-    const fromSaldo = await getSaldo(admin, [fromPersonId])
-    const currBoxes = Number((fromSaldo.get(fromPersonId) ?? {})["bie_eske"] ?? 0)
-    if (!Number.isFinite(currBoxes) || currBoxes < initialBoxes) return NextResponse.json({ ok: false, feil: "Ikke nok esker på personlager." }, { status: 400 })
-    const currGlass = Math.max(0, Math.trunc(Number((fromSaldo.get(fromPersonId) ?? {})["glass"] ?? 0)))
-    const desiredGlass = Math.max(0, Math.trunc(initialGlasses))
+    const fromSaldo = await getSaldo(admin, [fromPersonId]);
+    const currBoxes = Number(
+      (fromSaldo.get(fromPersonId) ?? {})["bie_eske"] ?? 0,
+    );
+    if (!Number.isFinite(currBoxes) || currBoxes < initialBoxes)
+      return NextResponse.json(
+        { ok: false, feil: "Ikke nok esker på personlager." },
+        { status: 400 },
+      );
+    const currGlass = Math.max(
+      0,
+      Math.trunc(Number((fromSaldo.get(fromPersonId) ?? {})["glass"] ?? 0)),
+    );
+    const desiredGlass = Math.max(0, Math.trunc(initialGlasses));
 
-    const decBoxes = await applyDelta(admin, fromPersonId, "bie_eske", -initialBoxes)
-    if (!decBoxes.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-    const incBoxes = await applyDelta(admin, locationId, "bie_eske", initialBoxes)
-    if (!incBoxes.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+    const decBoxes = await applyDelta(
+      admin,
+      fromPersonId,
+      "bie_eske",
+      -initialBoxes,
+    );
+    if (!decBoxes.ok)
+      return NextResponse.json(
+        { ok: false, feil: "Kunne ikke oppdatere lager." },
+        { status: 400 },
+      );
+    const incBoxes = await applyDelta(
+      admin,
+      locationId,
+      "bie_eske",
+      initialBoxes,
+    );
+    if (!incBoxes.ok)
+      return NextResponse.json(
+        { ok: false, feil: "Kunne ikke oppdatere lager." },
+        { status: 400 },
+      );
     if (desiredGlass > 0) {
-      let toppedUp = 0
+      let toppedUp = 0;
       if (currGlass < desiredGlass) {
-        const missing = desiredGlass - currGlass
-        const topup = await applyDelta(admin, fromPersonId, "glass", missing)
-        if (!topup.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-        toppedUp = missing
+        const missing = desiredGlass - currGlass;
+        const topup = await applyDelta(admin, fromPersonId, "glass", missing);
+        if (!topup.ok)
+          return NextResponse.json(
+            { ok: false, feil: "Kunne ikke oppdatere lager." },
+            { status: 400 },
+          );
+        toppedUp = missing;
       }
-      const decGlass = await applyDelta(admin, fromPersonId, "glass", -desiredGlass)
+      const decGlass = await applyDelta(
+        admin,
+        fromPersonId,
+        "glass",
+        -desiredGlass,
+      );
       if (!decGlass.ok) {
-        if (toppedUp > 0) await applyDelta(admin, fromPersonId, "glass", -toppedUp)
-        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+        if (toppedUp > 0)
+          await applyDelta(admin, fromPersonId, "glass", -toppedUp);
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere lager." },
+          { status: 400 },
+        );
       }
-      const incGlass = await applyDelta(admin, locationId, "glass", desiredGlass)
+      const incGlass = await applyDelta(
+        admin,
+        locationId,
+        "glass",
+        desiredGlass,
+      );
       if (!incGlass.ok) {
-        await applyDelta(admin, fromPersonId, "glass", desiredGlass)
-        if (toppedUp > 0) await applyDelta(admin, fromPersonId, "glass", -toppedUp)
-        return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+        await applyDelta(admin, fromPersonId, "glass", desiredGlass);
+        if (toppedUp > 0)
+          await applyDelta(admin, fromPersonId, "glass", -toppedUp);
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere lager." },
+          { status: 400 },
+        );
       }
     }
 
-    await admin.from("lek_v2_lager_bevegelser").insert(
-      [
-        { id: crypto.randomUUID(), created_at: nowIso, from_lager_id: fromPersonId, to_lager_id: locationId, item: "bie_eske", qty: initialBoxes, reason: "deploy", note: comment || null, actor_epost: gate.email, actor_role: gate.role },
+    await admin
+      .from("lek_v2_lager_bevegelser")
+      .insert([
+        {
+          id: crypto.randomUUID(),
+          created_at: nowIso,
+          from_lager_id: fromPersonId,
+          to_lager_id: locationId,
+          item: "bie_eske",
+          qty: initialBoxes,
+          reason: "deploy",
+          note: comment || null,
+          actor_epost: gate.email,
+          actor_role: gate.role,
+        },
         ...(desiredGlass > 0
-          ? [{ id: crypto.randomUUID(), created_at: nowIso, from_lager_id: fromPersonId, to_lager_id: locationId, item: "glass", qty: desiredGlass, reason: "deploy", note: "Startbeholdning i esken", actor_epost: gate.email, actor_role: gate.role }]
+          ? [
+              {
+                id: crypto.randomUUID(),
+                created_at: nowIso,
+                from_lager_id: fromPersonId,
+                to_lager_id: locationId,
+                item: "glass",
+                qty: desiredGlass,
+                reason: "deploy",
+                note: "Startbeholdning i esken",
+                actor_epost: gate.email,
+                actor_role: gate.role,
+              },
+            ]
           : []),
-      ] as unknown as never
-    )
+      ] as unknown as never);
 
-    const rawFiles = form.getAll("images")
-    const files = rawFiles.filter((f) => f instanceof File && f.size > 0) as File[]
-    const images = files.slice(0, 3)
+    const rawFiles = form.getAll("images");
+    const files = rawFiles.filter(
+      (f) => f instanceof File && f.size > 0,
+    ) as File[];
+    const images = files.slice(0, 3);
     for (const f of images) {
-      if (String(f.type || "").startsWith("video/")) return NextResponse.json({ ok: false, feil: "Bilde må være et bilde (ikke video)." }, { status: 400 })
-      if (f.size > 12 * 1024 * 1024) return NextResponse.json({ ok: false, feil: "Bilde er for stort (maks 12 MB)." }, { status: 400 })
+      if (String(f.type || "").startsWith("video/"))
+        return NextResponse.json(
+          { ok: false, feil: "Bilde må være et bilde (ikke video)." },
+          { status: 400 },
+        );
+      if (f.size > 12 * 1024 * 1024)
+        return NextResponse.json(
+          { ok: false, feil: "Bilde er for stort (maks 12 MB)." },
+          { status: 400 },
+        );
     }
 
-    const eventId = crypto.randomUUID()
-    const uploaded: string[] = []
-    const paths: Array<string | null> = [null, null, null]
+    const eventId = crypto.randomUUID();
+    const uploaded: string[] = [];
+    const paths: Array<string | null> = [null, null, null];
     for (let i = 0; i < images.length; i++) {
-      const f = images[i]
-      const ext = extFromNameAndType(f.name, f.type)
-      const path = `${toSafeStorageKey(locationId)}/utsetting/${eventId}-${i + 1}.${ext}`
-      const body = await f.arrayBuffer()
-      const { error: uploadError } = await admin.storage.from(bucket).upload(path, body, { upsert: false, contentType: f.type || undefined })
+      const f = images[i];
+      const ext = extFromNameAndType(f.name, f.type);
+      const path = `${toSafeStorageKey(locationId)}/utsetting/${eventId}-${i + 1}.${ext}`;
+      const body = await f.arrayBuffer();
+      const { error: uploadError } = await admin.storage
+        .from(bucket)
+        .upload(path, body, {
+          upsert: false,
+          contentType: f.type || undefined,
+        });
       if (uploadError) {
-        if (uploaded.length) await admin.storage.from(bucket).remove(uploaded)
-        const msg = String((uploadError as { message?: string } | null)?.message ?? "").trim()
-        return NextResponse.json({ ok: false, feil: msg ? `Kunne ikke laste opp bilde: ${msg}` : "Kunne ikke laste opp bilde." }, { status: 400 })
+        if (uploaded.length) await admin.storage.from(bucket).remove(uploaded);
+        const msg = String(
+          (uploadError as { message?: string } | null)?.message ?? "",
+        ).trim();
+        return NextResponse.json(
+          {
+            ok: false,
+            feil: msg
+              ? `Kunne ikke laste opp bilde: ${msg}`
+              : "Kunne ikke laste opp bilde.",
+          },
+          { status: 400 },
+        );
       }
       try {
-        await arkiverTilMediaBibliotek(admin, { name: f.name, type: f.type, size: f.size, bytes: body })
+        await arkiverTilMediaBibliotek(admin, {
+          name: f.name,
+          type: f.type,
+          size: f.size,
+          bytes: body,
+        });
       } catch {}
-      uploaded.push(path)
-      paths[i] = path
+      uploaded.push(path);
+      paths[i] = path;
     }
 
-    const { error: evErr } = await admin.from("lek_v2_lokasjon_hendelser").insert({
-      id: eventId,
-      created_at: nowIso,
-      location_lager_id: locationId,
-      type: "utsetting",
-      glasses_left: initialGlasses,
-      filled_added: null,
-      comment: comment || null,
-      lat,
-      lng,
-      image1_path: paths[0],
-      image2_path: paths[1],
-      image3_path: paths[2],
-      actor_epost: gate.email,
-      actor_role: gate.role,
-    } as unknown as never)
+    const { error: evErr } = await admin
+      .from("lek_v2_lokasjon_hendelser")
+      .insert({
+        id: eventId,
+        created_at: nowIso,
+        location_lager_id: locationId,
+        type: "utsetting",
+        glasses_left: initialGlasses,
+        filled_added: null,
+        comment: comment || null,
+        lat,
+        lng,
+        image1_path: paths[0],
+        image2_path: paths[1],
+        image3_path: paths[2],
+        actor_epost: gate.email,
+        actor_role: gate.role,
+      } as unknown as never);
     if (evErr) {
-      const msg = String((evErr as { message?: string } | null)?.message ?? "")
-      if (uploaded.length) await admin.storage.from(bucket).remove(uploaded)
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke lagre historikk." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String((evErr as { message?: string } | null)?.message ?? "");
+      if (uploaded.length) await admin.storage.from(bucket).remove(uploaded);
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke lagre historikk.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
 
-    await admin.from("lek_v2_lager").update({ updated_at: nowIso } as unknown as never).in("id", [fromPersonId, locationId])
-    return NextResponse.json({ ok: true, locationId, reusedLocation: Boolean(existing) })
+    await admin
+      .from("lek_v2_lager")
+      .update({ updated_at: nowIso } as unknown as never)
+      .in("id", [fromPersonId, locationId]);
+    return NextResponse.json({
+      ok: true,
+      locationId,
+      reusedLocation: Boolean(existing),
+    });
   }
 
   if (action === "control") {
-    const locationId = String(form.get("locationId") ?? "").trim()
-    const glassesLeft = toInt(form.get("glassesLeft"))
-    const filledAdded = toInt(form.get("filledAdded"))
-    const fromLagerId = String(form.get("fromLagerId") ?? "").trim()
-    const collectedGlasses = toInt(form.get("collectedGlasses"))
-    const pickedUp = String(form.get("pickedUp") ?? "").trim() === "1"
-    const comment = String(form.get("comment") ?? "").trim()
-    const lat = toNumber(form.get("lat"))
-    const lng = toNumber(form.get("lng"))
-    if (!locationId) return NextResponse.json({ ok: false, feil: "Mangler lokasjon." }, { status: 400 })
-    if (glassesLeft == null || glassesLeft < 0) return NextResponse.json({ ok: false, feil: "Ugyldig glass igjen." }, { status: 400 })
-    if (collectedGlasses != null && collectedGlasses < 0) return NextResponse.json({ ok: false, feil: "Ugyldig glass hentes inn." }, { status: 400 })
+    const locationId = String(form.get("locationId") ?? "").trim();
+    const glassesLeft = toInt(form.get("glassesLeft"));
+    const filledAdded = toInt(form.get("filledAdded"));
+    const fromLagerId = String(form.get("fromLagerId") ?? "").trim();
+    const collectedGlasses = toInt(form.get("collectedGlasses"));
+    const pickedUp = String(form.get("pickedUp") ?? "").trim() === "1";
+    const comment = String(form.get("comment") ?? "").trim();
+    const lat = toNumber(form.get("lat"));
+    const lng = toNumber(form.get("lng"));
+    if (!locationId)
+      return NextResponse.json(
+        { ok: false, feil: "Mangler lokasjon." },
+        { status: 400 },
+      );
+    if (glassesLeft == null || glassesLeft < 0)
+      return NextResponse.json(
+        { ok: false, feil: "Ugyldig glass igjen." },
+        { status: 400 },
+      );
+    if (collectedGlasses != null && collectedGlasses < 0)
+      return NextResponse.json(
+        { ok: false, feil: "Ugyldig glass hentes inn." },
+        { status: 400 },
+      );
 
-    const needsLager = (filledAdded != null && filledAdded > 0) || (collectedGlasses != null && collectedGlasses > 0) || pickedUp
-    if (needsLager && !fromLagerId) return NextResponse.json({ ok: false, feil: "Velg lager/person." }, { status: 400 })
+    const needsLager =
+      (filledAdded != null && filledAdded > 0) ||
+      (collectedGlasses != null && collectedGlasses > 0) ||
+      pickedUp;
+    if (needsLager && !fromLagerId)
+      return NextResponse.json(
+        { ok: false, feil: "Velg lager/person." },
+        { status: 400 },
+      );
 
-    const saldo = await getSaldo(admin, needsLager ? [locationId, fromLagerId] : [locationId])
-    const currLocGlass = Math.max(0, Math.trunc(Number((saldo.get(locationId) ?? {})["glass"] ?? 0)))
-    const currLocBoxes = Math.max(0, Math.trunc(Number((saldo.get(locationId) ?? {})["bie_eske"] ?? 0)))
-    const currFromGlass = needsLager ? Math.max(0, Math.trunc(Number((saldo.get(fromLagerId) ?? {})["glass"] ?? 0))) : 0
+    const saldo = await getSaldo(
+      admin,
+      needsLager ? [locationId, fromLagerId] : [locationId],
+    );
+    const currLocGlass = Math.max(
+      0,
+      Math.trunc(Number((saldo.get(locationId) ?? {})["glass"] ?? 0)),
+    );
+    const currLocBoxes = Math.max(
+      0,
+      Math.trunc(Number((saldo.get(locationId) ?? {})["bie_eske"] ?? 0)),
+    );
+    const currFromGlass = needsLager
+      ? Math.max(
+          0,
+          Math.trunc(Number((saldo.get(fromLagerId) ?? {})["glass"] ?? 0)),
+        )
+      : 0;
 
-    let locGlass = currLocGlass
-    const movements: Array<Record<string, unknown>> = []
+    let locGlass = currLocGlass;
+    const movements: Array<Record<string, unknown>> = [];
 
     if (filledAdded != null && filledAdded > 0) {
-      if (currFromGlass < filledAdded) return NextResponse.json({ ok: false, feil: "Ikke nok glass på valgt lager." }, { status: 400 })
+      if (currFromGlass < filledAdded)
+        return NextResponse.json(
+          { ok: false, feil: "Ikke nok glass på valgt lager." },
+          { status: 400 },
+        );
 
-      const dec = await applyDelta(admin, fromLagerId, "glass", -filledAdded)
-      if (!dec.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-      const inc = await applyDelta(admin, locationId, "glass", filledAdded)
-      if (!inc.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-      locGlass += filledAdded
+      const dec = await applyDelta(admin, fromLagerId, "glass", -filledAdded);
+      if (!dec.ok)
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere lager." },
+          { status: 400 },
+        );
+      const inc = await applyDelta(admin, locationId, "glass", filledAdded);
+      if (!inc.ok)
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere lager." },
+          { status: 400 },
+        );
+      locGlass += filledAdded;
       movements.push({
         id: crypto.randomUUID(),
         created_at: nowIso,
@@ -1069,16 +1696,38 @@ export async function POST(request: Request) {
         note: comment || null,
         actor_epost: gate.email,
         actor_role: gate.role,
-      })
+      });
     }
 
     if (collectedGlasses != null && collectedGlasses > 0) {
-      if (locGlass < collectedGlasses) return NextResponse.json({ ok: false, feil: "Ikke nok glass på lokasjonen til å hente inn." }, { status: 400 })
-      const dec = await applyDelta(admin, locationId, "glass", -collectedGlasses)
-      if (!dec.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-      const inc = await applyDelta(admin, fromLagerId, "glass", collectedGlasses)
-      if (!inc.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
-      locGlass -= collectedGlasses
+      if (locGlass < collectedGlasses)
+        return NextResponse.json(
+          { ok: false, feil: "Ikke nok glass på lokasjonen til å hente inn." },
+          { status: 400 },
+        );
+      const dec = await applyDelta(
+        admin,
+        locationId,
+        "glass",
+        -collectedGlasses,
+      );
+      if (!dec.ok)
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere lager." },
+          { status: 400 },
+        );
+      const inc = await applyDelta(
+        admin,
+        fromLagerId,
+        "glass",
+        collectedGlasses,
+      );
+      if (!inc.ok)
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere lager." },
+          { status: 400 },
+        );
+      locGlass -= collectedGlasses;
       movements.push({
         id: crypto.randomUUID(),
         created_at: nowIso,
@@ -1090,19 +1739,31 @@ export async function POST(request: Request) {
         note: comment || null,
         actor_epost: gate.email,
         actor_role: gate.role,
-      })
+      });
     }
 
-    let pickedUpBoxes = 0
+    let pickedUpBoxes = 0;
     if (pickedUp) {
-      const qty = Math.min(currLocBoxes, 1)
-      if (qty <= 0) return NextResponse.json({ ok: false, feil: "Ingen eske på lokasjonen å hente inn." }, { status: 400 })
+      const qty = Math.min(currLocBoxes, 1);
+      if (qty <= 0)
+        return NextResponse.json(
+          { ok: false, feil: "Ingen eske på lokasjonen å hente inn." },
+          { status: 400 },
+        );
 
-      const decBox = await applyDelta(admin, locationId, "bie_eske", -qty)
-      if (!decBox.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager (eske)." }, { status: 400 })
-      const incBox = await applyDelta(admin, fromLagerId, "bie_eske", qty)
-      if (!incBox.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager (eske)." }, { status: 400 })
-      pickedUpBoxes = qty
+      const decBox = await applyDelta(admin, locationId, "bie_eske", -qty);
+      if (!decBox.ok)
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere lager (eske)." },
+          { status: 400 },
+        );
+      const incBox = await applyDelta(admin, fromLagerId, "bie_eske", qty);
+      if (!incBox.ok)
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere lager (eske)." },
+          { status: 400 },
+        );
+      pickedUpBoxes = qty;
       movements.push({
         id: crypto.randomUUID(),
         created_at: nowIso,
@@ -1114,15 +1775,39 @@ export async function POST(request: Request) {
         note: comment || null,
         actor_epost: gate.email,
         actor_role: gate.role,
-      })
+      });
 
-      const remainingGlass = Math.max(0, locGlass)
+      const remainingGlass = Math.max(0, locGlass);
       if (remainingGlass > 0) {
-        const decGlass = await applyDelta(admin, locationId, "glass", -remainingGlass)
-        if (!decGlass.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager (henting av gjenværende glass)." }, { status: 400 })
-        const incGlass = await applyDelta(admin, fromLagerId, "glass", remainingGlass)
-        if (!incGlass.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager (henting av gjenværende glass)." }, { status: 400 })
-        locGlass -= remainingGlass
+        const decGlass = await applyDelta(
+          admin,
+          locationId,
+          "glass",
+          -remainingGlass,
+        );
+        if (!decGlass.ok)
+          return NextResponse.json(
+            {
+              ok: false,
+              feil: "Kunne ikke oppdatere lager (henting av gjenværende glass).",
+            },
+            { status: 400 },
+          );
+        const incGlass = await applyDelta(
+          admin,
+          fromLagerId,
+          "glass",
+          remainingGlass,
+        );
+        if (!incGlass.ok)
+          return NextResponse.json(
+            {
+              ok: false,
+              feil: "Kunne ikke oppdatere lager (henting av gjenværende glass).",
+            },
+            { status: 400 },
+          );
+        locGlass -= remainingGlass;
         movements.push({
           id: crypto.randomUUID(),
           created_at: nowIso,
@@ -1131,21 +1816,30 @@ export async function POST(request: Request) {
           item: "glass",
           qty: remainingGlass,
           reason: "pickup_remaining",
-          note: comment ? `${comment} · Gjenværende glass ved avhenting` : "Gjenværende glass ved avhenting",
+          note: comment
+            ? `${comment} · Gjenværende glass ved avhenting`
+            : "Gjenværende glass ved avhenting",
           actor_epost: gate.email,
           actor_role: gate.role,
-        })
+        });
       }
 
       if (currLocBoxes - qty <= 0) {
-        await admin.from("lek_v2_lager").update({ active: false, updated_at: nowIso } as unknown as never).eq("id", locationId)
+        await admin
+          .from("lek_v2_lager")
+          .update({ active: false, updated_at: nowIso } as unknown as never)
+          .eq("id", locationId);
       }
     }
 
-    const delta = Math.trunc(glassesLeft - locGlass)
+    const delta = Math.trunc(glassesLeft - locGlass);
     if (delta !== 0) {
-      const upd = await applyDelta(admin, locationId, "glass", delta)
-      if (!upd.ok) return NextResponse.json({ ok: false, feil: "Kunne ikke oppdatere lager." }, { status: 400 })
+      const upd = await applyDelta(admin, locationId, "glass", delta);
+      if (!upd.ok)
+        return NextResponse.json(
+          { ok: false, feil: "Kunne ikke oppdatere lager." },
+          { status: 400 },
+        );
       movements.push({
         id: crypto.randomUUID(),
         created_at: nowIso,
@@ -1157,78 +1851,143 @@ export async function POST(request: Request) {
         note: "Kontroll: justering til oppgitt glass igjen",
         actor_epost: gate.email,
         actor_role: gate.role,
-      })
+      });
     }
 
     if (movements.length) {
-      const { error } = await admin.from("lek_v2_lager_bevegelser").insert(movements as unknown as never)
+      const { error } = await admin
+        .from("lek_v2_lager_bevegelser")
+        .insert(movements as unknown as never);
       if (error) {
-        const msg = String((error as { message?: string } | null)?.message ?? "")
-        return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke logge kontroll." }, { status: isSchemaError(msg) ? 500 : 400 })
+        const msg = String(
+          (error as { message?: string } | null)?.message ?? "",
+        );
+        return NextResponse.json(
+          {
+            ok: false,
+            feil: isSchemaError(msg)
+              ? schemaFeil
+              : "Kunne ikke logge kontroll.",
+          },
+          { status: isSchemaError(msg) ? 500 : 400 },
+        );
       }
     }
 
-    const rawFiles = form.getAll("images")
-    const files = rawFiles.filter((f) => f instanceof File && f.size > 0) as File[]
-    const images = files.slice(0, 3)
+    const rawFiles = form.getAll("images");
+    const files = rawFiles.filter(
+      (f) => f instanceof File && f.size > 0,
+    ) as File[];
+    const images = files.slice(0, 3);
     for (const f of images) {
-      if (String(f.type || "").startsWith("video/")) return NextResponse.json({ ok: false, feil: "Bilde må være et bilde (ikke video)." }, { status: 400 })
-      if (f.size > 12 * 1024 * 1024) return NextResponse.json({ ok: false, feil: "Bilde er for stort (maks 12 MB)." }, { status: 400 })
+      if (String(f.type || "").startsWith("video/"))
+        return NextResponse.json(
+          { ok: false, feil: "Bilde må være et bilde (ikke video)." },
+          { status: 400 },
+        );
+      if (f.size > 12 * 1024 * 1024)
+        return NextResponse.json(
+          { ok: false, feil: "Bilde er for stort (maks 12 MB)." },
+          { status: 400 },
+        );
     }
 
-    const eventId = crypto.randomUUID()
-    const uploaded: string[] = []
-    const paths: Array<string | null> = [null, null, null]
+    const eventId = crypto.randomUUID();
+    const uploaded: string[] = [];
+    const paths: Array<string | null> = [null, null, null];
     for (let i = 0; i < images.length; i++) {
-      const f = images[i]
-      const ext = extFromNameAndType(f.name, f.type)
-      const path = `${toSafeStorageKey(locationId)}/kontroll/${eventId}-${i + 1}.${ext}`
-      const body = await f.arrayBuffer()
-      const { error: uploadError } = await admin.storage.from(bucket).upload(path, body, { upsert: false, contentType: f.type || undefined })
+      const f = images[i];
+      const ext = extFromNameAndType(f.name, f.type);
+      const path = `${toSafeStorageKey(locationId)}/kontroll/${eventId}-${i + 1}.${ext}`;
+      const body = await f.arrayBuffer();
+      const { error: uploadError } = await admin.storage
+        .from(bucket)
+        .upload(path, body, {
+          upsert: false,
+          contentType: f.type || undefined,
+        });
       if (uploadError) {
-        if (uploaded.length) await admin.storage.from(bucket).remove(uploaded)
-        const msg = String((uploadError as { message?: string } | null)?.message ?? "").trim()
-        return NextResponse.json({ ok: false, feil: msg ? `Kunne ikke laste opp bilde: ${msg}` : "Kunne ikke laste opp bilde." }, { status: 400 })
+        if (uploaded.length) await admin.storage.from(bucket).remove(uploaded);
+        const msg = String(
+          (uploadError as { message?: string } | null)?.message ?? "",
+        ).trim();
+        return NextResponse.json(
+          {
+            ok: false,
+            feil: msg
+              ? `Kunne ikke laste opp bilde: ${msg}`
+              : "Kunne ikke laste opp bilde.",
+          },
+          { status: 400 },
+        );
       }
       try {
-        await arkiverTilMediaBibliotek(admin, { name: f.name, type: f.type, size: f.size, bytes: body })
+        await arkiverTilMediaBibliotek(admin, {
+          name: f.name,
+          type: f.type,
+          size: f.size,
+          bytes: body,
+        });
       } catch {}
-      uploaded.push(path)
-      paths[i] = path
+      uploaded.push(path);
+      paths[i] = path;
     }
 
-    const extras: string[] = []
-    if (filledAdded != null && filledAdded > 0) extras.push(`Påfylt: ${filledAdded}`)
-    if (collectedGlasses != null && collectedGlasses > 0) extras.push(`Glass inn: ${collectedGlasses}`)
-    if (pickedUpBoxes > 0) extras.push("Eske hentet inn")
-    const finalComment = `${comment || ""}${extras.length ? `${comment ? " · " : ""}${extras.join(" · ")}` : ""}`.trim() || null
+    const extras: string[] = [];
+    if (filledAdded != null && filledAdded > 0)
+      extras.push(`Påfylt: ${filledAdded}`);
+    if (collectedGlasses != null && collectedGlasses > 0)
+      extras.push(`Glass inn: ${collectedGlasses}`);
+    if (pickedUpBoxes > 0) extras.push("Eske hentet inn");
+    const finalComment =
+      `${comment || ""}${extras.length ? `${comment ? " · " : ""}${extras.join(" · ")}` : ""}`.trim() ||
+      null;
 
-    const { error: evErr } = await admin.from("lek_v2_lokasjon_hendelser").insert({
-      id: eventId,
-      created_at: nowIso,
-      location_lager_id: locationId,
-      type: "kontroll",
-      glasses_left: glassesLeft,
-      filled_added: filledAdded != null && filledAdded > 0 ? filledAdded : null,
-      comment: finalComment,
-      lat,
-      lng,
-      image1_path: paths[0],
-      image2_path: paths[1],
-      image3_path: paths[2],
-      actor_epost: gate.email,
-      actor_role: gate.role,
-    } as unknown as never)
+    const { error: evErr } = await admin
+      .from("lek_v2_lokasjon_hendelser")
+      .insert({
+        id: eventId,
+        created_at: nowIso,
+        location_lager_id: locationId,
+        type: "kontroll",
+        glasses_left: glassesLeft,
+        filled_added:
+          filledAdded != null && filledAdded > 0 ? filledAdded : null,
+        comment: finalComment,
+        lat,
+        lng,
+        image1_path: paths[0],
+        image2_path: paths[1],
+        image3_path: paths[2],
+        actor_epost: gate.email,
+        actor_role: gate.role,
+      } as unknown as never);
     if (evErr) {
-      const msg = String((evErr as { message?: string } | null)?.message ?? "")
-      if (uploaded.length) await admin.storage.from(bucket).remove(uploaded)
-      return NextResponse.json({ ok: false, feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke lagre historikk." }, { status: isSchemaError(msg) ? 500 : 400 })
+      const msg = String((evErr as { message?: string } | null)?.message ?? "");
+      if (uploaded.length) await admin.storage.from(bucket).remove(uploaded);
+      return NextResponse.json(
+        {
+          ok: false,
+          feil: isSchemaError(msg) ? schemaFeil : "Kunne ikke lagre historikk.",
+        },
+        { status: isSchemaError(msg) ? 500 : 400 },
+      );
     }
 
-    await admin.from("lek_v2_lager").update({ updated_at: nowIso } as unknown as never).eq("id", locationId)
-    if (fromLagerId) await admin.from("lek_v2_lager").update({ updated_at: nowIso } as unknown as never).eq("id", fromLagerId)
-    return NextResponse.json({ ok: true })
+    await admin
+      .from("lek_v2_lager")
+      .update({ updated_at: nowIso } as unknown as never)
+      .eq("id", locationId);
+    if (fromLagerId)
+      await admin
+        .from("lek_v2_lager")
+        .update({ updated_at: nowIso } as unknown as never)
+        .eq("id", fromLagerId);
+    return NextResponse.json({ ok: true });
   }
 
-  return NextResponse.json({ ok: false, feil: "Ukjent action." }, { status: 400 })
+  return NextResponse.json(
+    { ok: false, feil: "Ukjent action." },
+    { status: 400 },
+  );
 }
