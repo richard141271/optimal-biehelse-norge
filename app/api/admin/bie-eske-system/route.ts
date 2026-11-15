@@ -1643,6 +1643,29 @@ export async function POST(request: Request) {
         { status: 400 },
       );
 
+    if (needsLager && fromLagerId) {
+      const { data: fromRow } = await admin
+        .from("lek_v2_lager")
+        .select("kind, name")
+        .eq("id", fromLagerId)
+        .maybeSingle();
+      const fromKind = String(
+        (fromRow as { kind?: string } | null)?.kind ?? "",
+      );
+      const fromName = String(
+        (fromRow as { name?: string } | null)?.name ?? fromLagerId,
+      );
+      if (fromKind === "main" && !canTransferMainWarehouse(gate.role)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            feil: `Du har ikke tilgang til å flytte glass ut av hovedlager (${fromName}). Kun superbruker, admin og styret kan gjøre det.`,
+          },
+          { status: 403 },
+        );
+      }
+    }
+
     const saldo = await getSaldo(
       admin,
       needsLager ? [locationId, fromLagerId] : [locationId],
@@ -1668,7 +1691,10 @@ export async function POST(request: Request) {
     if (filledAdded != null && filledAdded > 0) {
       if (currFromGlass < filledAdded)
         return NextResponse.json(
-          { ok: false, feil: "Ikke nok glass på valgt lager." },
+          {
+            ok: false,
+            feil: `Ikke nok glass på valgt lager: der står det ${currFromGlass}, men du prøver å fylle på ${filledAdded}.`,
+          },
           { status: 400 },
         );
 

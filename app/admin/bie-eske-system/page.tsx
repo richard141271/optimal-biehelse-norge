@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { canTransferMainWarehouse } from "@/lib/roller";
 
 type Lager = {
   id: string;
@@ -441,6 +442,61 @@ export default function BieEskeSystemPage() {
     controlGlassesLeft,
   ]);
 
+  const canPickMainWarehouse = useMemo(
+    () => (api.type === "ready" ? canTransferMainWarehouse(api.role) : false),
+    [api],
+  );
+
+  // Live-validering: fanger opp umiddelbart hvis man prøver å flytte mer glass
+  // enn det faktisk finnes på kilden. Samme rekkefølge som APIet bruker.
+  const controlFeil = useMemo(() => {
+    const feil: string[] = [];
+    let locGlass = controlLocationBalances.glasses;
+    const filled = clampInt(controlFilledAdded, 0, 1_000_000);
+    const collected = clampInt(controlCollectedGlasses, 0, 1_000_000);
+    const pickedUp = Boolean(controlPickedUp);
+    const needsLager = filled > 0 || collected > 0 || pickedUp;
+    const fromName = controlFromName || "valgt lager/person";
+
+    if (needsLager && !controlFromLagerId) {
+      feil.push("Velg «Lager/person (utfører)» før du lagrer kontrollen.");
+    }
+
+    if (filled > 0) {
+      if (controlFromBalances.glasses < filled) {
+        feil.push(
+          `Ikke nok glass på ${fromName}: der står det ${controlFromBalances.glasses}, men du prøver å fylle på ${filled}. Flytt glass til dette lageret først, eller reduser «Påfylt».`,
+        );
+      } else {
+        locGlass += filled;
+      }
+    }
+
+    if (collected > 0) {
+      if (locGlass < collected) {
+        feil.push(
+          `Ikke nok glass på lokasjonen å hente inn: der står det ${locGlass}, men du prøver å ta med ${collected}.`,
+        );
+      } else {
+        locGlass -= collected;
+      }
+    }
+
+    if (pickedUp && controlLocationBalances.boxes < 1) {
+      feil.push("Det står ingen eske på lokasjonen å hente inn.");
+    }
+
+    return feil;
+  }, [
+    controlLocationBalances,
+    controlFromBalances,
+    controlFromName,
+    controlFromLagerId,
+    controlFilledAdded,
+    controlCollectedGlasses,
+    controlPickedUp,
+  ]);
+
   const onChangeTransferFrom = useCallback(
     (id: string) => {
       setTransferFrom(id);
@@ -719,34 +775,20 @@ export default function BieEskeSystemPage() {
   const onControl = useCallback(async () => {
     if (busy) return;
     if (!selectedLocationId) return;
-    if (
-      controlFilledAdded > 0 &&
-      (!controlFromLagerId || controlFromBalances.glasses < controlFilledAdded)
-    ) {
-      const available = Math.max(0, controlFromBalances.glasses);
-      setMsg(
-        available > 0
-          ? `Valgt lager/person har bare ${available} glass tilgjengelig. Skal du bare korrigere en tidligere feilregistrering, la «Påfylt» stå 0 og skriv riktig antall i «Glass igjen».`
-          : "Valgt lager/person har ikke nok glass. Skal du bare korrigere en tidligere feilregistrering, la «Påfylt» stå 0 og skriv riktig antall i «Glass igjen».",
-      );
+    if (controlFeil.length) {
+      setMsg(controlFeil.join(" "));
       return;
     }
-    const requiresWarehouseConfirmation =
-      controlFilledAdded > 0 ||
-      controlCollectedGlasses > 0 ||
-      controlPickedUp ||
-      Boolean(
-        currentUserControlLagerId &&
+    const usingOtherLager = Boolean(
+      currentUserControlLagerId &&
         controlFromLagerId &&
         controlFromLagerId !== currentUserControlLagerId,
-      );
-    if (requiresWarehouseConfirmation) {
+    );
+    if (usingOtherLager) {
       const selectedName = controlFromName || "Ikke valgt";
       const ownName = currentUserControlLagerName || "Ukjent";
       const confirmed = window.confirm(
-        controlFromLagerId && controlFromLagerId !== currentUserControlLagerId
-          ? `Har du valgt riktig lager?\n\nValgt lager/person: ${selectedName}\nDitt standardlager: ${ownName}\n\nTrykk OK for å lagre kontrollen.`
-          : `Har du valgt riktig lager?\n\nValgt lager/person: ${selectedName}\n\nTrykk OK for å lagre kontrollen.`,
+        `Har du valgt riktig lager?\n\nValgt lager/person: ${selectedName}\nDitt standardlager: ${ownName}\n\nTrykk OK for å lagre kontrollen.`,
       );
       if (!confirmed) return;
     }
@@ -804,17 +846,16 @@ export default function BieEskeSystemPage() {
     setTimeout(() => setMsg(null), 1400);
   }, [
     busy,
-    controlBaseGlasses,
     controlCollectedGlasses,
     controlComment,
     controlFilledAdded,
-    controlFromBalances.glasses,
-    controlFromLagerId,
-    controlFromName,
     controlGlassesLeft,
     controlImages,
     controlModalLocationId,
     controlPickedUp,
+    controlFromLagerId,
+    controlFromName,
+    controlFeil,
     currentUserControlLagerId,
     currentUserControlLagerName,
     fetchOverview,
@@ -1936,6 +1977,12 @@ export default function BieEskeSystemPage() {
                               setControlGlassesLeft(nextLeft);
                             }}
                             inputMode="numeric"
+                            className={
+                              controlFilledAdded > 0 &&
+                              controlFromBalances.glasses < controlFilledAdded
+                                ? "border-2 border-red-500"
+                                : ""
+                            }
                           />
                         </div>
                         <div>
@@ -1960,6 +2007,14 @@ export default function BieEskeSystemPage() {
                               setControlGlassesLeft(nextLeft);
                             }}
                             inputMode="numeric"
+                            className={
+                              controlCollectedGlasses > 0 &&
+                              controlLocationBalances.glasses +
+                                clampInt(controlFilledAdded, 0, 1_000_000) <
+                                controlCollectedGlasses
+                                ? "border-2 border-red-500"
+                                : ""
+                            }
                           />
                         </div>
                         <div>
@@ -1974,7 +2029,11 @@ export default function BieEskeSystemPage() {
                             <option value="">Velg…</option>
                             {api.lagre
                               .filter(
-                                (l) => String(l.kind ?? "") !== "location",
+                                (l) =>
+                                  String(l.kind ?? "") !== "location" &&
+                                  (canPickMainWarehouse ||
+                                    String(l.kind ?? "") !== "main" ||
+                                    l.id === controlFromLagerId),
                               )
                               .map((l) => (
                                 <option key={l.id} value={l.id}>
@@ -2077,6 +2136,19 @@ export default function BieEskeSystemPage() {
                         />
                       </div>
 
+                      {controlFeil.length ? (
+                        <div className="mt-4 rounded-lg border-2 border-red-400 bg-red-50 p-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950/30 dark:text-red-200">
+                          <div className="font-bold">
+                            ⛔ Kan ikke lagre kontrollen slik den står nå
+                          </div>
+                          <ul className="mt-1 list-disc pl-5">
+                            {controlFeil.map((f) => (
+                              <li key={f}>{f}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+
                       <div className="mt-4 rounded-lg border-2 border-amber-200 bg-amber-50 p-3 dark:bg-amber-950/20 dark:border-amber-800">
                         <div className="text-sm font-semibold">
                           🔍 Forhåndsvisning av endringer
@@ -2169,7 +2241,7 @@ export default function BieEskeSystemPage() {
                       <div className="mt-4">
                         <Button
                           onClick={onControl}
-                          disabled={busy}
+                          disabled={busy || controlFeil.length > 0}
                           size="lg"
                           className="w-full sm:w-auto"
                         >
@@ -2393,7 +2465,12 @@ export default function BieEskeSystemPage() {
                             setControlGlassesLeft(nextLeft);
                           }}
                           inputMode="numeric"
-                          className="mt-2 h-12 text-lg"
+                          className={`mt-2 h-12 text-lg ${
+                            controlFilledAdded > 0 &&
+                            controlFromBalances.glasses < controlFilledAdded
+                              ? "border-2 border-red-500"
+                              : ""
+                          }`}
                         />
                       </div>
                       <div>
@@ -2420,7 +2497,14 @@ export default function BieEskeSystemPage() {
                             setControlGlassesLeft(nextLeft);
                           }}
                           inputMode="numeric"
-                          className="mt-2 h-12 text-lg"
+                          className={`mt-2 h-12 text-lg ${
+                            controlCollectedGlasses > 0 &&
+                            controlLocationBalances.glasses +
+                              clampInt(controlFilledAdded, 0, 1_000_000) <
+                              controlCollectedGlasses
+                              ? "border-2 border-red-500"
+                              : ""
+                          }`}
                         />
                       </div>
                     </div>
@@ -2439,7 +2523,13 @@ export default function BieEskeSystemPage() {
                         >
                           <option value="">Velg…</option>
                           {api.lagre
-                            .filter((l) => String(l.kind ?? "") !== "location")
+                            .filter(
+                              (l) =>
+                                String(l.kind ?? "") !== "location" &&
+                                (canPickMainWarehouse ||
+                                  String(l.kind ?? "") !== "main" ||
+                                  l.id === controlFromLagerId),
+                            )
                             .map((l) => (
                               <option key={l.id} value={l.id}>
                                 {String(l.name ?? "")} ({balancesText(l)})
@@ -2544,6 +2634,19 @@ export default function BieEskeSystemPage() {
                   </div>
                 </div>
 
+                {controlFeil.length ? (
+                  <div className="rounded-xl border-2 border-red-400 bg-red-50 p-4 text-sm text-red-900 dark:border-red-700 dark:bg-red-950/30 dark:text-red-200">
+                    <div className="text-base font-bold">
+                      ⛔ Kan ikke lagre kontrollen slik den står nå
+                    </div>
+                    <ul className="mt-2 list-disc space-y-1 pl-5">
+                      {controlFeil.map((f) => (
+                        <li key={f}>{f}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
                 <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 sm:p-5 dark:bg-amber-950/20 dark:border-amber-800">
                   <div className="text-base font-bold">
                     🔍 3. Forhåndsvisning (FØR lagring!)
@@ -2636,7 +2739,7 @@ export default function BieEskeSystemPage() {
                   </button>
                   <Button
                     onClick={onControl}
-                    disabled={busy}
+                    disabled={busy || controlFeil.length > 0}
                     size="lg"
                     className="h-14 text-lg font-bold bg-green-600 hover:bg-green-700 text-white sm:order-2 w-full sm:w-auto px-8"
                   >
