@@ -76,6 +76,15 @@ export default function AdminHomePage() {
             Rediger Butikkpartner-siden og Bievenn-avtalen.
           </div>
         </Link>
+        <Link
+          href="/admin/julekalender"
+          className="rounded-xl border bg-card p-5 hover:bg-muted/40"
+        >
+          <div className="text-sm font-medium">🎄 Julekalender</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Administrer julekalenderen, premier og luker.
+          </div>
+        </Link>
       </div>
     </div>
   )

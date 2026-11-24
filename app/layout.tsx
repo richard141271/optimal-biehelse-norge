@@ -77,6 +77,9 @@ export default function RootLayout({
                 <Link href="/lodd" className="hover:text-foreground">
                   Lotteri
                 </Link>
+                <Link href="/julekalender" className="hover:text-foreground">
+                  Julekalender
+                </Link>
               </nav>
               <div className="flex items-center gap-2">
                 <MobileNavMenu />

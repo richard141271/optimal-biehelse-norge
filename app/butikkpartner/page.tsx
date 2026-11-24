@@ -94,8 +94,36 @@ export default async function ButikkpartnerPage() {
   const dbSponsorer = await fetchSponsorer()
   const sponsorer = dbSponsorer.length > 0 ? dbSponsorer : DEFAULT_SPONSORER
 
+  const honeycombPattern = `url("data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="56" height="100" viewBox="0 0 56 100">
+  <defs>
+    <linearGradient id="h" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="%23f5d76e" stop-opacity="0.35"/>
+      <stop offset="0.5" stop-color="%23e8b923" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="%23d4a017" stop-opacity="0.28"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(%23h)" stroke-width="1">
+    <path d="M28 0 L52 14 L52 42 L28 56 L4 42 L4 14 Z"/>
+    <path d="M28 56 L52 70 L52 98 L28 112 L4 98 L4 70 Z" transform="translate(0, -12)"/>
+  </g>
+  <g fill="none" stroke="%23c9940f" stroke-opacity="0.12" stroke-width="0.5">
+    <path d="M28 6 L50 18.5 L50 37.5 L28 50 L6 37.5 L6 18.5 Z"/>
+    <path d="M28 62 L50 74.5 L50 93.5 L28 106 L6 93.5 L6 74.5 Z" transform="translate(0, -6)"/>
+  </g>
+</svg>
+`)}")`
+
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
+    <div
+      className="relative min-h-screen w-full"
+      style={{
+        backgroundColor: "#fdf8ed",
+        backgroundImage: `${honeycombPattern}, radial-gradient(circle at 20% 10%, rgba(245, 215, 110, 0.25), transparent 40%), radial-gradient(circle at 80% 80%, rgba(232, 185, 35, 0.18), transparent 45%)`,
+        backgroundAttachment: "fixed",
+      }}
+    >
+    <main className="relative mx-auto w-full max-w-6xl flex-1 px-4 py-10">
       <div className="space-y-10">
         <section className="overflow-hidden rounded-3xl border bg-gradient-to-b from-[color:oklch(0.97_0.03_88)] via-background to-background p-6 sm:p-10">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
@@ -381,5 +409,6 @@ export default async function ButikkpartnerPage() {
         </section>
       </div>
     </main>
+    </div>
   )
 }

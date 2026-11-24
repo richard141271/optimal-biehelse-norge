@@ -42,8 +42,14 @@ export async function POST(request: Request) {
     auth: { persistSession: false },
   })
 
-  const query = admin.from("lodd_kjop").update({ status: "paid", paid_at: new Date().toISOString() })
-  const { error } = kjopId ? await query.eq("id", kjopId) : await query.eq("vipps_ref", vippsRef)
+  const isJul = vippsRef.startsWith("jul-")
+  const table = isJul ? "julekalender_kjop" : "lodd_kjop"
+  const now = new Date().toISOString()
+
+  const query = admin.from(table).update({ status: "paid", paid_at: now })
+  const { error } = kjopId && !isJul
+    ? await query.eq("id", kjopId)
+    : await query.eq("vipps_ref", vippsRef)
 
   if (error) {
     return NextResponse.json({ ok: false, feil: "Kunne ikke markere betalt." }, { status: 400 })

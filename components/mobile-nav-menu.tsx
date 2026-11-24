@@ -39,6 +39,9 @@ export function MobileNavMenu() {
             <Link href="/lodd" className="rounded-lg px-3 py-2 hover:bg-muted" onClick={() => setOpen(false)}>
               Lotteri
             </Link>
+            <Link href="/julekalender" className="rounded-lg px-3 py-2 hover:bg-muted" onClick={() => setOpen(false)}>
+              Julekalender
+            </Link>
           </div>
         </div>
       ) : null}
