@@ -204,14 +204,19 @@ export default async function ButikkpartnerPage() {
                   />
                 </div>
               </div>
-              <div className="flex items-center gap-4 rounded-2xl border bg-background p-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+              <a
+                href="https://lekbie.no"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-4 rounded-2xl border bg-background p-4 transition-colors hover:bg-muted/40"
+              >
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-primary/5">
                   <Image
-                    src="/logo.png"
-                    alt="OBNO logo"
-                    width={40}
-                    height={40}
-                    className="h-10 w-auto"
+                    src="/lek-biens-vokter.svg"
+                    alt="LEK-Biens Vokter logo"
+                    width={56}
+                    height={56}
+                    className="h-14 w-auto"
                   />
                 </div>
                 <div>
@@ -219,8 +224,11 @@ export default async function ButikkpartnerPage() {
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Et initiativ for å vokte og beskytte lokale bier og pollinatorer.
                   </p>
+                  <div className="mt-1 text-xs font-medium text-primary">
+                    lekbie.no ↗
+                  </div>
                 </div>
-              </div>
+              </a>
             </div>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
               <a
