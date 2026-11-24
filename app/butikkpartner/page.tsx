@@ -24,8 +24,41 @@ async function fetchAvtale(): Promise<string> {
   return String((data as { innhold?: string } | null)?.innhold ?? "")
 }
 
+async function fetchBilder(): Promise<Record<string, string>> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !serviceRoleKey) return {}
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  })
+
+  const { data, error } = await admin
+    .from("butikkpartner_bilder")
+    .select("slot, image_path")
+
+  if (error) return {}
+
+  const base = supabaseUrl.replace(/\/$/, "")
+  const map: Record<string, string> = {}
+  for (const row of (data ?? []) as { slot: string; image_path: string }[]) {
+    map[row.slot] = `${base}/storage/v1/object/public/butikkpartner/${row.image_path}`
+  }
+  return map
+}
+
+const DEFAULT_BILDER: Record<string, string> = {
+  obno_hero: "/prosjekt-pollinatorbed-hero.svg",
+  prosjekt: "/prosjekt-pollinatorbed-dugnad.svg",
+  bievenn_qr: "/QR-kode-OBNO.png",
+  bievenn_bilde: "/prosjekt-pollinatorbed-skilt.svg",
+  lek_logo: "/lek-biens-vokter.svg",
+}
+
 export default async function ButikkpartnerPage() {
   const avtale = await fetchAvtale()
+  const dbBilder = await fetchBilder()
+  const bilder = { ...DEFAULT_BILDER, ...dbBilder }
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
@@ -116,10 +149,11 @@ export default async function ButikkpartnerPage() {
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <div className="overflow-hidden rounded-2xl border bg-background">
                 <Image
-                  src="/prosjekt-pollinatorbed-hero.svg"
+                  src={bilder.obno_hero}
                   alt="Pollinatorbed ved Fredriksten Festning Camping"
                   width={600}
                   height={300}
+                  unoptimized={bilder.obno_hero.startsWith("http") || bilder.obno_hero.endsWith(".svg")}
                   className="h-full w-full object-cover"
                 />
               </div>
@@ -144,10 +178,11 @@ export default async function ButikkpartnerPage() {
             </p>
             <div className="mt-6 overflow-hidden rounded-2xl border bg-background">
               <Image
-                src="/prosjekt-pollinatorbed-dugnad.svg"
+                src={bilder.prosjekt}
                 alt="Dugnad for pollinatorbed"
                 width={600}
                 height={300}
+                unoptimized={bilder.prosjekt.startsWith("http") || bilder.prosjekt.endsWith(".svg")}
                 className="h-auto w-full object-cover"
               />
               <div className="p-5">
@@ -212,10 +247,11 @@ export default async function ButikkpartnerPage() {
               >
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-primary/5">
                   <Image
-                    src="/lek-biens-vokter.svg"
+                    src={bilder.lek_logo}
                     alt="LEK-Biens Vokter logo"
                     width={56}
                     height={56}
+                    unoptimized={bilder.lek_logo.startsWith("http") || bilder.lek_logo.endsWith(".svg")}
                     className="h-14 w-auto"
                   />
                 </div>
@@ -255,20 +291,22 @@ export default async function ButikkpartnerPage() {
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col items-center gap-2 rounded-2xl border bg-background p-4 text-center">
                 <Image
-                  src="/QR-kode-OBNO.png"
+                  src={bilder.bievenn_qr}
                   alt="QR-kode for OBNO"
                   width={96}
                   height={96}
+                  unoptimized={bilder.bievenn_qr.startsWith("http") || bilder.bievenn_qr.endsWith(".svg")}
                   className="h-24 w-24 object-contain"
                 />
                 <div className="text-xs text-muted-foreground">Skann for å lære mer</div>
               </div>
               <div className="overflow-hidden rounded-2xl border bg-background">
                 <Image
-                  src="/prosjekt-pollinatorbed-skilt.svg"
+                  src={bilder.bievenn_bilde}
                   alt="Skilt for pollinatorbed"
                   width={300}
                   height={160}
+                  unoptimized={bilder.bievenn_bilde.startsWith("http") || bilder.bievenn_bilde.endsWith(".svg")}
                   className="h-full w-full object-cover"
                 />
               </div>

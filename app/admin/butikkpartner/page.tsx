@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -12,16 +13,54 @@ type Avtale = {
   oppdatert_av: string | null
 }
 
+type Bilder = Record<string, string>
+
 type State =
   | { type: "loading" }
-  | { type: "ready"; avtale: Avtale }
+  | { type: "ready"; avtale: Avtale; bilder: Bilder }
   | { type: "error"; message: string }
+
+const SLOT_INFO: { slot: string; tittel: string; beskrivelse: string; placeholder: string }[] = [
+  {
+    slot: "obno_hero",
+    tittel: "Hva er OBNO – hovedbilde",
+    beskrivelse: "Bildet øverst i «Hva er OBNO»-seksjonen.",
+    placeholder: "/prosjekt-pollinatorbed-hero.svg",
+  },
+  {
+    slot: "prosjekt",
+    tittel: "Pollinatorprosjekter – bilde",
+    beskrivelse: "Bildet i «Våre pollinatorprosjekter»-seksjonen.",
+    placeholder: "/prosjekt-pollinatorbed-dugnad.svg",
+  },
+  {
+    slot: "bievenn_qr",
+    tittel: "Vi er en Bievenn – QR-kode",
+    beskrivelse: "QR-koden i «Vi er en Bievenn»-seksjonen.",
+    placeholder: "/QR-kode-OBNO.png",
+  },
+  {
+    slot: "bievenn_bilde",
+    tittel: "Vi er en Bievenn – illustrasjon",
+    beskrivelse: "Illustrasjonen ved siden av QR-koden.",
+    placeholder: "/prosjekt-pollinatorbed-skilt.svg",
+  },
+  {
+    slot: "lek_logo",
+    tittel: "LEK-Biens Vokter – logo",
+    beskrivelse: "Logoen i LEK-Biens Vokter-kortet (lenket til lekbie.no).",
+    placeholder: "/lek-biens-vokter.svg",
+  },
+]
 
 export default function AdminButikkpartnerPage() {
   const [state, setState] = useState<State>({ type: "loading" })
   const [innhold, setInnhold] = useState("")
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ type: "ok" | "feil"; text: string } | null>(null)
+  const [uploading, setUploading] = useState<Record<string, boolean>>({})
+  const [bilder, setBilder] = useState<Bilder>({})
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   const load = useCallback(async () => {
     setState({ type: "loading" })
@@ -35,9 +74,10 @@ export default function AdminButikkpartnerPage() {
         innhold?: string
         oppdatert_at?: string | null
         oppdatert_av?: string | null
+        bilder?: Bilder
       }
       if (!res.ok || !data.ok) {
-        setState({ type: "error", message: data.feil ?? "Kunne ikke hente avtalen." })
+        setState({ type: "error", message: data.feil ?? "Kunne ikke hente data." })
         return
       }
       const avtale: Avtale = {
@@ -45,10 +85,12 @@ export default function AdminButikkpartnerPage() {
         oppdatert_at: data.oppdatert_at ?? null,
         oppdatert_av: data.oppdatert_av ?? null,
       }
-      setState({ type: "ready", avtale })
+      const b = data.bilder ?? {}
+      setState({ type: "ready", avtale, bilder: b })
+      setBilder(b)
       setInnhold(avtale.innhold)
     } catch {
-      setState({ type: "error", message: "Kunne ikke hente avtalen." })
+      setState({ type: "error", message: "Kunne ikke hente data." })
     }
   }, [])
 
@@ -85,6 +127,7 @@ export default function AdminButikkpartnerPage() {
                 oppdatert_at: data.oppdatert_at ?? prev.avtale.oppdatert_at,
                 oppdatert_av: data.oppdatert_av ?? prev.avtale.oppdatert_av,
               },
+              bilder: prev.bilder,
             }
           : prev,
       )
@@ -95,8 +138,72 @@ export default function AdminButikkpartnerPage() {
     }
   }, [innhold])
 
-  const dirty =
-    state.type === "ready" && innhold !== state.avtale.innhold
+  const onUpload = useCallback(async (slot: string, file: File) => {
+    setUploading((u) => ({ ...u, [slot]: true }))
+    setMsg(null)
+    try {
+      const form = new FormData()
+      form.append("slot", slot)
+      form.append("file", file)
+      const res = await fetch("/api/admin/butikkpartner", {
+        method: "POST",
+        body: form,
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        feil?: string
+        imageUrl?: string
+      }
+      if (!res.ok || !data.ok) {
+        setMsg({ type: "feil", text: data.feil ?? "Kunne ikke laste opp bildet." })
+        return
+      }
+      setBilder((b) => ({ ...b, [slot]: data.imageUrl ?? "" }))
+      setState((prev) =>
+        prev.type === "ready"
+          ? { ...prev, bilder: { ...prev.bilder, [slot]: data.imageUrl ?? "" } }
+          : prev,
+      )
+      setMsg({ type: "ok", text: "Bildet er lastet opp og byttet ut på siden." })
+    } catch {
+      setMsg({ type: "feil", text: "Kunne ikke laste opp bildet." })
+    } finally {
+      setUploading((u) => ({ ...u, [slot]: false }))
+    }
+  }, [])
+
+  const onReset = useCallback(async (slot: string) => {
+    setUploading((u) => ({ ...u, [slot]: true }))
+    setMsg(null)
+    try {
+      const res = await fetch(`/api/admin/butikkpartner?slot=${encodeURIComponent(slot)}`, {
+        method: "DELETE",
+      })
+      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      if (!res.ok || !data.ok) {
+        setMsg({ type: "feil", text: data.feil ?? "Kunne ikke tilbakestille bildet." })
+        return
+      }
+      setBilder((b) => {
+        const next = { ...b }
+        delete next[slot]
+        return next
+      })
+      setState((prev) => {
+        if (prev.type !== "ready") return prev
+        const next = { ...prev.bilder }
+        delete next[slot]
+        return { ...prev, bilder: next }
+      })
+      setMsg({ type: "ok", text: "Bildet er tilbakestilt til standard." })
+    } catch {
+      setMsg({ type: "feil", text: "Kunne ikke tilbakestille bildet." })
+    } finally {
+      setUploading((u) => ({ ...u, [slot]: false }))
+    }
+  }, [])
+
+  const dirty = state.type === "ready" && innhold !== state.avtale.innhold
 
   return (
     <div className="space-y-6">
@@ -104,7 +211,7 @@ export default function AdminButikkpartnerPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Sponsor / Butikkpartner</h1>
           <p className="text-sm text-muted-foreground">
-            Rediger innholdet på den offentlige Butikkpartner-siden, inkludert Bievenn-avtalen.
+            Rediger innholdet på den offentlige Butikkpartner-siden: avtale og bilder.
           </p>
         </div>
         <div className="flex gap-2">
@@ -120,70 +227,151 @@ export default function AdminButikkpartnerPage() {
       </div>
 
       {state.type === "loading" && (
-        <div className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">
-          Laster…
-        </div>
+        <div className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">Laster…</div>
       )}
 
       {state.type === "error" && (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive whitespace-pre-wrap">
           {state.message}
         </div>
       )}
 
       {state.type === "ready" && (
-        <div className="space-y-5">
-          {state.avtale.oppdatert_at && (
-            <div className="text-xs text-muted-foreground">
-              Sist oppdatert{" "}
-              {new Date(state.avtale.oppdatert_at).toLocaleString("nb-NO")}
-              {state.avtale.oppdatert_av ? ` av ${state.avtale.oppdatert_av}` : ""}.
+        <div className="space-y-8">
+          <section className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold">Butikkpartneravtale</h2>
+              <p className="text-sm text-muted-foreground">
+                Teksten som vises i avtale-modalen på Butikkpartner-siden.
+              </p>
             </div>
-          )}
 
-          <div className="space-y-2">
-            <Label htmlFor="innhold">Butikkpartneravtale (tekst som vises på siden)</Label>
-            <Textarea
-              id="innhold"
-              value={innhold}
-              onChange={(e) => setInnhold(e.target.value)}
-              placeholder="Skriv Butikkpartneravtalen her…"
-              className="min-h-[320px] font-mono text-sm leading-relaxed"
-            />
-            <p className="text-xs text-muted-foreground">
-              Vanlig tekst. Linjeskift vises som linjeskift. Avtalen åpnes via en knapp i feltet
-              «Vi er en Bievenn» på{" "}
-              <Link href="/butikkpartner" className="underline underline-offset-4">
-                Butikkpartner-siden
-              </Link>
-              .
-            </p>
-          </div>
+            {state.avtale.oppdatert_at && (
+              <div className="text-xs text-muted-foreground">
+                Sist oppdatert {new Date(state.avtale.oppdatert_at).toLocaleString("nb-NO")}
+                {state.avtale.oppdatert_av ? ` av ${state.avtale.oppdatert_av}` : ""}.
+              </div>
+            )}
 
-          {msg && (
-            <div
-              className={`rounded-xl border p-4 text-sm ${
-                msg.type === "ok"
-                  ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-300"
-                  : "border-destructive/30 bg-destructive/10 text-destructive"
-              }`}
-            >
-              {msg.text}
+            <div className="space-y-2">
+              <Label htmlFor="innhold">Avtale-tekst</Label>
+              <Textarea
+                id="innhold"
+                value={innhold}
+                onChange={(e) => setInnhold(e.target.value)}
+                placeholder="Skriv Butikkpartneravtalen her…"
+                className="min-h-[320px] font-mono text-sm leading-relaxed"
+              />
+              <p className="text-xs text-muted-foreground">
+                Vanlig tekst. Linjeskift vises som linjeskift. Avtalen åpnes via en knapp i feltet
+                «Vi er en Bievenn» på{" "}
+                <Link href="/butikkpartner" className="underline underline-offset-4">
+                  Butikkpartner-siden
+                </Link>
+                .
+              </p>
             </div>
-          )}
 
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={onSave} disabled={saving || !dirty}>
-              {saving ? "Lagrer…" : "Lagre avtale"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setInnhold(state.type === "ready" ? state.avtale.innhold : "")}
-              disabled={saving || !dirty}
-            >
-              Tilbakestill
-            </Button>
-          </div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={onSave} disabled={saving || !dirty}>
+                {saving ? "Lagrer…" : "Lagre avtale"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setInnhold(state.type === "ready" ? state.avtale.innhold : "")}
+                disabled={saving || !dirty}
+              >
+                Tilbakestill
+              </Button>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">Bilder på siden</h2>
+              <p className="text-sm text-muted-foreground">
+                Last opp eller bytt ut bildene som vises på Butikkpartner-siden. Endringene treffer
+                i kraft umiddelbart.
+              </p>
+            </div>
+
+            {msg && (
+              <div
+                className={`rounded-xl border p-4 text-sm ${
+                  msg.type === "ok"
+                    ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-300"
+                    : "border-destructive/30 bg-destructive/10 text-destructive"
+                }`}
+              >
+                {msg.text}
+              </div>
+            )}
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {SLOT_INFO.map(({ slot, tittel, beskrivelse, placeholder }) => {
+                const current = bilder[slot] || ""
+                const src = current || placeholder
+                const isUploading = uploading[slot]
+                return (
+                  <div
+                    key={slot}
+                    className="flex flex-col gap-3 rounded-xl border bg-card p-4"
+                  >
+                    <div>
+                      <div className="text-sm font-medium">{tittel}</div>
+                      <div className="text-xs text-muted-foreground">{beskrivelse}</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border bg-muted">
+                        <Image
+                          src={src}
+                          alt={tittel}
+                          fill
+                          unoptimized={src.startsWith("http") || src.endsWith(".svg")}
+                          sizes="80px"
+                          className="object-contain"
+                        />
+                      </div>
+                      <div className="flex flex-1 flex-col gap-2">
+                        <input
+                          ref={(el) => {
+                            fileRefs.current[slot] = el
+                          }}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            if (f) onUpload(slot, f)
+                            e.target.value = ""
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isUploading}
+                          onClick={() => fileRefs.current[slot]?.click()}
+                        >
+                          {isUploading ? "Laster opp…" : current ? "Bytt bilde" : "Last opp bilde"}
+                        </Button>
+                        {current && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={isUploading}
+                            onClick={() => onReset(slot)}
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            Tilbakestill
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
         </div>
       )}
     </div>
