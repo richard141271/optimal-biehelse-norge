@@ -71,9 +71,9 @@ export default function AdminHomePage() {
           href="/admin/butikkpartner"
           className="rounded-xl border bg-card p-5 hover:bg-muted/40"
         >
-          <div className="text-sm font-medium">🤝 Butikkpartner</div>
+          <div className="text-sm font-medium">🤝 Sponsor / Butikkpartner</div>
           <div className="mt-1 text-sm text-muted-foreground">
-            Rediger Butikkpartner-siden og Butikkpartneravtalen.
+            Rediger Butikkpartner-siden og Bievenn-avtalen.
           </div>
         </Link>
       </div>

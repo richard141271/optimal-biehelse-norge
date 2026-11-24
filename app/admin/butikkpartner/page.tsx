@@ -102,9 +102,9 @@ export default function AdminButikkpartnerPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Butikkpartner</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Sponsor / Butikkpartner</h1>
           <p className="text-sm text-muted-foreground">
-            Rediger innholdet på den offentlige Butikkpartner-siden, inkludert Butikkpartneravtalen.
+            Rediger innholdet på den offentlige Butikkpartner-siden, inkludert Bievenn-avtalen.
           </p>
         </div>
         <div className="flex gap-2">

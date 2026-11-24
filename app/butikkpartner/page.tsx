@@ -114,8 +114,14 @@ export default async function ButikkpartnerPage() {
               og et sterkere lokalt engasjement. Vi kombinerer kunnskap og praktiske tiltak for å gjøre det enkelt å bidra.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
-                Plassholder for bilder
+              <div className="overflow-hidden rounded-2xl border bg-background">
+                <Image
+                  src="/prosjekt-pollinatorbed-hero.svg"
+                  alt="Pollinatorbed ved Fredriksten Festning Camping"
+                  width={600}
+                  height={300}
+                  className="h-full w-full object-cover"
+                />
               </div>
               <Link
                 href="/biehelse#sponsorer"
@@ -136,18 +142,27 @@ export default async function ButikkpartnerPage() {
               Vi bygger pollinatorvennlige områder der folk bor. Prosjektene handler om blomster, jord, samarbeid og
               små handlinger som gir stor effekt.
             </p>
-            <div className="mt-6 rounded-2xl border bg-background p-5">
-              <div className="text-sm font-medium">Vårt første prosjekt</div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Pollinatorbed ved Fredriksten Festning Camping – et synlig symbol på samarbeid og naturglede.
-              </p>
-              <div className="mt-4">
-                <Link
-                  href="/mat-og-miljo"
-                  className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
-                >
-                  Se prosjekter
-                </Link>
+            <div className="mt-6 overflow-hidden rounded-2xl border bg-background">
+              <Image
+                src="/prosjekt-pollinatorbed-dugnad.svg"
+                alt="Dugnad for pollinatorbed"
+                width={600}
+                height={300}
+                className="h-auto w-full object-cover"
+              />
+              <div className="p-5">
+                <div className="text-sm font-medium">Vårt første prosjekt</div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Pollinatorbed ved Fredriksten Festning Camping – et synlig symbol på samarbeid og naturglede.
+                </p>
+                <div className="mt-4">
+                  <Link
+                    href="/mat-og-miljo"
+                    className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
+                  >
+                    Se prosjekter
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
@@ -155,22 +170,61 @@ export default async function ButikkpartnerPage() {
 
         <section className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-3xl border bg-card p-6 sm:p-8">
-            <h2 className="text-xl font-semibold tracking-tight">🤝 Bli butikkpartner</h2>
+            <h2 className="text-xl font-semibold tracking-tight">🤝 Bli sponsor</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Vil du at butikken din skal være med og støtte bier og natur? Vi gjør det enkelt å bidra – og å fortelle
+              Vil du at butikken eller bedriften din skal støtte bier og natur? Vi gjør det enkelt å bidra – og å fortelle
               kundene at dere hjelper til.
             </p>
-            <div className="mt-6 grid gap-3">
-              <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
-                Plassholder: sponsorlogoer fra butikkpartnere
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl border bg-background p-4">
+                <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Våre sponsorer
+                </div>
+                <div className="flex flex-wrap items-center gap-5">
+                  <Image
+                    src="/sponsor-logos/florea.png"
+                    alt="Florea"
+                    width={90}
+                    height={40}
+                    className="h-10 w-auto object-contain opacity-90"
+                  />
+                  <Image
+                    src="/sponsor-logos/kalesje-industrisom.png"
+                    alt="Kalesje & Industrisøm AS"
+                    width={110}
+                    height={40}
+                    className="h-10 w-auto object-contain opacity-90"
+                  />
+                  <Image
+                    src="/sponsor-logos/botanisk-verden.png"
+                    alt="Botanisk verden"
+                    width={110}
+                    height={40}
+                    className="h-10 w-auto object-contain opacity-90"
+                  />
+                </div>
               </div>
-              <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
-                Plassholder: LEK-Biens Vokter™
+              <div className="flex items-center gap-4 rounded-2xl border bg-background p-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                  <Image
+                    src="/logo.png"
+                    alt="OBNO logo"
+                    width={40}
+                    height={40}
+                    className="h-10 w-auto"
+                  />
+                </div>
+                <div>
+                  <div className="text-sm font-medium">LEK-Biens Vokter™</div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Et initiativ for å vokte og beskytte lokale bier og pollinatorer.
+                  </p>
+                </div>
               </div>
             </div>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
               <a
-                href="mailto:post@obno.no?subject=Butikkpartner%20%E2%80%93%20OBNO"
+                href="mailto:post@obno.no?subject=Sponsor%20%E2%80%93%20OBNO"
                 className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
               >
                 Kontakt oss
@@ -191,11 +245,24 @@ export default async function ButikkpartnerPage() {
               hverdag lokalt. Dette er ikke corporate – det er ekte.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
-                Plassholder for merke / badge
+              <div className="flex flex-col items-center gap-2 rounded-2xl border bg-background p-4 text-center">
+                <Image
+                  src="/QR-kode-OBNO.png"
+                  alt="QR-kode for OBNO"
+                  width={96}
+                  height={96}
+                  className="h-24 w-24 object-contain"
+                />
+                <div className="text-xs text-muted-foreground">Skann for å lære mer</div>
               </div>
-              <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
-                Plassholder for bilde
+              <div className="overflow-hidden rounded-2xl border bg-background">
+                <Image
+                  src="/prosjekt-pollinatorbed-skilt.svg"
+                  alt="Skilt for pollinatorbed"
+                  width={300}
+                  height={160}
+                  className="h-full w-full object-cover"
+                />
               </div>
             </div>
             <div className="mt-6">
