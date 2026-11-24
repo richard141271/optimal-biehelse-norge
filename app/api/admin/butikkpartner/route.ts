@@ -4,7 +4,21 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { hasPermission, normalizeRole } from "@/lib/roller"
 
-type AdminClient = SupabaseClient<any, "public", any>
+type Db = {
+  public: {
+    Tables: Record<
+      string,
+      {
+        Row: Record<string, unknown>
+        Insert: Record<string, unknown>
+        Update: Record<string, unknown>
+        Relationships: unknown[]
+      }
+    >
+  }
+}
+
+type AdminClient = SupabaseClient<Db>
 
 const TABLE_AVTALE = "butikkpartner_avtale"
 const TABLE_BILDER = "butikkpartner_bilder"
@@ -111,7 +125,7 @@ async function requireAdmin() {
     return { ok: false as const, status: 401 as const, feil: "Ikke innlogget." }
   }
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+  const admin = createClient<Db>(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
 
   const { data: roleRow } = await admin
     .from("medlemmer")
@@ -125,7 +139,9 @@ async function requireAdmin() {
     .trim()
     .toLowerCase()
   const role =
-    ownerEmail && email === ownerEmail ? "superadmin" : normalizeRole(roleRow?.role)
+    ownerEmail && email === ownerEmail
+      ? "superadmin"
+      : normalizeRole(String((roleRow as { role?: unknown } | null)?.role ?? ""))
 
   if (!hasPermission(role, "admin_home")) {
     return { ok: false as const, status: 403 as const, feil: "Ingen tilgang." }
@@ -252,12 +268,20 @@ export async function POST(request: Request) {
 
     const ext = extFromNameAndType(file.name, file.type)
     const base = toSafeStorageKey(slot)
-    const path = `${base}.${ext}`
+    const unique = Math.random().toString(36).slice(2, 10)
+    const path = `${base}-${unique}.${ext}`
     const body = await file.arrayBuffer()
+
+    const { data: oldRow, error: oldErr } = await admin
+      .from(TABLE_BILDER)
+      .select("image_path")
+      .eq("slot", slot)
+      .maybeSingle()
+    const oldPath = oldErr ? "" : String((oldRow as { image_path?: string } | null)?.image_path ?? "")
 
     const { error: uploadError } = await admin.storage
       .from(BUCKET)
-      .upload(path, body, { upsert: true, contentType: file.type || undefined })
+      .upload(path, body, { upsert: false, contentType: file.type || undefined })
 
     if (uploadError) {
       const msg = String((uploadError as { message?: string } | null)?.message ?? "")
@@ -275,11 +299,12 @@ export async function POST(request: Request) {
           image_path: path,
           oppdatert_av: email,
           oppdatert_at: new Date().toISOString(),
-        },
+        } as unknown as never,
         { onConflict: "slot" },
       )
 
     if (dbError) {
+      await admin.storage.from(BUCKET).remove([path]).catch(() => {})
       if (isMissingTable(String(dbError.message ?? ""), TABLE_BILDER)) {
         return NextResponse.json({ ok: false, feil: SCHEMA_SQL }, { status: 500 })
       }
@@ -287,6 +312,10 @@ export async function POST(request: Request) {
         { ok: false, feil: "Kunne ikke lagre bilde." },
         { status: 400 },
       )
+    }
+
+    if (oldPath && oldPath !== path) {
+      await admin.storage.from(BUCKET).remove([oldPath]).catch(() => {})
     }
 
     return NextResponse.json({
@@ -314,7 +343,7 @@ export async function POST(request: Request) {
   const { data, error } = await admin
     .from(TABLE_AVTALE)
     .upsert(
-      { id: 1, innhold, oppdatert_av: email, oppdatert_at: new Date().toISOString() },
+      { id: 1, innhold, oppdatert_av: email, oppdatert_at: new Date().toISOString() } as unknown as never,
       { onConflict: "id" },
     )
     .select("innhold, oppdatert_at, oppdatert_av")
