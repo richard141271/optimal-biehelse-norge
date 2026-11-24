@@ -55,10 +55,44 @@ const DEFAULT_BILDER: Record<string, string> = {
   lek_logo: "/lek-biens-vokter.svg",
 }
 
+type Sponsor = { navn: string; logoUrl: string }
+
+const DEFAULT_SPONSORER: Sponsor[] = [
+  { navn: "Florea", logoUrl: "/sponsor-logos/florea.png" },
+  { navn: "Kalesje & Industrisøm AS", logoUrl: "/sponsor-logos/kalesje-industrisom.png" },
+  { navn: "Botanisk verden", logoUrl: "/sponsor-logos/botanisk-verden.png" },
+]
+
+async function fetchSponsorer(): Promise<Sponsor[]> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !serviceRoleKey) return []
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  })
+
+  const { data, error } = await admin
+    .from("butikkpartner_sponsorer")
+    .select("navn, logo_path")
+    .order("sort_order", { ascending: true })
+    .order("oppdatert_at", { ascending: false })
+
+  if (error) return []
+
+  const base = supabaseUrl.replace(/\/$/, "")
+  return ((data ?? []) as { navn: string; logo_path: string }[]).map((s) => ({
+    navn: s.navn,
+    logoUrl: `${base}/storage/v1/object/public/butikkpartner/${s.logo_path}`,
+  }))
+}
+
 export default async function ButikkpartnerPage() {
   const avtale = await fetchAvtale()
   const dbBilder = await fetchBilder()
   const bilder = { ...DEFAULT_BILDER, ...dbBilder }
+  const dbSponsorer = await fetchSponsorer()
+  const sponsorer = dbSponsorer.length > 0 ? dbSponsorer : DEFAULT_SPONSORER
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
@@ -216,27 +250,17 @@ export default async function ButikkpartnerPage() {
                   Våre sponsorer
                 </div>
                 <div className="flex flex-wrap items-center gap-5">
-                  <Image
-                    src="/sponsor-logos/florea.png"
-                    alt="Florea"
-                    width={90}
-                    height={40}
-                    className="h-10 w-auto object-contain opacity-90"
-                  />
-                  <Image
-                    src="/sponsor-logos/kalesje-industrisom.png"
-                    alt="Kalesje & Industrisøm AS"
-                    width={110}
-                    height={40}
-                    className="h-10 w-auto object-contain opacity-90"
-                  />
-                  <Image
-                    src="/sponsor-logos/botanisk-verden.png"
-                    alt="Botanisk verden"
-                    width={110}
-                    height={40}
-                    className="h-10 w-auto object-contain opacity-90"
-                  />
+                  {sponsorer.map((s) => (
+                    <Image
+                      key={s.navn}
+                      src={s.logoUrl}
+                      alt={s.navn}
+                      width={110}
+                      height={40}
+                      unoptimized={s.logoUrl.startsWith("http") || s.logoUrl.endsWith(".svg")}
+                      className="h-10 w-auto object-contain opacity-90"
+                    />
+                  ))}
                 </div>
               </div>
               <a
@@ -289,16 +313,15 @@ export default async function ButikkpartnerPage() {
               hverdag lokalt. Dette er ikke corporate – det er ekte.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="flex flex-col items-center gap-2 rounded-2xl border bg-background p-4 text-center">
+              <div className="overflow-hidden rounded-2xl border bg-background p-3">
                 <Image
                   src={bilder.bievenn_qr}
                   alt="QR-kode for OBNO"
-                  width={96}
-                  height={96}
+                  width={300}
+                  height={300}
                   unoptimized={bilder.bievenn_qr.startsWith("http") || bilder.bievenn_qr.endsWith(".svg")}
-                  className="h-24 w-24 object-contain"
+                  className="h-full w-full object-contain"
                 />
-                <div className="text-xs text-muted-foreground">Skann for å lære mer</div>
               </div>
               <div className="overflow-hidden rounded-2xl border bg-background">
                 <Image

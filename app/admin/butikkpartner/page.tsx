@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 
 type Avtale = {
   innhold: string
@@ -14,6 +15,13 @@ type Avtale = {
 }
 
 type Bilder = Record<string, string>
+
+type Sponsor = {
+  id: string
+  navn: string
+  logoUrl: string
+  sort_order: number
+}
 
 type State =
   | { type: "loading" }
@@ -60,15 +68,21 @@ export default function AdminButikkpartnerPage() {
   const [msg, setMsg] = useState<{ type: "ok" | "feil"; text: string } | null>(null)
   const [uploading, setUploading] = useState<Record<string, boolean>>({})
   const [bilder, setBilder] = useState<Bilder>({})
+  const [sponsorer, setSponsorer] = useState<Sponsor[]>([])
+  const [sponsorNavn, setSponsorNavn] = useState("")
+  const [sponsorLaster, setSponsorLaster] = useState(false)
+  const [sponsorSletter, setSponsorSletter] = useState<Record<string, boolean>>({})
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const sponsorFileRef = useRef<HTMLInputElement | null>(null)
 
   const load = useCallback(async () => {
     setState({ type: "loading" })
     try {
-      const res = await fetch(`/api/admin/butikkpartner?ts=${Date.now()}`, {
-        cache: "no-store",
-      })
-      const data = (await res.json()) as {
+      const [resAvtale, resSponsorer] = await Promise.all([
+        fetch(`/api/admin/butikkpartner?ts=${Date.now()}`, { cache: "no-store" }),
+        fetch(`/api/admin/butikkpartner-sponsorer?ts=${Date.now()}`, { cache: "no-store" }),
+      ])
+      const data = (await resAvtale.json()) as {
         ok?: boolean
         feil?: string
         innhold?: string
@@ -76,7 +90,7 @@ export default function AdminButikkpartnerPage() {
         oppdatert_av?: string | null
         bilder?: Bilder
       }
-      if (!res.ok || !data.ok) {
+      if (!resAvtale.ok || !data.ok) {
         setState({ type: "error", message: data.feil ?? "Kunne ikke hente data." })
         return
       }
@@ -89,6 +103,15 @@ export default function AdminButikkpartnerPage() {
       setState({ type: "ready", avtale, bilder: b })
       setBilder(b)
       setInnhold(avtale.innhold)
+
+      try {
+        const sData = (await resSponsorer.json()) as { ok?: boolean; sponsorer?: Sponsor[] }
+        if (resSponsorer.ok && sData.ok) {
+          setSponsorer(sData.sponsorer ?? [])
+        }
+      } catch {
+        // ignore sponsor load errors
+      }
     } catch {
       setState({ type: "error", message: "Kunne ikke hente data." })
     }
@@ -204,6 +227,55 @@ export default function AdminButikkpartnerPage() {
   }, [])
 
   const dirty = state.type === "ready" && innhold !== state.avtale.innhold
+
+  const onLeggTilSponsor = useCallback(async (file: File) => {
+    setSponsorLaster(true)
+    setMsg(null)
+    try {
+      const form = new FormData()
+      form.append("navn", sponsorNavn.trim() || file.name.replace(/\.[^.]+$/, ""))
+      form.append("file", file)
+      const res = await fetch("/api/admin/butikkpartner-sponsorer", {
+        method: "POST",
+        body: form,
+      })
+      const data = (await res.json()) as { ok?: boolean; feil?: string; sponsor?: Sponsor }
+      if (!res.ok || !data.ok) {
+        setMsg({ type: "feil", text: data.feil ?? "Kunne ikke legge til sponsor." })
+        return
+      }
+      if (data.sponsor) {
+        setSponsorer((prev) => [...prev, data.sponsor!])
+      }
+      setSponsorNavn("")
+      setMsg({ type: "ok", text: "Sponsorlogo er lagt til." })
+    } catch {
+      setMsg({ type: "feil", text: "Kunne ikke legge til sponsor." })
+    } finally {
+      setSponsorLaster(false)
+    }
+  }, [sponsorNavn])
+
+  const onSlettSponsor = useCallback(async (id: string) => {
+    setSponsorSletter((s) => ({ ...s, [id]: true }))
+    setMsg(null)
+    try {
+      const res = await fetch(`/api/admin/butikkpartner-sponsorer?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      })
+      const data = (await res.json()) as { ok?: boolean; feil?: string }
+      if (!res.ok || !data.ok) {
+        setMsg({ type: "feil", text: data.feil ?? "Kunne ikke slette sponsor." })
+        return
+      }
+      setSponsorer((prev) => prev.filter((s) => s.id !== id))
+      setMsg({ type: "ok", text: "Sponsor er fjernet." })
+    } catch {
+      setMsg({ type: "feil", text: "Kunne ikke slette sponsor." })
+    } finally {
+      setSponsorSletter((s) => ({ ...s, [id]: false }))
+    }
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -370,6 +442,84 @@ export default function AdminButikkpartnerPage() {
                   </div>
                 )
               })}
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">Sponsorlogoer</h2>
+              <p className="text-sm text-muted-foreground">
+                Legg til eller fjern sponsorlogoer som vises i «Våre sponsorer» på Butikkpartner-siden.
+              </p>
+            </div>
+
+            {sponsorer.length > 0 && (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {sponsorer.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex items-center gap-3 rounded-xl border bg-card p-3"
+                  >
+                    <div className="relative h-12 w-24 shrink-0 overflow-hidden rounded-md border bg-muted">
+                      <Image
+                        src={s.logoUrl}
+                        alt={s.navn}
+                        fill
+                        unoptimized={s.logoUrl.startsWith("http") || s.logoUrl.endsWith(".svg")}
+                        sizes="96px"
+                        className="object-contain"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{s.navn}</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!!sponsorSletter[s.id]}
+                      onClick={() => onSlettSponsor(s.id)}
+                      className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      {sponsorSletter[s.id] ? "Sletter…" : "Fjern"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {sponsorer.length === 0 && (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                Ingen sponsorlogoer lagt til ennå.
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-end">
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="sponsor-navn">Navn på sponsor (valgfritt)</Label>
+                <Input
+                  id="sponsor-navn"
+                  value={sponsorNavn}
+                  onChange={(e) => setSponsorNavn(e.target.value)}
+                  placeholder="F.eks. Florea"
+                />
+              </div>
+              <input
+                ref={sponsorFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) onLeggTilSponsor(f)
+                  e.target.value = ""
+                }}
+              />
+              <Button
+                onClick={() => sponsorFileRef.current?.click()}
+                disabled={sponsorLaster}
+              >
+                {sponsorLaster ? "Laster opp…" : "Last opp sponsorlogo"}
+              </Button>
             </div>
           </section>
         </div>
