@@ -67,6 +67,15 @@ export default function AdminHomePage() {
             Bilder og videoer · last opp · søk · last ned.
           </div>
         </Link>
+        <Link
+          href="/admin/butikkpartner"
+          className="rounded-xl border bg-card p-5 hover:bg-muted/40"
+        >
+          <div className="text-sm font-medium">🤝 Butikkpartner</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Rediger Butikkpartner-siden og Butikkpartneravtalen.
+          </div>
+        </Link>
       </div>
     </div>
   )

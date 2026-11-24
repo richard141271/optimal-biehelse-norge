@@ -1,7 +1,32 @@
 import Image from "next/image"
 import Link from "next/link"
+import { createClient } from "@supabase/supabase-js"
+import { ButikkpartnerAvtale } from "@/components/butikkpartner-avtale"
 
-export default function ButikkpartnerPage() {
+export const dynamic = "force-dynamic"
+
+async function fetchAvtale(): Promise<string> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !serviceRoleKey) return ""
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  })
+
+  const { data, error } = await admin
+    .from("butikkpartner_avtale")
+    .select("innhold")
+    .eq("id", 1)
+    .maybeSingle()
+
+  if (error) return ""
+  return String((data as { innhold?: string } | null)?.innhold ?? "")
+}
+
+export default async function ButikkpartnerPage() {
+  const avtale = await fetchAvtale()
+
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
       <div className="space-y-10">
@@ -172,6 +197,9 @@ export default function ButikkpartnerPage() {
               <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
                 Plassholder for bilde
               </div>
+            </div>
+            <div className="mt-6">
+              <ButikkpartnerAvtale innhold={avtale} />
             </div>
           </div>
         </section>
